@@ -200,12 +200,13 @@ Das System sammelt kontinuierlich Daten und verbessert sich selbständig.
 | State Management | **Riverpod** | Reaktiv, testbar |
 | API-Kommunikation | **Dio + WebSocket** | REST + Echtzeit-Updates |
 
-### Infrastruktur
+### Zielsystem
 | Komponente | Technologie | Begründung |
 |---|---|---|
+| Hardware | **Raspberry Pi 5 (4/8 GB)** | Kompakt, sparsam, GPIO/UART/I2C |
+| Betriebssystem | **Raspberry Pi OS (Bookworm, 64-bit)** | Offiziell, stabil, ARM64 |
 | Container | **Docker + Docker Compose** | Reproduzierbare Deployments |
-| Edge-Gerät | **Raspberry Pi 4/5 oder Mini-PC** | Lokaler Betrieb |
-| Monitoring | **Grafana + Prometheus** | System-Überwachung |
+| Monitoring | **Grafana + Prometheus** | System-Ueberwachung |
 
 ---
 
@@ -439,26 +440,83 @@ Nutzer (App)                    Backend                         Hardware
 
 ---
 
-## Lokale Entwicklung starten
+## Deployment auf Raspberry Pi 5
+
+### Voraussetzungen
+- Raspberry Pi 5 (4 oder 8 GB RAM empfohlen)
+- Raspberry Pi OS Bookworm (64-bit) installiert
+- Netzwerkverbindung (Ethernet empfohlen)
+- SSH-Zugang aktiviert
+
+### Automatische Installation
 
 ```bash
+# Auf dem Raspberry Pi:
+curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/deploy/raspberry-pi/setup.sh -o setup.sh
+sudo bash setup.sh
+```
+
+Das Script installiert alle Abhaengigkeiten, klont das Repository nach `/opt/energiemanager`,
+startet die Docker-Container und richtet einen systemd-Service fuer den Autostart ein.
+
+### Manuelle Installation
+
+```bash
+# System aktualisieren
+sudo apt update && sudo apt upgrade -y
+
+# Docker installieren
+sudo apt install -y docker.io docker-compose git
+sudo usermod -aG docker $USER
+# Abmelden und neu anmelden
+
 # Repository klonen
-git clone <repo-url>
-cd energiemanager
+sudo git clone https://github.com/daTobi1/Energiemanager.git /opt/energiemanager
+cd /opt/energiemanager
+
+# Konfiguration anpassen
+cp .env.example .env
+nano .env  # API-Keys eintragen
+
+# Container starten
+docker-compose up -d
+
+# Status pruefen
+docker-compose ps
+```
+
+### Nach der Installation
+
+| Dienst | URL | Beschreibung |
+|---|---|---|
+| API | `http://<pi-ip>:8000` | FastAPI Backend |
+| API Docs | `http://<pi-ip>:8000/docs` | Swagger UI |
+| Grafana | `http://<pi-ip>:3000` | Monitoring Dashboards |
+
+### Service-Verwaltung
+
+```bash
+sudo systemctl status energiemanager   # Status anzeigen
+sudo systemctl restart energiemanager  # Neustart
+sudo journalctl -u energiemanager -f   # Logs verfolgen
+```
+
+## Lokale Entwicklung (PC/Laptop)
+
+```bash
+git clone https://github.com/daTobi1/Energiemanager.git
+cd Energiemanager
+
+# DB + Redis starten
+docker-compose up -d db redis
 
 # Backend starten
-docker-compose up -d db redis
 cd backend
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload
-
-# Mobile App starten (separates Terminal)
-cd mobile
-flutter pub get
-flutter run
 ```
 
 ---

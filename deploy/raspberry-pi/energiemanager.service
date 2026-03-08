@@ -1,0 +1,31 @@
+[Unit]
+Description=EnergyManager — Intelligentes Energiemanagementsystem
+Documentation=https://github.com/daTobi1/Energiemanager
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=energiemanager
+Group=energiemanager
+WorkingDirectory=/opt/energiemanager
+ExecStartPre=/usr/bin/docker-compose pull --quiet
+ExecStart=/usr/bin/docker-compose up --remove-orphans
+ExecStop=/usr/bin/docker-compose down
+Restart=always
+RestartSec=10
+TimeoutStartSec=120
+
+# Sicherheit
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/energiemanager
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=energiemanager
+
+[Install]
+WantedBy=multi-user.target
