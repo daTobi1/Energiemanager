@@ -1,5 +1,5 @@
 [Unit]
-Description=EnergyManager — Intelligentes Energiemanagementsystem
+Description=EnergyManager – Backend (API + Energiemanagement)
 Documentation=https://github.com/daTobi1/Energiemanager
 After=network-online.target docker.service
 Wants=network-online.target
@@ -9,18 +9,18 @@ Requires=docker.service
 Type=simple
 User=energiemanager
 Group=energiemanager
-WorkingDirectory=/opt/energiemanager
-ExecStartPre=/usr/bin/docker-compose pull --quiet
-ExecStart=/usr/bin/docker-compose up --remove-orphans
-ExecStop=/usr/bin/docker-compose down
-Restart=always
+WorkingDirectory=/home/energiemanager/energiemanager/backend
+EnvironmentFile=/home/energiemanager/energiemanager/.env
+ExecStartPre=docker compose -f /home/energiemanager/energiemanager/docker-compose.yml up -d db redis grafana
+ExecStart=/home/energiemanager/energiemanager/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
 RestartSec=10
 TimeoutStartSec=120
 
 # Sicherheit
 NoNewPrivileges=true
-ProtectSystem=strict
-ReadWritePaths=/opt/energiemanager
+ProtectHome=read-only
+ReadWritePaths=/home/energiemanager/energiemanager
 
 # Logging
 StandardOutput=journal
