@@ -1,17 +1,20 @@
+import { useState } from 'react'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { Link } from 'react-router-dom'
 import {
   Sun, Gauge, Plug, Battery, GitBranch, Settings,
-  CheckCircle2, AlertCircle, ArrowRight,
+  CheckCircle2, AlertCircle, ArrowRight, Database, Trash2,
 } from 'lucide-react'
 import type { GeneratorType } from '../types'
+import { createBavariaSeedData } from '../data/seedBavaria'
 
 const typeLabels: Record<GeneratorType, string> = {
   pv: 'PV', chp: 'BHKW', heat_pump: 'WP', boiler: 'Kessel', chiller: 'Kälte',
 }
 
 export default function DashboardPage() {
-  const { generators, meters, consumers, storages, settings } = useEnergyStore()
+  const { generators, meters, consumers, storages, settings, loadSeedData, clearAll } = useEnergyStore()
+  const [confirmClear, setConfirmClear] = useState(false)
 
   const configComplete = generators.length > 0 && meters.length > 0 && consumers.length > 0
   const hasMainMeter = meters.some((m) => m.category === 'main')
@@ -183,6 +186,41 @@ export default function DashboardPage() {
               <Settings className="w-4 h-4" /> Einstellungen anpassen
             </Link>
           </div>
+        </div>
+      </div>
+
+      {/* Beispieldaten & Reset */}
+      <div className="mt-8 card border-dashed">
+        <h2 className="section-title mb-3">Testdaten</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          Lade vorkonfigurierte Beispieldaten für ein typisches Mehrfamilienhaus in Bayern
+          (6 WE, PV 30 kWp, Gaskessel, Wärmepumpe, Batterie 20 kWh, 2 Wallboxen).
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => { loadSeedData(createBavariaSeedData()) }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Database className="w-4 h-4" />
+            Beispieldaten laden (MFH Bayern)
+          </button>
+          {(generators.length > 0 || consumers.length > 0) && (
+            confirmClear ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-red-600">Wirklich alles löschen?</span>
+                <button onClick={() => { clearAll(); setConfirmClear(false) }} className="btn-danger">Ja, löschen</button>
+                <button onClick={() => setConfirmClear(false)} className="btn-secondary text-sm">Abbrechen</button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmClear(true)}
+                className="btn-secondary flex items-center gap-2 text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="w-4 h-4" />
+                Alle Daten löschen
+              </button>
+            )
+          )}
         </div>
       </div>
     </div>

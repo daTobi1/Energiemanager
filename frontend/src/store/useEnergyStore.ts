@@ -27,6 +27,15 @@ interface EnergyStore {
   removeStorage: (id: string) => void
 
   updateSettings: (s: Partial<SystemSettings>) => void
+
+  loadSeedData: (data: {
+    generators: Generator[]
+    meters: Meter[]
+    consumers: Consumer[]
+    storages: Storage[]
+    settings: SystemSettings
+  }) => void
+  clearAll: () => void
 }
 
 export const useEnergyStore = create<EnergyStore>()(
@@ -68,6 +77,23 @@ export const useEnergyStore = create<EnergyStore>()(
 
       updateSettings: (settings) =>
         set((s) => ({ settings: { ...s.settings, ...settings } })),
+
+      loadSeedData: (data) =>
+        set(() => ({
+          generators: data.generators,
+          meters: data.meters,
+          consumers: data.consumers,
+          storages: data.storages,
+          settings: data.settings,
+        })),
+      clearAll: () =>
+        set(() => ({
+          generators: [],
+          meters: [],
+          consumers: [],
+          storages: [],
+          settings: createDefaultSettings(),
+        })),
     }),
     { name: 'energy-manager-store' },
   ),
