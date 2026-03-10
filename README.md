@@ -369,27 +369,38 @@ sudo bash uninstall.sh
 
 Schrittweise mit Rueckfragen (Services, Docker-Volumes, Verzeichnis, User).
 
-### Lokale Entwicklung (PC/Laptop)
+### Lokale Entwicklung (PC/Laptop, ohne Docker)
 
 ```bash
 git clone https://github.com/daTobi1/Energiemanager.git
 cd Energiemanager
 
-# DB + Redis starten
-docker-compose up -d db redis
-
-# Backend
+# Backend (SQLite, kein Docker noetig)
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-alembic upgrade head
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload    # -> http://localhost:8000
 
 # Frontend (in neuem Terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev                      # -> http://localhost:5173
+
+# Testdaten laden + Simulator starten
+npx vite-node scripts/seed-backend.ts
+curl -X POST "http://localhost:8000/api/v1/simulator/start?interval=5&speed=1"
+```
+
+### Lokale Entwicklung (mit Docker/PostgreSQL)
+
+```bash
+# DB + Redis starten
+docker-compose up -d db redis
+
+# Backend mit PostgreSQL
+DATABASE_URL=postgresql+asyncpg://energiemanager:secret@localhost:5432/energiemanager \
+  uvicorn app.main:app --reload
 ```
 
 ### Nach der Installation
