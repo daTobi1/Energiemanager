@@ -18,22 +18,22 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    title: 'VISUALISIERUNG',
+    items: [
+      { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
+      { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
+    ],
+  },
+  {
     title: 'KONFIGURATION',
     items: [
       { to: '/settings', icon: Settings, label: 'Anlage & Standort' },
       { to: '/generators', icon: Sun, label: 'Erzeuger' },
       { to: '/storage', icon: Battery, label: 'Speicher' },
-      { to: '/circuits', icon: Waypoints, label: 'Heizkreise' },
+      { to: '/circuits', icon: Waypoints, label: 'Heiz- & Kältekreise' },
       { to: '/rooms', icon: Home, label: 'Räume' },
       { to: '/consumers', icon: Plug, label: 'Verbraucher' },
       { to: '/meters', icon: Gauge, label: 'Zähler' },
-    ],
-  },
-  {
-    title: 'VISUALISIERUNG',
-    items: [
-      { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
-      { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
     ],
   },
   {
