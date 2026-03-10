@@ -213,14 +213,14 @@ energiemanager/
 │   │   │   ├── router.py
 │   │   │   ├── crud.py                  # Generische CRUD-Router-Factory
 │   │   │   ├── endpoints/               # dashboard, generators, storage,
-│   │   │   │                            # charging, settings, seed
+│   │   │   │                            # charging, settings, seed, simulator
 │   │   │   └── websocket.py
 │   │   ├── models/                      # SQLAlchemy DB-Modelle
 │   │   │   ├── config.py               # JSONB-Konfigurationsmodelle (7 Entitaeten)
 │   │   │   ├── generator.py            # Runtime-Generator-Modell (Phase 2)
 │   │   │   └── ...
 │   │   ├── schemas/                     # Pydantic DTOs
-│   │   ├── services/                    # Business-Logik
+│   │   ├── services/                    # Business-Logik + Simulator
 │   │   ├── forecasting/                 # Prognose-Engine (Wetter, PV, Last, Thermisch)
 │   │   ├── ml/                          # ML-Pipeline (Training, Features, Anomalie)
 │   │   ├── connectors/                  # Hardware-Anbindung (Modbus, MQTT, Wallbox)
@@ -333,8 +333,16 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - 5 Vorlagen: Ausgewogen, Kostenoptimiert, Klimafreundlich, Maximaler Komfort, Autark
 - Gewichtungen als Teil der SystemSettings (API-sync + localStorage)
 
+**Erledigt (Simulator):**
+- Energie-Simulator: Erzeugt realistische Messwerte ohne Hardware
+- Simulationsmodelle: PV (Sonnenstand), Waermepumpe (COP/Aussentemp), Gaskessel (Hysterese), Last (VDI 4655), Batterie (Ueberschuss/Defizit), Netz (Bilanz)
+- API-Endpoints: Start/Stop/Status/Measurements + Latest-Aggregation
+- WebSocket-Streaming: Echtzeit-Updates an alle verbundenen Clients
+- LiveDashboard-Komponente: 8 Metrikkarten mit Echtzeit-Werten
+- Fallback-Polling wenn kein WebSocket verfuegbar
+
 **Naechste Schritte:**
-- Phase 2: Regelung, Prognosen, Optimierer-Kernlogik
+- Phase 2: Prognosen, Optimierer-Kernlogik, Regelung
 
 ---
 
