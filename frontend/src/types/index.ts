@@ -480,6 +480,22 @@ export interface SystemSettings {
 
   weatherProvider: WeatherProvider
   weatherApiKey: string
+
+  // Optimierer-Gewichtung (0–100 pro Achse)
+  optimizerWeights: OptimizerWeights
+}
+
+export interface OptimizerWeights {
+  /** CO₂-Einsparung maximieren */
+  co2Reduction: number
+  /** Wirtschaftlichkeit (Kosten minimieren) */
+  economy: number
+  /** Komfort (Temperatur, Warmwasser) */
+  comfort: number
+  /** Eigenverbrauch maximieren */
+  selfConsumption: number
+  /** Netzdienliches Verhalten (Spitzenlastglättung) */
+  gridFriendly: number
 }
 
 // ============================================================
@@ -635,5 +651,16 @@ export function createDefaultSettings(): SystemSettings {
     meterPointId: '',
     weatherProvider: 'openweathermap',
     weatherApiKey: '',
+    optimizerWeights: createDefaultOptimizerWeights(),
+  }
+}
+
+export function createDefaultOptimizerWeights(): OptimizerWeights {
+  return {
+    co2Reduction: 50,
+    economy: 80,
+    comfort: 70,
+    selfConsumption: 60,
+    gridFriendly: 30,
   }
 }

@@ -11,6 +11,7 @@ import RoomsPage from './pages/RoomsPage'
 import CircuitsPage from './pages/CircuitsPage'
 import EnergyFlowPage from './pages/EnergyFlowPage'
 import SankeyPage from './pages/SankeyPage'
+import OptimizerPage from './pages/OptimizerPage'
 import SettingsPage from './pages/SettingsPage'
 import SystemPage from './pages/SystemPage'
 
@@ -33,6 +34,7 @@ export default function App() {
         <Route path="/circuits" element={<CircuitsPage />} />
         <Route path="/energy-flow" element={<EnergyFlowPage />} />
         <Route path="/sankey" element={<SankeyPage />} />
+        <Route path="/optimizer" element={<OptimizerPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/system" element={<SystemPage />} />
       </Route>

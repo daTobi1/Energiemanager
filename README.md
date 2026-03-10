@@ -248,6 +248,7 @@ energiemanager/
 │       │   ├── MetersPage.tsx           # Zaehler (6 Kategorien)
 │       │   ├── EnergyFlowPage.tsx       # SVG-Energieflussdiagramm (11 Spalten)
 │       │   ├── SankeyPage.tsx           # Sankey-Diagramm (Plotly.js)
+│       │   ├── OptimizerPage.tsx       # Optimierer-Ziele (Radar-Diagramm)
 │       │   └── SystemPage.tsx           # Systemverwaltung
 │       ├── hooks/
 │       │   └── useCreateNavigation.ts   # Seitenuebergreifende Erstellung + Flow-Edit
@@ -290,16 +291,17 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 | Phase | Beschreibung | Status |
 |---|---|---|
 | Phase 1 | Fundament (Backend + Web-Frontend + Install-Script) | Abgeschlossen |
-| Phase 1b | Anforderungen schaerfen (UI verfeinern, Datenmodelle ableiten) | **In Arbeit** |
+| Phase 1b | Backend-Anbindung (JSONB + API + Alembic) | Abgeschlossen |
+| Phase 1c | Optimierer-UI (Radar-Diagramm, Gewichtungen) | Abgeschlossen |
 | Phase 2 | Kernlogik (Regelung, Prognosen, Optimierer v1) | Ausstehend |
 | Phase 3 | Intelligenz (Wetter-API, ML, MILP, Selbstlernen) | Ausstehend |
 | Phase 4 | Mobile App (Flutter) | Ausstehend |
 | Phase 5 | Produktion (Edge-Deployment, Monitoring) | Ausstehend |
 
-### Phase 1b — Aktuelle Arbeiten
+### Bisherige Arbeiten
 
-**Erledigt:**
-- 11 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, System)
+**Erledigt (Phase 1):**
+- 12 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, Optimierer, System)
 - Interaktives Energiefluss-Diagramm mit Drag-to-Connect und Click-to-Delete
 - Bidirektionale Batteriespeicher-Verbindungen (Laden/Entladen)
 - Smart-Meter-Logik (Durchverbindungen ueber Zaehler)
@@ -321,10 +323,18 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - Zustand Store: Optimistischer Sync (lokales Update + API-Call im Hintergrund)
 - Offline-Modus: localStorage-Fallback wenn Backend nicht erreichbar
 - Verbindungsstatus: Sidebar-Indikator + SystemPage Backend-Sektion
+- E2E-Test mit SQLite erfolgreich (alle CRUD-Endpoints + Seed/Clear)
+- Alembic-Migration fuer alle Config- und Runtime-Tabellen
+
+**Erledigt (Optimierer-UI):**
+- Interaktives Radar-/Spinnennetzdiagramm (SVG, Drag-to-Adjust)
+- 5 Optimierungsachsen: CO2-Einsparung, Wirtschaftlichkeit, Komfort, Eigenverbrauch, Netzdienlich
+- Feineinstellung per Slider (0-100% pro Achse)
+- 5 Vorlagen: Ausgewogen, Kostenoptimiert, Klimafreundlich, Maximaler Komfort, Autark
+- Gewichtungen als Teil der SystemSettings (API-sync + localStorage)
 
 **Naechste Schritte:**
-- Backend + Docker starten und End-to-End testen
-- Alembic-Migration fuer die neuen Config-Tabellen
+- Phase 2: Regelung, Prognosen, Optimierer-Kernlogik
 
 ---
 

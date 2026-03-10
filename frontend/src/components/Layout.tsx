@@ -1,7 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard, Settings, Gauge, Sun, Plug, Battery,
-  Home, Waypoints, Monitor,
+  Home, Waypoints, Monitor, Target,
   GitBranch, BarChart3, Zap, Wifi, WifiOff,
 } from 'lucide-react'
 import { useEnergyStore } from '../store/useEnergyStore'
@@ -23,6 +23,12 @@ const navGroups: NavGroup[] = [
     items: [
       { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
       { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
+    ],
+  },
+  {
+    title: 'OPTIMIERUNG',
+    items: [
+      { to: '/optimizer', icon: Target, label: 'Optimierer' },
     ],
   },
   {
