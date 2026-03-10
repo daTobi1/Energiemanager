@@ -56,7 +56,7 @@ export function CommunicationForm({ config, onChange, defaultOpen = false }: Pro
   }
 
   return (
-    <Section title="Kommunikation" icon={<Wifi className="w-4 h-4 text-blue-500" />} defaultOpen={defaultOpen}>
+    <Section title="Kommunikation" icon={<Wifi className="w-4 h-4 text-blue-400" />} defaultOpen={defaultOpen}>
       <div className="grid grid-cols-2 gap-4">
         <SelectField
           label="Protokoll"
@@ -90,8 +90,8 @@ export function CommunicationForm({ config, onChange, defaultOpen = false }: Pro
 
       {/* Modbus TCP / SunSpec */}
       {(config.protocol === 'modbus_tcp' || config.protocol === 'sunspec') && (
-        <div className="space-y-3 p-4 bg-blue-50 rounded-lg">
-          <h4 className="text-sm font-semibold text-blue-700">
+        <div className="space-y-3 p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
+          <h4 className="text-sm font-semibold text-blue-400">
             {config.protocol === 'sunspec' ? 'SunSpec / Modbus' : 'Modbus'}-Einstellungen
           </h4>
           <div className="grid grid-cols-3 gap-3">
@@ -163,8 +163,8 @@ export function CommunicationForm({ config, onChange, defaultOpen = false }: Pro
 
       {/* MQTT */}
       {config.protocol === 'mqtt' && (
-        <div className="space-y-3 p-4 bg-green-50 rounded-lg">
-          <h4 className="text-sm font-semibold text-green-700">MQTT-Einstellungen</h4>
+        <div className="space-y-3 p-4 bg-green-500/10 rounded-lg border border-green-500/20">
+          <h4 className="text-sm font-semibold text-green-400">MQTT-Einstellungen</h4>
           <div className="grid grid-cols-2 gap-3">
             <InputField
               label="Topic"
@@ -207,8 +207,8 @@ export function CommunicationForm({ config, onChange, defaultOpen = false }: Pro
 
       {/* HTTP REST */}
       {config.protocol === 'http_rest' && (
-        <div className="space-y-3 p-4 bg-purple-50 rounded-lg">
-          <h4 className="text-sm font-semibold text-purple-700">HTTP/REST-Einstellungen</h4>
+        <div className="space-y-3 p-4 bg-purple-500/10 rounded-lg border border-purple-500/20">
+          <h4 className="text-sm font-semibold text-purple-400">HTTP/REST-Einstellungen</h4>
           <div className="grid grid-cols-2 gap-3">
             <InputField
               label="Basis-URL"

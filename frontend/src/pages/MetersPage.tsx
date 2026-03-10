@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus, Trash2, Edit2, Gauge, X, Copy } from 'lucide-react'
+import { Plus, Edit2, Gauge, X, Copy, ArrowLeft } from 'lucide-react'
+import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type { Meter, MeterType, MeterDirection, MeterCategory, MeterAssignmentType } from '../types'
 import { createDefaultCommunication } from '../types'
 
@@ -24,8 +26,13 @@ const directionOptions = [
 ]
 
 const categoryOptions = [
-  { value: 'main', label: 'Hauptzähler' },
-  { value: 'sub', label: 'Unterzähler' },
+  { value: 'source', label: 'Quellenzähler' },
+  { value: 'generation', label: 'Erzeugerzähler' },
+  { value: 'consumption', label: 'Heiz-/Kühlkreiszähler' },
+  { value: 'circuit', label: 'Raumzähler' },
+  { value: 'group', label: 'Verbrauchergruppenzähler' },
+  { value: 'end', label: 'Endzähler' },
+  { value: 'unassigned', label: 'Nicht zugeordnet' },
 ]
 
 const assignmentTypeOptions = [
@@ -33,15 +40,15 @@ const assignmentTypeOptions = [
   { value: 'generator', label: 'Erzeuger' },
   { value: 'consumer', label: 'Verbraucher' },
   { value: 'storage', label: 'Speicher' },
-  { value: 'grid', label: 'Netzanschluss' },
+  { value: 'grid', label: 'Hausanschluss' },
 ]
 
 const typeColors: Record<MeterType, string> = {
-  electricity: 'bg-yellow-100 text-yellow-700',
-  heat: 'bg-red-100 text-red-700',
-  gas: 'bg-blue-100 text-blue-700',
-  water: 'bg-cyan-100 text-cyan-700',
-  cold: 'bg-indigo-100 text-indigo-700',
+  electricity: 'bg-yellow-500/15 text-yellow-400',
+  heat: 'bg-red-500/15 text-red-400',
+  gas: 'bg-blue-500/15 text-blue-400',
+  water: 'bg-cyan-500/15 text-cyan-400',
+  cold: 'bg-indigo-500/15 text-indigo-400',
 }
 
 const typeLabels: Record<MeterType, string> = {
@@ -50,6 +57,16 @@ const typeLabels: Record<MeterType, string> = {
   gas: 'Gas',
   water: 'Wasser',
   cold: 'Kälte',
+}
+
+const categoryLabels: Record<MeterCategory, string> = {
+  source: 'Quellenzähler',
+  generation: 'Erzeugerzähler',
+  consumption: 'Heiz-/Kühlkreiszähler',
+  circuit: 'Raumzähler',
+  group: 'Verbrauchergruppenzähler',
+  end: 'Endzähler',
+  unassigned: 'Nicht zugeordnet',
 }
 
 const directionLabels: Record<MeterDirection, string> = {
@@ -67,7 +84,7 @@ function createDefaultMeter(): Meter {
     type: 'electricity',
     meterNumber: '',
     direction: 'consumption',
-    category: 'sub',
+    category: 'unassigned',
     parentMeterId: '',
     phases: 3,
     nominalCurrentA: 63,
@@ -87,6 +104,8 @@ export default function MetersPage() {
   const { meters, generators, consumers, storages, addMeter, updateMeter, removeMeter } = useEnergyStore()
   const [editing, setEditing] = useState<Meter | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [draftMeter, setDraftMeter] = useState<Meter | null>(null)
+  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = () => {
     setEditing(createDefaultMeter())
@@ -98,16 +117,87 @@ export default function MetersPage() {
     setShowForm(true)
   }
 
+  // Auto-open form when this page is a creation target
+  useEffect(() => {
+    if (isCreationTarget && !showForm) {
+      startAdd()
+    }
+  }, [isCreationTarget])
+
+  // Flow-Edit: Aus Energiefluss-Diagramm zum Bearbeiten navigiert
+  useEffect(() => {
+    if (flowEditId && !showForm) {
+      const m = meters.find((m) => m.id === flowEditId)
+      if (m) startEdit(m)
+    }
+  }, [flowEditId])
+
+  // Flow-Create: Aus Energiefluss-Diagramm zum Erstellen navigiert
+  useEffect(() => {
+    if (flowCreateNew && !showForm) {
+      const meter = createDefaultMeter()
+      if (flowInitialValues?.category) {
+        meter.category = flowInitialValues.category as MeterCategory
+      }
+      setEditing(meter)
+      setShowForm(true)
+    }
+  }, [flowCreateNew])
+
+  // Handle return from other pages with a created entity
+  useEffect(() => {
+    if (pendingReturn) {
+      const draft = { ...pendingReturn.draft } as Meter
+      if (pendingReturn.assignMode === 'single') {
+        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
+      } else {
+        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
+      }
+      setEditing(draft)
+      setShowForm(true)
+      clearPendingCreation()
+    }
+  }, [pendingReturn])
+
   const save = () => {
     if (!editing) return
     const exists = meters.find((m) => m.id === editing.id)
     if (exists) updateMeter(editing.id, editing)
     else addMeter(editing)
+
+    // If we were creating a parent meter via draft, restore the draft with the new parent ID
+    if (draftMeter) {
+      setEditing({ ...draftMeter, parentMeterId: editing.id })
+      setDraftMeter(null)
+      return
+    }
+
+    // If we are a creation target, save and navigate back
+    if (isCreationTarget) {
+      saveAndReturn(editing.id)
+      return
+    }
+
+    if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
+
     setShowForm(false)
     setEditing(null)
   }
 
-  const cancel = () => { setShowForm(false); setEditing(null) }
+  const cancel = () => {
+    if (draftMeter) {
+      setEditing(draftMeter)
+      setDraftMeter(null)
+      return
+    }
+    if (isCreationTarget) {
+      cancelAndReturn()
+      return
+    }
+    if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
+    setShowForm(false)
+    setEditing(null)
+  }
 
   const update = <K extends keyof Meter>(key: K, value: Meter[K]) => {
     if (!editing) return
@@ -121,14 +211,22 @@ export default function MetersPage() {
       case 'generator': return generators.map((g) => ({ value: g.id, label: g.name || 'Unbenannt' }))
       case 'consumer': return consumers.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
       case 'storage': return storages.map((s) => ({ value: s.id, label: s.name || 'Unbenannt' }))
-      case 'grid': return [{ value: 'grid', label: 'Netzanschluss' }]
+      case 'grid': return [{ value: 'grid', label: 'Hausanschluss' }]
       default: return []
     }
   }
 
   const parentMeterOptions = meters
-    .filter((m) => m.id !== editing?.id && m.category === 'main')
+    .filter((m) => m.id !== editing?.id)
     .map((m) => ({ value: m.id, label: m.name || m.meterNumber }))
+
+  const startCreateParentMeter = () => {
+    if (!editing) return
+    setDraftMeter(editing)
+    const newMeter = createDefaultMeter()
+    newMeter.category = 'generation'
+    setEditing(newMeter)
+  }
 
   if (showForm && editing) {
     return (
@@ -138,10 +236,23 @@ export default function MetersPage() {
           <button onClick={cancel} className="btn-icon"><X className="w-5 h-5" /></button>
         </div>
 
+        {isCreationTarget && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-400">Erstelle neuen Zähler und kehre automatisch zurück</span>
+          </div>
+        )}
+        {(isFlowEdit || flowCreateNew) && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-400">{isFlowEdit ? 'Bearbeitung' : 'Erstellt'} aus Energiefluss — nach Speichern/Abbrechen zurück zum Diagramm</span>
+          </div>
+        )}
+
         <div className="space-y-4">
           <Section title="Grunddaten" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
-              <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Hauptzähler Strom, PV-Erzeugungszähler" />
+              <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Hausanschluss-Zähler, PV-Erzeugungszähler" />
               <InputField label="Zählernummer" value={editing.meterNumber} onChange={(v) => update('meterNumber', v)} placeholder="z.B. 1EMH0012345678" />
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -149,8 +260,10 @@ export default function MetersPage() {
               <SelectField label="Messrichtung" value={editing.direction} onChange={(v) => update('direction', v as MeterDirection)} options={directionOptions} />
               <SelectField label="Zählerart" value={editing.category} onChange={(v) => update('category', v as MeterCategory)} options={categoryOptions} />
             </div>
-            {editing.category === 'sub' && (
-              <SelectField label="Übergeordneter Hauptzähler" value={editing.parentMeterId} onChange={(v) => update('parentMeterId', v)} options={parentMeterOptions} hint="Diesem Hauptzähler untergeordnet" />
+            {parentMeterOptions.length > 0 && (
+              <div>
+                <SelectField label="Übergeordneter Zähler (optional)" value={editing.parentMeterId} onChange={(v) => update('parentMeterId', v)} options={[{ value: '', label: '— Kein übergeordneter Zähler —' }, ...parentMeterOptions]} hint="Zählerhierarchie für Abrechnungszwecke" />
+              </div>
             )}
           </Section>
 
@@ -178,13 +291,63 @@ export default function MetersPage() {
                 options={assignmentTypeOptions}
               />
               {editing.assignedToType !== 'none' && (
-                <SelectField
-                  label="Zugeordnetes Gerät"
-                  value={editing.assignedToId}
-                  onChange={(v) => update('assignedToId', v)}
-                  options={getAssignmentOptions()}
-                  hint="Gerät zuerst in der entsprechenden Sektion anlegen"
-                />
+                getAssignmentOptions().length > 0 ? (
+                  <div>
+                    <SelectField
+                      label="Zugeordnetes Gerät"
+                      value={editing.assignedToId}
+                      onChange={(v) => update('assignedToId', v)}
+                      options={getAssignmentOptions()}
+                    />
+                    {editing.assignedToType === 'consumer' && (
+                      <button onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Verbraucher anlegen</button>
+                    )}
+                    {editing.assignedToType === 'generator' && (
+                      <button onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Erzeuger anlegen</button>
+                    )}
+                    {editing.assignedToType === 'storage' && (
+                      <button onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Speicher anlegen</button>
+                    )}
+                  </div>
+                ) : editing.assignedToType === 'consumer' ? (
+                  <div>
+                    <label className="label">Zugeordnetes Gerät</label>
+                    <button
+                      onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Verbraucher jetzt anlegen</span>
+                    </button>
+                  </div>
+                ) : editing.assignedToType === 'generator' ? (
+                  <div>
+                    <label className="label">Zugeordnetes Gerät</label>
+                    <button
+                      onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Erzeuger jetzt anlegen</span>
+                    </button>
+                  </div>
+                ) : editing.assignedToType === 'storage' ? (
+                  <div>
+                    <label className="label">Zugeordnetes Gerät</label>
+                    <button
+                      onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Speicher jetzt anlegen</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label">Zugeordnetes Gerät</label>
+                    <p className="text-sm text-dark-faded mt-1">Hausanschluss wird automatisch zugeordnet</p>
+                  </div>
+                )
               )}
             </div>
           </Section>
@@ -209,7 +372,7 @@ export default function MetersPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="page-header">Zähler</h1>
-          <p className="text-sm text-gray-500 mt-1">Alle Energiezähler erfassen und zuordnen</p>
+          <p className="text-sm text-dark-faded mt-1">Alle Energiezähler erfassen und zuordnen</p>
         </div>
         <button onClick={startAdd} className="btn-primary flex items-center gap-2">
           <Plus className="w-4 h-4" /> Zähler hinzufügen
@@ -218,9 +381,9 @@ export default function MetersPage() {
 
       {meters.length === 0 ? (
         <div className="card text-center py-12">
-          <Gauge className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Noch keine Zähler konfiguriert</p>
-          <p className="text-sm text-gray-400 mt-1">Zähler sind die Grundlage für alle Messdaten</p>
+          <Gauge className="w-12 h-12 text-dark-border mx-auto mb-3" />
+          <p className="text-dark-faded">Noch keine Zähler konfiguriert</p>
+          <p className="text-sm text-dark-faded mt-1">Zähler sind die Grundlage für alle Messdaten</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -231,14 +394,14 @@ export default function MetersPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-semibold text-gray-900">{m.name || 'Unbenannt'}</h3>
-                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">{typeLabels[m.type]}</span>
-                  <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded-full">{directionLabels[m.direction]}</span>
-                  <span className={`px-2 py-0.5 text-xs rounded-full ${m.category === 'main' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-50 text-gray-500'}`}>
-                    {m.category === 'main' ? 'Hauptzähler' : 'Unterzähler'}
+                  <h3 className="font-semibold text-dark-text">{m.name || 'Unbenannt'}</h3>
+                  <span className="px-2 py-0.5 bg-dark-hover text-dark-faded text-xs rounded-full">{typeLabels[m.type]}</span>
+                  <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 text-xs rounded-full">{directionLabels[m.direction]}</span>
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-500/10 text-emerald-400">
+                    {categoryLabels[m.category]}
                   </span>
                 </div>
-                <p className="text-sm text-gray-500 mt-0.5">
+                <p className="text-sm text-dark-faded mt-0.5">
                   {m.meterNumber && `Nr. ${m.meterNumber}`}
                   {m.type === 'electricity' && ` | ${m.phases}-phasig, ${m.nominalCurrentA}A`}
                   {m.communication.ipAddress && ` | ${m.communication.protocol} @ ${m.communication.ipAddress}`}
@@ -247,7 +410,7 @@ export default function MetersPage() {
               <div className="flex items-center gap-1 shrink-0">
                 <button onClick={() => { const copy = { ...m, id: uuid(), name: m.name + ' (Kopie)' }; addMeter(copy) }} className="btn-icon" title="Duplizieren"><Copy className="w-4 h-4" /></button>
                 <button onClick={() => startEdit(m)} className="btn-icon" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                <button onClick={() => removeMeter(m.id)} className="btn-icon text-red-400 hover:text-red-600 hover:bg-red-50" title="Löschen"><Trash2 className="w-4 h-4" /></button>
+                <ConfirmDelete onConfirm={() => removeMeter(m.id)} itemName={m.name} />
               </div>
             </div>
           ))}

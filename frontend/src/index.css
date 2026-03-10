@@ -4,40 +4,49 @@
 
 @layer base {
   body {
-    @apply text-gray-900 antialiased;
+    @apply bg-dark-bg text-dark-text antialiased;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-500 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-secondary {
-    @apply bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors font-medium;
+    @apply bg-dark-hover text-dark-muted px-4 py-2 rounded-lg hover:text-dark-text transition-colors font-medium border border-dark-border hover:border-dark-faded;
   }
   .btn-danger {
-    @apply bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors text-sm font-medium;
+    @apply px-3 py-1.5 rounded-lg transition-colors text-sm font-medium text-red-100;
+    background: #7b1a18;
+  }
+  .btn-danger:hover {
+    background: #f85149;
   }
   .btn-icon {
-    @apply p-2 rounded-lg hover:bg-gray-100 transition-colors text-gray-500 hover:text-gray-700;
+    @apply p-2 rounded-lg transition-colors text-dark-faded hover:bg-dark-hover hover:text-dark-text;
   }
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
+    @apply bg-dark-card rounded-xl p-6 border border-dark-border;
+    box-shadow: 0 2px 16px rgba(0,0,0,.4);
   }
   .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-sm;
+    @apply w-full px-3 py-2 border border-dark-border rounded-lg focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all text-sm bg-dark-hover text-dark-text placeholder:text-dark-faded;
   }
   .select {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none bg-white transition-all text-sm;
+    @apply w-full px-3 py-2 border border-dark-border rounded-lg focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all text-sm bg-dark-hover text-dark-text;
+  }
+  .select option {
+    background: #161b22;
+    color: #e6edf3;
   }
   .label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
+    @apply block text-sm font-medium text-dark-muted mb-1;
   }
   .page-header {
-    @apply text-2xl font-bold text-gray-900;
+    @apply text-2xl font-bold text-dark-text;
   }
   .section-title {
-    @apply text-lg font-semibold text-gray-800;
+    @apply text-lg font-semibold text-dark-muted;
   }
 }
 
@@ -45,6 +54,10 @@
 @keyframes flow {
   0% { stroke-dashoffset: 20; }
   100% { stroke-dashoffset: 0; }
+}
+.flow-node-clickable:hover rect {
+  stroke-opacity: 0.8 !important;
+  stroke-width: 2.5 !important;
 }
 .energy-flow-line {
   stroke-dasharray: 10 10;

@@ -2,7 +2,7 @@
 
 > **STATUS: IN ENTWICKLUNG / WORK IN PROGRESS**
 >
-> Dieses Projekt befindet sich in einer fruehen Entwicklungsphase und ist **noch nicht funktionsfaehig**.
+> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 1b).
 > APIs, Datenmodelle und Schnittstellen koennen sich jederzeit aendern.
 > Beitraege und Feedback sind willkommen — siehe [Contributing](#contributing).
 
@@ -10,203 +10,188 @@
 
 ## Vision
 
-Ein selbstlernendes, prognosebasiertes Energiemanagementsystem für Gebäude und Liegenschaften, das Erzeugung, Speicherung, Verbrauch und E-Mobilität ganzheitlich optimiert.
+Ein selbstlernendes, prognosebasiertes Energiemanagementsystem fuer Gebaeude und Liegenschaften, das Erzeugung, Speicherung, Verbrauch und E-Mobilitaet ganzheitlich optimiert.
 
 ---
 
-## Systemübersicht
+## Systemuebersicht
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        EnergyManager Core                          │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐  │
-│  │  Erzeugungs- │  │  Speicher-   │  │     Lademanagement       │  │
-│  │  management  │  │  management  │  │     (Wallboxen/EVs)      │  │
-│  │              │  │              │  │                          │  │
-│  │ • PV-Anlage  │  │ • Batterie   │  │ • Modus 1: Max Speed    │  │
-│  │ • Wärmepumpe │  │   (Strom)    │  │ • Modus 2: PV-Überschuss│  │
-│  │ • BHKW       │  │ • Wärme-     │  │ • Modus 3: Zielladung   │  │
-│  │ • Heizkessel │  │   speicher   │  │                          │  │
-│  │ • Kälte-     │  │ • Kälte-     │  │                          │  │
-│  │   maschine   │  │   speicher   │  │                          │  │
-│  └──────┬───────┘  └──────┬───────┘  └────────────┬─────────────┘  │
-│         │                 │                        │                │
-│  ┌──────┴─────────────────┴────────────────────────┴─────────────┐  │
-│  │                    Optimizer / Scheduler                       │  │
-│  │         (Prognosebasierte Einsatzplanung & Regelung)          │  │
-│  └──────────────────────────┬────────────────────────────────────┘  │
-│                             │                                       │
-│  ┌──────────────────────────┴────────────────────────────────────┐  │
-│  │                     ML / Analytics Engine                      │  │
-│  │        (Selbstlernendes Prognose- & Optimierungsmodul)        │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  ┌───────────────┐  ┌───────────────┐  ┌─────────────────────────┐ │
-│  │  Daten-       │  │  REST API     │  │   Mobile App (Flutter)  │ │
-│  │  sammlung     │  │  (FastAPI)    │  │                         │ │
-│  │  (TimescaleDB)│  │               │  │                         │ │
-│  └───────────────┘  └───────────────┘  └─────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         EnergyManager                                   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                    Web-Frontend (React)                          │    │
+│  │  Dashboard · Erzeuger · Speicher · Heizkreise · Raeume          │    │
+│  │  Verbraucher · Zaehler · Energiefluss · Sankey · System         │    │
+│  └──────────────────────────┬──────────────────────────────────────┘    │
+│                              │ REST API                                 │
+│  ┌──────────────────────────┴──────────────────────────────────────┐    │
+│  │                    Backend (FastAPI)                              │    │
+│  │                                                                   │    │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐  │    │
+│  │  │ Erzeugungs-  │  │  Speicher-   │  │   Lademanagement       │  │    │
+│  │  │ management   │  │  management  │  │   (Wallboxen/EVs)      │  │    │
+│  │  │              │  │              │  │                        │  │    │
+│  │  │ PV · BHKW    │  │ Batterie     │  │ Max · PV-Ueberschuss  │  │    │
+│  │  │ Waermepumpe  │  │ Waerme-/     │  │ Zielladung+PV         │  │    │
+│  │  │ Heizkessel   │  │ Kaeltespeich.│  │                        │  │    │
+│  │  │ Kaeltemasch. │  │              │  │                        │  │    │
+│  │  └──────┬───────┘  └──────┬───────┘  └────────┬───────────────┘  │    │
+│  │         └─────────────────┼───────────────────┘                   │    │
+│  │  ┌────────────────────────┴─────────────────────────────────────┐ │    │
+│  │  │              Optimizer / Scheduler / ML Engine                │ │    │
+│  │  └──────────────────────────────────────────────────────────────┘ │    │
+│  │                                                                   │    │
+│  │  TimescaleDB · Redis · Grafana                                    │    │
+│  └───────────────────────────────────────────────────────────────────┘    │
+│                              │                                           │
+│  ┌──────────────────────────┴──────────────────────────────────────┐    │
+│  │              Hardware-Anbindung (Connectoren)                    │    │
+│  │  Modbus TCP · SunSpec · MQTT · REST · BACnet/IP · KNX/IP       │    │
+│  │  OPC UA · SML/TCP · M-Bus/TCP · OCPP                           │    │
+│  └─────────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## Web-Frontend
+
+Das Frontend ist eine vollstaendige Konfigurationsoberflaeche fuer das Energiesystem. Alle Eingaben folgen dem Energiefluss von links nach rechts.
+
+### Seiten
+
+| Seite | Beschreibung |
+|---|---|
+| **Dashboard** | Uebersicht: Konfigurationsfortschritt, Schnellstatus, Testdaten laden |
+| **Anlage & Standort** | Gebaeudedaten, Koordinaten, Tarife, Hausanschluss, Wetter-API |
+| **Erzeuger** | PV, BHKW, Waermepumpe (mit COP-Kennlinie), Heizkessel, Kaeltemaschine |
+| **Speicher** | Batterie (LFP/NMC/...), Waermespeicher, Kaeltespeicher mit Temperatursensoren |
+| **Heizkreise** | Fussbodenheizung, Radiatoren, Warmwasser-Ladekreis, Mischer/Pumpen/Ventile |
+| **Raeume** | Wohneinheiten, Technikraeume mit Heizplan, Temperatur-Sollwerten, Zuordnungen |
+| **Verbraucher** | Haushalte, Wallboxen (OCPP), Beleuchtung, HVAC, Warmwasser etc. |
+| **Zaehler** | Alle Energiezaehler mit 6 Kategorien (Spalten im Energiefluss) |
+| **Energiefluss** | Interaktives SVG-Diagramm mit 11 Spalten — Drag-to-Connect, Click-to-Delete, bidirektionale Verbindungen |
+| **Sankey-Diagramm** | Jahres-Energiebilanz (Plotly.js), geschaetzte Werte aus Nennleistungen |
+| **Systemverwaltung** | Systemzeit, WLAN, Bluetooth, Updates, Neustart/Herunterfahren |
+
+### Energiefluss — Interaktives 11-Spalten-Diagramm
+
+Das Energiefluss-Diagramm bildet den gesamten Energiepfad als interaktives SVG ab:
+
+- **Drag-to-Connect:** Verbindungen grafisch ziehen (Port-zu-Port)
+- **Click-to-Delete:** Verbindungen per Klick loeschen
+- **Bidirektionale Ports:** Jeder Node hat Ein- und Ausgangsport (beide richtungsfrei)
+- **Smart-Meter-Logik:** Durchverbindungen (z.B. Netz → Zaehler → Batterie) werden automatisch erkannt
+- **Bidirektionale Batterie:** Batteriespeicher laden vom Netz/Erzeugern und speisen an Verbraucher
+- **Kollisionserkennung:** Zaehler in gleichen Spalten ueberlappen nicht
+- **Animierte Energiefluesse:** Gestrichelte, animierte Linien zeigen Flussrichtung
+
+```
+Quellen-  Erzeuger  Erzeuger-  Speicher  Heiz-/Kuehl-  Heiz-/    Raum-    Raeume  Verbraucher-  Verbraucher  End-
+zaehler             zaehler              kreiszaehler   Kuehlkr.  zaehler          gruppenz.                  zaehler
+───────── ───────── ───────── ───────── ───────────── ───────── ───────── ──────── ───────────── ─────────── ─────────
+Gaszaehl. PV Sued   PV-Zaehl. Batterie  WMZ Heizung   FBH EG    WMZ WE1  WE 1    Allg.Strom-   WE 1        Endzaehl.
+                                                                                   zaehler                   WB 1
+WP-Quell. Gaskessel HA-Zaehl. Puffer    WMZ Warmw.    HK OG              WE 2    WB-Zaehler    WE 2
+          WP        Bat.Zaehl WW-Spch.                WW-Lade.           ...                    Wallbox 1
+          Hausanschl.                                  HK Treph.         TG                     Wallbox 2
+                                                                                                ...
+```
+
+### Zaehlerkategorien
+
+Jeder Zaehler wird einer Kategorie zugeordnet, die seiner Spalte im Energiefluss entspricht:
+
+| Kategorie | Spalte | Beschreibung | Beispiele |
+|---|---|---|---|
+| **Quellenzaehler** | 1 | Energiequellen-Messung | Gaszaehler, WP-Quellenzaehler |
+| **Erzeugerzaehler** | 3 | Erzeuger-Ausgangsleistung | Hausanschluss-Zaehler, PV-Zaehler, Batteriezaehler |
+| **Heiz-/Kuehlkreiszaehler** | 5 | Waerme-/Kaelteverteilung | WMZ Heizung, WMZ Warmwasser |
+| **Raumzaehler** | 7 | Raum-/Wohnungsmessung | Heizkostenverteiler WE 1 |
+| **Verbrauchergruppenzaehler** | 9 | Verbrauchergruppen | Allgemeinstromzaehler, Wallbox-Zaehler |
+| **Endzaehler** | 11 | Endverbraucher-Messung | Endzaehler Wallbox 1 |
+
+### Kommunikationsprotokolle
+
+Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angebunden werden:
+
+| Protokoll | Typische Anwendung |
+|---|---|
+| Modbus TCP | Wechselrichter, Waermepumpen, Heizkessel, Energiezaehler |
+| SunSpec | PV-Wechselrichter (standardisiertes Modbus-Profil) |
+| MQTT | IoT-Sensoren, ESP32-Gateways, Smart-Home-Geraete |
+| HTTP/REST | Cloud-APIs, proprietaere Geraete-Schnittstellen |
+| BACnet/IP | Gebaeudeleittechnik, HLK-Anlagen |
+| KNX/IP | Gebaeudeautomation, Beleuchtung, Jalousien |
+| OPC UA | Industrielle Steuerungen, SPS |
+| SML/TCP | Elektronische Stromzaehler (IR-Lesekopf) |
+| M-Bus/TCP | Waermemengenzaehler, Wasserzaehler |
+| OCPP | Wallboxen (Open Charge Point Protocol) |
 
 ---
 
 ## Module im Detail
 
-### 1. Erzeugungsmanagement
-
-Steuert alle Energieerzeuger prognosebasiert.
+### Erzeugungsmanagement
 
 | Erzeuger | Energieform | Steuerbar | Beschreibung |
 |---|---|---|---|
 | PV-Anlage | Strom | Nein (prognostiziert) | Erzeugungsprognose via Wetter-API + ML |
-| Wärmepumpe | Wärme/Kälte + Strom(verbrauch) | Ja | Flexibler Einsatz je nach Bedarf & Strompreis |
-| BHKW | Strom + Wärme | Ja | Kraft-Wärme-Kopplung, wärme-/stromgeführt |
-| Heizkessel | Wärme | Ja | Spitzenlastabdeckung |
-| Kältemaschine | Kälte | Ja | Klimatisierung, Prozesskälte |
+| Waermepumpe | Waerme + Strom(verbrauch) | Ja | Flexibler Einsatz, COP-Kennlinie, SG Ready |
+| BHKW | Strom + Waerme | Ja | Kraft-Waerme-Kopplung, waerme-/stromgefuehrt |
+| Heizkessel | Waerme | Ja | Spitzenlastabdeckung, Brennwert, Modulation |
+| Kaeltemaschine | Kaelte | Ja | Klimatisierung, Prozesskaelte |
 
-**Prognosen:**
-- **PV-Erzeugung:** Wettervorhersage (Globalstrahlung, Temperatur, Bewölkung) → ML-Modell → kWh/15min
-- **Wärmebedarf:** Außentemperaturprognose + Gebäudemodell + Nutzungsprofile → kWh/15min
-- **Kältebedarf:** Außentemperatur + Solarstrahlung + interne Lasten → kWh/15min
-- **Strombedarf:** Historische Last + Wochentag/Feiertag + Wetter → kWh/15min
+### Speichermanagement
 
-### 2. Speichermanagement
+| Speicher | Medium | Strategie |
+|---|---|---|
+| Batteriespeicher | Strom | Eigenverbrauch maximieren, Peak-Shaving |
+| Waermespeicher | Waerme | Waerme puffern, WP-Laufzeiten optimieren, Schichtenspeicher |
+| Kaeltespeicher | Kaelte | Kaelteerzeugung in guenstige Zeiten verlagern |
 
-Optimiert Lade-/Entladezyklen basierend auf Prognosen.
+### Lademanagement (Wallboxen)
 
-| Speicher | Medium | Kapazität (konfigurierbar) | Strategie |
-|---|---|---|---|
-| Batteriespeicher | Strom | z.B. 10–100 kWh | Eigenverbrauch maximieren, Peak-Shaving |
-| Warmwasserspeicher | Wärme | z.B. 500–5000 Liter | Wärme puffern, WP-Laufzeiten optimieren |
-| Kältespeicher | Kälte | z.B. 500–2000 Liter | Kälteerzeugung in günstige Zeiten verlagern |
-
-**Regelstrategie:**
-- State-of-Charge (SoC) Tracking in Echtzeit
-- Prognosebasiertes Laden: Speicher laden, wenn Überschuss erwartet wird
-- Prognosebasiertes Entladen: Speicher entladen, bevor Bedarf erwartet wird
-- Alterungsoptimierung: Batterie-SoC zwischen 20–80% halten wenn möglich
-
-### 3. Lademanagement (Wallboxen / Elektroautos)
-
-Steuert das Laden von Elektrofahrzeugen über Wallboxen mit drei wählbaren Modi.
-
-#### Modus 1 — Maximale Ladeleistung
-- Lädt sofort mit maximaler verfügbarer Leistung
-- Netzstrombezug erlaubt
-- Anwendungsfall: Schnell laden, egal woher der Strom kommt
-
-#### Modus 2 — PV-Überschussladen
-- Lädt **nur** wenn erneuerbarer Überschussstrom vorhanden ist
-- Dynamische Anpassung der Ladeleistung an verfügbaren Überschuss
-- Mindestladeleistung konfigurierbar (z.B. 1,4 kW = 6A einphasig)
-- Hysterese, um ständiges An/Aus zu vermeiden
-
-#### Modus 3 — Zielladung
-- Nutzer gibt ein:
-  - **Aktueller Akkustand** (%) — wird wenn möglich vom Fahrzeug abgefragt
-  - **Gewünschte Kilometer** bis Zeitpunkt X
-  - **Zielzeitpunkt** (z.B. "Morgen 7:00 Uhr")
-- System berechnet:
-  - Benötigte Energiemenge (km → kWh via Fahrzeugprofil)
-  - Optimalen Ladeplan: bevorzugt PV-Überschuss, Rest in günstigen Zeiten
-  - Garantiert Fertigstellung bis zum Zielzeitpunkt
-
-### 4. Prognose-Engine
-
-Alle Entscheidungen basieren auf Prognosen. Das System arbeitet mit einem rollierenden 48h-Horizont in 15-Minuten-Auflösung.
-
-```
-Eingabedaten                    Prognosemodell                 Ausgabe
-─────────────                   ──────────────                 ───────
-Wetter-API (Temperatur,    ─┐
-Strahlung, Wind, Bewölkung) │
-                             ├─► ML-Pipeline ──────────► PV-Erzeugung [kW/15min]
-Historische PV-Daten ───────┘   (Gradient Boosting     Strombedarf  [kW/15min]
-                                 + LSTM Fallback)       Wärmebedarf  [kW/15min]
-Historische Lastdaten ──────┐                           Kältebedarf  [kW/15min]
-                             ├─► Feature Engineering
-Kalender (Wochentag,        │   + Training Pipeline
-Feiertag, Ferien) ──────────┘
-```
-
-**ML-Ansatz:**
-- **Phase 1 (Kaltstart):** Regelbasierte Prognosen mit Standardprofilen
-- **Phase 2 (nach ~2 Wochen):** Gradient Boosting (XGBoost/LightGBM) auf gesammelten Daten
-- **Phase 3 (nach ~3 Monaten):** LSTM/Transformer-Modelle für Zeitreihen, automatisches Retraining
-
-### 5. Optimizer / Scheduler
-
-Zentrale Optimierungslogik, die alle Komponenten koordiniert.
-
-**Optimierungsziel:**
-```
-Minimiere: Gesamtkosten = Strombezugskosten
-                         + Gasbezugskosten
-                         - Einspeisevergütung
-                         + Verschleißkosten (Batterie, BHKW)
-
-Unter Nebenbedingungen:
-  - Wärmebedarf muss zu jeder Zeit gedeckt sein
-  - Kältebedarf muss zu jeder Zeit gedeckt sein
-  - Strombedarf muss zu jeder Zeit gedeckt sein
-  - Alle Lademodi-Anforderungen müssen erfüllt werden
-  - Speicher-SoC innerhalb Grenzen
-  - Leistungsgrenzen aller Erzeuger einhalten
-```
-
-**Algorithmus:**
-- Rollierende Optimierung mit 48h Horizont, alle 15 Minuten neu berechnet
-- Mixed-Integer Linear Programming (MILP) via PuLP/OR-Tools
-- Fallback auf regelbasierte Heuristik bei Solver-Fehlern
-
-### 6. Selbstlernendes System (ML/Analytics Engine)
-
-Das System sammelt kontinuierlich Daten und verbessert sich selbständig.
-
-**Datensammlung:**
-- Alle Sensordaten (Temperaturen, Leistungen, SoC) im 1-Sekunden-Takt
-- Aggregation auf 1min / 15min / 1h / 1d
-- Wetterdaten (Ist + Prognose) für Prognosequalitätsbewertung
-- Nutzerverhalten (Lademodi, Zeitpunkte, Fahrstrecken)
-
-**Selbstlernende Regelung:**
-1. **Prognose-Verbesserung:** Modelle werden wöchentlich mit neuen Daten nachtrainiert
-2. **Regelparameter-Anpassung:** Hysterese-Werte, Schwellwerte, SoC-Grenzen werden optimiert
-3. **Nutzerprofil-Lernen:** Typische Ladezeiten, Fahrmuster, Komfortpräferenzen
-4. **Anomalie-Erkennung:** Ungewöhnliche Verbräuche oder Erzeugungsmuster melden
-5. **A/B-Testing:** Regelstrategien werden verglichen und die bessere übernommen
+| Modus | Beschreibung |
+|---|---|
+| Max. Ladeleistung | Sofort mit maximaler Leistung laden |
+| PV-Ueberschuss | Nur bei erneuerbarem Ueberschuss laden |
+| Zielladung+PV | Zielzeitpunkt + km-Bedarf, System optimiert Ladeplan |
 
 ---
 
 ## Technologie-Stack
 
 ### Backend
-| Komponente | Technologie | Begründung |
-|---|---|---|
-| API-Server | **Python + FastAPI** | Async, schnell, OpenAPI-Docs automatisch |
-| Datenbank | **TimescaleDB** (PostgreSQL) | Optimiert für Zeitreihendaten |
-| Message Broker | **Redis** (Pub/Sub + Cache) | Echtzeitkommunikation zwischen Modulen |
-| Task Queue | **Celery + Redis** | Periodische Tasks (Prognosen, Retraining) |
-| ML Framework | **scikit-learn + XGBoost + PyTorch** | Prognose- und Optimierungsmodelle |
-| Optimizer | **PuLP / Google OR-Tools** | MILP-Solver für Einsatzplanung |
-| Hardware-Anbindung | **Modbus TCP / MQTT / REST** | Kommunikation mit Wechselrichtern, Wallboxen etc. |
 
-### Mobile App
-| Komponente | Technologie | Begründung |
-|---|---|---|
-| Framework | **Flutter** | Cross-Platform (iOS + Android) |
-| State Management | **Riverpod** | Reaktiv, testbar |
-| API-Kommunikation | **Dio + WebSocket** | REST + Echtzeit-Updates |
+| Komponente | Technologie |
+|---|---|
+| API-Server | Python 3.12, FastAPI, SQLAlchemy 2.0 (async) |
+| Datenbank | TimescaleDB (PostgreSQL) — Zeitreihendaten |
+| Cache/Broker | Redis (Pub/Sub + Cache) |
+| ML Framework | scikit-learn, XGBoost (Phase 2), PyTorch (Phase 3) |
+| Optimizer | Regelbasierte Heuristik (Phase 1), PuLP/OR-Tools MILP (Phase 3) |
+
+### Web-Frontend
+
+| Komponente | Technologie |
+|---|---|
+| Framework | React 19, TypeScript, Vite |
+| Styling | Tailwind CSS (Dark Theme) |
+| State | Zustand + localStorage Persistenz |
+| Diagramme | Plotly.js (Sankey), SVG (Energiefluss) |
+| Icons | Lucide React |
 
 ### Zielsystem
-| Komponente | Technologie | Begründung |
-|---|---|---|
-| Hardware | **Raspberry Pi 5 (4/8 GB)** | Kompakt, sparsam, GPIO/UART/I2C |
-| Betriebssystem | **Raspberry Pi OS (Bookworm, 64-bit)** | Offiziell, stabil, ARM64 |
-| Container | **Docker + Docker Compose** | Reproduzierbare Deployments |
-| Monitoring | **Grafana + Prometheus** | System-Ueberwachung |
+
+| Komponente | Technologie |
+|---|---|
+| Hardware | Raspberry Pi 5 (4/8 GB RAM) |
+| OS | Raspberry Pi OS Bookworm (64-bit, ARM64) |
+| Deployment | Docker (DB/Redis/Grafana) + nativ (Backend venv + Frontend serve) |
+| Services | 2 systemd Services: `energiemanager` (Backend) + `energiemanager-web` (Frontend) |
 
 ---
 
@@ -215,128 +200,82 @@ Das System sammelt kontinuierlich Daten und verbessert sich selbständig.
 ```
 energiemanager/
 ├── README.md
+├── install.sh                           # Automatische Installation (Raspberry Pi)
+├── uninstall.sh                         # Deinstallation mit Rueckfragen
 ├── docker-compose.yml
 ├── .env.example
-├── .gitignore
 │
-├── backend/
-│   ├── pyproject.toml
-│   ├── alembic.ini
-│   ├── alembic/                    # DB-Migrationen
-│   │
+├── backend/                             # Python FastAPI Backend
 │   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py                 # FastAPI App Entry Point
-│   │   ├── config.py               # Settings & Environment
-│   │   │
-│   │   ├── api/                    # REST API Endpoints
-│   │   │   ├── __init__.py
-│   │   │   ├── router.py           # Zentraler Router
-│   │   │   ├── endpoints/
-│   │   │   │   ├── dashboard.py    # Übersichtsdaten
-│   │   │   │   ├── generators.py   # Erzeuger-Steuerung
-│   │   │   │   ├── storage.py      # Speicher-Status & Steuerung
-│   │   │   │   ├── charging.py     # Lademanagement & Modi
-│   │   │   │   ├── forecasts.py    # Prognosen abrufen
-│   │   │   │   └── settings.py     # Systemkonfiguration
-│   │   │   └── websocket.py        # Echtzeit-Updates
-│   │   │
-│   │   ├── models/                 # Datenbank-Modelle (SQLAlchemy)
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py
-│   │   │   ├── generator.py        # Erzeuger (PV, WP, BHKW...)
-│   │   │   ├── storage.py          # Speicher (Batterie, Wärme...)
-│   │   │   ├── charging.py         # Wallboxen, Ladesessions
-│   │   │   ├── measurement.py      # Messwerte / Zeitreihen
-│   │   │   └── forecast.py         # Prognosedaten
-│   │   │
-│   │   ├── schemas/                # Pydantic Schemas (API DTOs)
-│   │   │   ├── __init__.py
-│   │   │   ├── generator.py
-│   │   │   ├── storage.py
-│   │   │   ├── charging.py
-│   │   │   └── forecast.py
-│   │   │
-│   │   ├── services/               # Business-Logik
-│   │   │   ├── __init__.py
-│   │   │   ├── generation_manager.py    # Erzeugungsmanagement
-│   │   │   ├── storage_manager.py       # Speichermanagement
-│   │   │   ├── charging_manager.py      # Lademanagement
-│   │   │   ├── optimizer.py             # Zentrale Optimierung (MILP)
-│   │   │   └── scheduler.py             # Einsatzplanung
-│   │   │
-│   │   ├── forecasting/            # Prognose-Engine
-│   │   │   ├── __init__.py
-│   │   │   ├── weather.py          # Wetter-API Anbindung
-│   │   │   ├── pv_forecast.py      # PV-Erzeugungsprognose
-│   │   │   ├── load_forecast.py    # Lastprognose (Strom)
-│   │   │   ├── thermal_forecast.py # Wärme-/Kältebedarfsprognose
-│   │   │   └── base.py             # Basis-Klasse für Prognosen
-│   │   │
-│   │   ├── ml/                     # Machine Learning
-│   │   │   ├── __init__.py
-│   │   │   ├── trainer.py          # Modell-Training Pipeline
-│   │   │   ├── features.py         # Feature Engineering
-│   │   │   ├── model_store.py      # Modell-Versionierung & Laden
-│   │   │   └── anomaly.py          # Anomalie-Erkennung
-│   │   │
-│   │   ├── connectors/             # Hardware-Anbindung
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py             # Abstrakte Connector-Klasse
-│   │   │   ├── modbus_connector.py # Modbus TCP (Wechselrichter etc.)
-│   │   │   ├── mqtt_connector.py   # MQTT (Sensoren, IoT)
-│   │   │   └── wallbox_connector.py # Wallbox-APIs (OCPP, proprietär)
-│   │   │
-│   │   └── core/                   # Kernfunktionen
-│   │       ├── __init__.py
-│   │       ├── database.py         # DB-Verbindung
-│   │       ├── redis.py            # Redis-Verbindung
-│   │       ├── events.py           # Event-Bus (Pub/Sub)
-│   │       └── logging.py          # Strukturiertes Logging
-│   │
+│   │   ├── main.py                      # FastAPI App Entry Point
+│   │   ├── config.py                    # Settings & Environment
+│   │   ├── api/                         # REST API Endpoints
+│   │   │   ├── router.py
+│   │   │   ├── endpoints/               # dashboard, generators, storage,
+│   │   │   │                            # charging, forecasts, settings
+│   │   │   └── websocket.py
+│   │   ├── models/                      # SQLAlchemy DB-Modelle
+│   │   ├── schemas/                     # Pydantic DTOs
+│   │   ├── services/                    # Business-Logik
+│   │   ├── forecasting/                 # Prognose-Engine (Wetter, PV, Last, Thermisch)
+│   │   ├── ml/                          # ML-Pipeline (Training, Features, Anomalie)
+│   │   ├── connectors/                  # Hardware-Anbindung (Modbus, MQTT, Wallbox)
+│   │   └── core/                        # DB, Redis, Events, Logging
 │   └── tests/
-│       ├── conftest.py
-│       ├── test_generation.py
-│       ├── test_storage.py
-│       ├── test_charging.py
-│       ├── test_forecasting.py
-│       └── test_optimizer.py
 │
-├── mobile/                         # Flutter Mobile App
-│   ├── pubspec.yaml
-│   ├── lib/
-│   │   ├── main.dart
-│   │   ├── app.dart
-│   │   │
-│   │   ├── models/                 # Datenmodelle
-│   │   │   ├── generator.dart
-│   │   │   ├── storage.dart
-│   │   │   ├── charging_session.dart
-│   │   │   └── forecast.dart
-│   │   │
-│   │   ├── providers/              # Riverpod Providers
-│   │   │   ├── dashboard_provider.dart
-│   │   │   ├── charging_provider.dart
-│   │   │   └── settings_provider.dart
-│   │   │
-│   │   ├── services/               # API-Kommunikation
-│   │   │   ├── api_service.dart
-│   │   │   └── websocket_service.dart
-│   │   │
-│   │   └── screens/                # UI Screens
-│   │       ├── dashboard_screen.dart    # Übersicht: Energieflüsse
-│   │       ├── generation_screen.dart   # Erzeuger-Details
-│   │       ├── storage_screen.dart      # Speicher-Details
-│   │       ├── charging_screen.dart     # Lademanagement & Modi
-│   │       └── settings_screen.dart     # Konfiguration
-│   │
-│   └── test/
+├── frontend/                            # React Web-Frontend
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── tailwind.config.js
+│   └── src/
+│       ├── main.tsx                     # Entry Point
+│       ├── App.tsx                      # Router (React Router v7)
+│       ├── components/
+│       │   ├── Layout.tsx               # Sidebar-Navigation
+│       │   └── ui/                      # FormField, CommunicationForm, ConfirmDelete
+│       ├── pages/
+│       │   ├── DashboardPage.tsx        # Uebersicht + Testdaten-Button
+│       │   ├── SettingsPage.tsx         # Anlage, Standort, Tarife, Hausanschluss
+│       │   ├── GeneratorsPage.tsx       # PV, BHKW, WP, Kessel, Kaeltemaschine
+│       │   ├── StoragePage.tsx          # Batterie, Waerme-/Kaeltespeicher
+│       │   ├── CircuitsPage.tsx         # Heiz-/Kuehlkreise
+│       │   ├── RoomsPage.tsx            # Raeume mit Heizplan
+│       │   ├── ConsumersPage.tsx        # Verbraucher + Wallboxen
+│       │   ├── MetersPage.tsx           # Zaehler (6 Kategorien)
+│       │   ├── EnergyFlowPage.tsx       # SVG-Energieflussdiagramm (11 Spalten)
+│       │   ├── SankeyPage.tsx           # Sankey-Diagramm (Plotly.js)
+│       │   └── SystemPage.tsx           # Systemverwaltung
+│       ├── hooks/
+│       │   └── useCreateNavigation.ts   # Seitenuebergreifende Erstellung + Flow-Edit
+│       ├── store/
+│       │   └── useEnergyStore.ts        # Zustand Store + localStorage
+│       ├── types/
+│       │   └── index.ts                 # Alle TypeScript-Typen
+│       └── data/
+│           └── seedBavaria.ts           # Testdaten MFH Bayern
 │
-└── docs/
-    ├── architecture.md             # Detaillierte Architektur
-    ├── api.md                      # API-Dokumentation
-    └── deployment.md               # Deployment-Anleitung
+└── deploy/
+    └── raspberry-pi/                    # systemd Service, config.txt
 ```
+
+---
+
+## Testdaten (MFH Bayern)
+
+Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhaus-Szenario geladen:
+
+**Szenario: MFH Ahornweg 12, 85748 Garching bei Muenchen**
+- 6 Wohneinheiten (2 pro Stockwerk, EG + 1.OG + 2.OG)
+- Baujahr 2008, EnEV-Standard, 720 m² BGF
+
+| Kategorie | Komponenten |
+|---|---|
+| Erzeuger | PV Sueddach 29.6 kWp, Gas-Brennwertkessel 60 kW, Luft-Wasser-WP 13 kW |
+| Speicher | Batterie BYD HVS 20.5 kWh, Pufferspeicher 1500 L, WW-Speicher 500 L |
+| Heizkreise | Fussbodenheizung EG, Heizkoerper OG, WW-Ladekreis, HK Treppenhaus |
+| Raeume | 6 Wohneinheiten + Treppenhaus + Technikraum + Tiefgarage |
+| Verbraucher | 6 Haushalte (2600–3500 kWh/a), 2 Wallboxen 11 kW (OCPP), Allgemeinstrom, Zirkpumpe |
+| Zaehler | 11 Zaehler in allen 6 Kategorien (Quellen-, Erzeuger-, Heiz-/Kuehlkreis-, Raum-, Verbrauchergruppen-, Endzaehler) |
 
 ---
 
@@ -344,164 +283,59 @@ energiemanager/
 
 | Phase | Beschreibung | Status |
 |---|---|---|
-| Phase 1 | Fundament (Struktur, Models, API) | Abgeschlossen |
-| Phase 2 | Kernlogik (Steuerung, Prognosen, Optimierer) | Ausstehend |
-| Phase 3 | Intelligenz (ML, MILP, Selbstlernen) | Ausstehend |
+| Phase 1 | Fundament (Backend + Web-Frontend + Install-Script) | Abgeschlossen |
+| Phase 1b | Anforderungen schaerfen (UI verfeinern, Datenmodelle ableiten) | **In Arbeit** |
+| Phase 2 | Kernlogik (Regelung, Prognosen, Optimierer v1) | Ausstehend |
+| Phase 3 | Intelligenz (Wetter-API, ML, MILP, Selbstlernen) | Ausstehend |
 | Phase 4 | Mobile App (Flutter) | Ausstehend |
-| Phase 5 | Produktion (Hardware, Monitoring, Deployment) | Ausstehend |
+| Phase 5 | Produktion (Edge-Deployment, Monitoring) | Ausstehend |
+
+### Phase 1b — Aktuelle Arbeiten
+
+**Erledigt:**
+- 11 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, System)
+- Interaktives Energiefluss-Diagramm mit Drag-to-Connect und Click-to-Delete
+- Bidirektionale Batteriespeicher-Verbindungen (Laden/Entladen)
+- Smart-Meter-Logik (Durchverbindungen ueber Zaehler)
+- Heiz-/Kuehlkreise mit regelbaren Komponenten (Mischer, Pumpen, Ventile)
+- Raeume mit Heizplan und Temperatur-Zeitprogrammen
+- Systemverwaltungsseite (Platzhalter fuer Backend-Anbindung)
+- Loeschbestaetigung (ConfirmDelete-Komponente)
+- Seitenuebergreifende Erstellungs-Navigation (useCreateNavigation Hook)
+- Konsistente Terminologie (Spalten-basierte Zaehlerkategorien)
+- Testdaten MFH Bayern vollstaendig mit allen Zuordnungen
+
+**Naechste Schritte:**
+- Datenmodelle aus UI-Struktur finalisieren
+- Backend-API an Frontend-Bedarf anpassen
+- Frontend: Backend-Anbindung (API-Calls statt localStorage)
 
 ---
 
-## Umsetzungsplan
+## Installation
 
-### Phase 1 — Fundament (Wochen 1–2)
-1. **Projektstruktur aufsetzen** — Backend (FastAPI), Docker, DB
-2. **Datenmodelle definieren** — SQLAlchemy Models, Alembic Migrationen
-3. **Basis-API** — CRUD für Erzeuger, Speicher, Wallboxen
-4. **Datensammlung** — Messwert-Erfassung und -Speicherung (TimescaleDB)
-5. **Konfigurationssystem** — Anlagenkonfiguration via YAML/DB
-
-### Phase 2 — Kernlogik (Wochen 3–5)
-6. **Erzeugungsmanagement** — Regelbasierte Steuerung aller Erzeuger
-7. **Speichermanagement** — SoC-Tracking, Lade-/Entladelogik
-8. **Lademanagement** — Alle 3 Modi implementieren
-9. **Regelbasierte Prognosen** — Standardlastprofile, einfache PV-Prognose
-10. **Optimierer v1** — Regelbasierte Heuristik für Einsatzplanung
-
-### Phase 3 — Intelligenz (Wochen 6–8)
-11. **Wetter-API Integration** — OpenWeatherMap / DWD
-12. **ML-Prognosen** — Training Pipeline, Feature Engineering, XGBoost
-13. **MILP-Optimierer** — Mathematische Optimierung ersetzt Heuristik
-14. **Selbstlernen** — Automatisches Retraining, Parameteroptimierung
-
-### Phase 4 — Mobile App (Wochen 9–11)
-15. **Flutter App Grundgerüst** — Navigation, API-Anbindung
-16. **Dashboard** — Echtzeit-Energieflussvisualisierung
-17. **Lademanagement-UI** — Modi-Auswahl, Zielladung-Eingabe
-18. **Benachrichtigungen** — Push-Notifications bei Events
-
-### Phase 5 — Produktion (Wochen 12–14)
-19. **Hardware-Connectoren** — Modbus, MQTT, OCPP
-20. **Monitoring** — Grafana Dashboards, Alerting
-21. **Edge-Deployment** — Raspberry Pi / Mini-PC Setup
-22. **Dokumentation & Tests** — Vollständige Testabdeckung
-
----
-
-## Datenfluss-Beispiel: Zielladung (Modus 3)
-
-```
-Nutzer (App)                    Backend                         Hardware
-────────────                    ───────                         ────────
-
-1. "Morgen 7 Uhr,        ──►  2. Berechne benötigte
-    150km laden,                   Energie:
-    Akku bei 30%"                  150km ÷ 6km/kWh = 25kWh
-                                   Akku: 30% von 60kWh = 18kWh
-                                   Ziel: 18 + 25 = 43kWh (72%)
-                                   Zu laden: 25kWh
-
-                                3. Hole Prognosen:
-                                   - PV-Überschuss 15:00-18:00
-                                   - Strompreis nachts günstig
-
-                                4. Erstelle Ladeplan:
-                                   15:00-18:00: 3kW (PV)  = 9kWh
-                                   01:00-05:30: 3.5kW     = 16kWh
-                                                    Total = 25kWh ✓
-
-5. Zeige Ladeplan         ◄──
-   in App mit Grafik
-
-                                6. Zur geplanten Zeit   ──►  7. Wallbox startet
-                                   sende Ladebefehl           Laden mit
-                                                               Zielleistung
-
-                                8. Überwache SoC,       ◄──  9. Wallbox meldet
-                                   passe Plan an               Ladestatus
-```
-
----
-
-## Schnittstellenübersicht (API)
-
-| Methode | Endpoint | Beschreibung |
-|---|---|---|
-| GET | `/api/v1/dashboard` | Aktuelle Energieflüsse & KPIs |
-| GET | `/api/v1/generators` | Alle Erzeuger mit Status |
-| POST | `/api/v1/generators/{id}/control` | Erzeuger steuern |
-| GET | `/api/v1/storage` | Alle Speicher mit SoC |
-| GET | `/api/v1/charging/sessions` | Aktive Ladesessions |
-| POST | `/api/v1/charging/sessions` | Neue Ladesession starten |
-| PUT | `/api/v1/charging/sessions/{id}/mode` | Lademodus ändern |
-| POST | `/api/v1/charging/sessions/{id}/target` | Zielladung setzen |
-| GET | `/api/v1/forecasts/{type}` | Prognosen abrufen |
-| WS | `/api/v1/ws/live` | WebSocket für Echtzeit-Daten |
-
----
-
-## Deployment auf Raspberry Pi 5
-
-### Voraussetzungen
-- Raspberry Pi 5 (4 oder 8 GB RAM empfohlen)
-- Raspberry Pi OS Bookworm (64-bit) installiert
-- Netzwerkverbindung (Ethernet empfohlen)
-- SSH-Zugang aktiviert
-
-### Automatische Installation
+### Automatische Installation (Raspberry Pi)
 
 ```bash
-# Auf dem Raspberry Pi:
-curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/deploy/raspberry-pi/setup.sh -o setup.sh
-sudo bash setup.sh
-```
-
-Das Script installiert alle Abhaengigkeiten, klont das Repository nach `/opt/energiemanager`,
-startet die Docker-Container und richtet einen systemd-Service fuer den Autostart ein.
-
-### Manuelle Installation
-
-```bash
-# System aktualisieren
-sudo apt update && sudo apt upgrade -y
-
-# Docker installieren
-sudo apt install -y docker.io docker-compose git
-sudo usermod -aG docker $USER
-# Abmelden und neu anmelden
-
 # Repository klonen
-sudo git clone https://github.com/daTobi1/Energiemanager.git /opt/energiemanager
-cd /opt/energiemanager
+git clone https://github.com/daTobi1/Energiemanager.git
+cd Energiemanager
 
-# Konfiguration anpassen
-cp .env.example .env
-nano .env  # API-Keys eintragen
-
-# Container starten
-docker-compose up -d
-
-# Status pruefen
-docker-compose ps
+# Installations-Script ausfuehren
+sudo bash install.sh
 ```
 
-### Nach der Installation
+Das Script fuehrt 9 Schritte aus: Basistools, Docker, Node.js, Python, Repository, .env + Docker-Infrastruktur, Backend-venv, Frontend-Build, systemd-Services.
 
-| Dienst | URL | Beschreibung |
-|---|---|---|
-| API | `http://<pi-ip>:8000` | FastAPI Backend |
-| API Docs | `http://<pi-ip>:8000/docs` | Swagger UI |
-| Grafana | `http://<pi-ip>:3000` | Monitoring Dashboards |
-
-### Service-Verwaltung
+### Deinstallation
 
 ```bash
-sudo systemctl status energiemanager   # Status anzeigen
-sudo systemctl restart energiemanager  # Neustart
-sudo journalctl -u energiemanager -f   # Logs verfolgen
+sudo bash uninstall.sh
 ```
 
-## Lokale Entwicklung (PC/Laptop)
+Schrittweise mit Rueckfragen (Services, Docker-Volumes, Verzeichnis, User).
+
+### Lokale Entwicklung (PC/Laptop)
 
 ```bash
 git clone https://github.com/daTobi1/Energiemanager.git
@@ -510,14 +344,28 @@ cd Energiemanager
 # DB + Redis starten
 docker-compose up -d db redis
 
-# Backend starten
+# Backend
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 alembic upgrade head
 uvicorn app.main:app --reload
+
+# Frontend (in neuem Terminal)
+cd frontend
+npm install
+npm run dev
 ```
+
+### Nach der Installation
+
+| Dienst | URL | Beschreibung |
+|---|---|---|
+| Web-Frontend | `http://<ip>:5173` (Dev) / `http://<ip>:3001` (Prod) | Konfigurationsoberflaeche |
+| API | `http://<ip>:8000` | FastAPI Backend |
+| API Docs | `http://<ip>:8000/docs` | Swagger UI |
+| Grafana | `http://<ip>:3000` | Monitoring Dashboards |
 
 ---
 
@@ -527,7 +375,7 @@ Dieses Projekt ist in aktiver Entwicklung. Beitraege sind willkommen!
 
 1. Fork erstellen
 2. Feature-Branch anlegen (`git checkout -b feature/mein-feature`)
-3. Aenderungen committen (`git commit -m 'Feature hinzugefuegt'`)
+3. Aenderungen committen
 4. Branch pushen (`git push origin feature/mein-feature`)
 5. Pull Request erstellen
 

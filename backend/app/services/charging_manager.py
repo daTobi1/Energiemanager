@@ -39,7 +39,7 @@ class ChargingManager:
     def _target_charge_power(
         self, session: ChargingSession, wallbox: Wallbox, surplus_kw: float
     ) -> float:
-        """Modus 3: Zielladung berechnen."""
+        """Modus 3: Zielladung+PV-Überschuss berechnen."""
         if not session.target_energy_kwh or not session.target_time:
             return 0.0
 

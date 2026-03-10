@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus, Trash2, Edit2, Sun, Flame, Thermometer, Snowflake, X, Copy } from 'lucide-react'
+import { Plus, Edit2, Sun, Flame, Thermometer, Snowflake, X, Copy, ArrowLeft } from 'lucide-react'
+import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type {
   Generator, GeneratorType, PvGenerator, ChpGenerator,
   HeatPumpGenerator, BoilerGenerator, ChillerGenerator,
@@ -42,11 +44,11 @@ const typeIcons: Record<GeneratorType, typeof Sun> = {
 }
 
 const typeColors: Record<GeneratorType, string> = {
-  pv: 'bg-amber-100 text-amber-700',
-  chp: 'bg-orange-100 text-orange-700',
-  heat_pump: 'bg-red-100 text-red-700',
-  boiler: 'bg-red-100 text-red-700',
-  chiller: 'bg-blue-100 text-blue-700',
+  pv: 'bg-amber-500/15 text-amber-400',
+  chp: 'bg-orange-500/15 text-orange-400',
+  heat_pump: 'bg-red-500/15 text-red-400',
+  boiler: 'bg-red-500/15 text-red-400',
+  chiller: 'bg-blue-500/15 text-blue-400',
 }
 
 const typeLabels: Record<GeneratorType, string> = {
@@ -138,6 +140,7 @@ export default function GeneratorsPage() {
   const { generators, meters, addGenerator, updateGenerator, removeGenerator } = useEnergyStore()
   const [editing, setEditing] = useState<Generator | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = (type: GeneratorType) => {
     setEditing(createDefaultGenerator(type))
@@ -154,6 +157,43 @@ export default function GeneratorsPage() {
     addGenerator(copy as Generator)
   }
 
+  // Auto-open form when this page is a creation target
+  useEffect(() => {
+    if (isCreationTarget && !showForm) {
+      startAdd('pv') // default type for auto-open
+    }
+  }, [isCreationTarget])
+
+  // Flow-Edit: Aus Energiefluss-Diagramm zum Bearbeiten navigiert
+  useEffect(() => {
+    if (flowEditId && !showForm) {
+      const g = generators.find((g) => g.id === flowEditId)
+      if (g) startEdit(g)
+    }
+  }, [flowEditId])
+
+  // Flow-Create: Aus Energiefluss-Diagramm zum Erstellen navigiert
+  useEffect(() => {
+    if (flowCreateNew && !showForm) {
+      startAdd('pv')
+    }
+  }, [flowCreateNew])
+
+  // Handle return from other pages with a created entity
+  useEffect(() => {
+    if (pendingReturn) {
+      const draft = { ...pendingReturn.draft }
+      if (pendingReturn.assignMode === 'single') {
+        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
+      } else {
+        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
+      }
+      setEditing(draft)
+      setShowForm(true)
+      clearPendingCreation()
+    }
+  }, [pendingReturn])
+
   const save = () => {
     if (!editing) return
     const exists = generators.find((g) => g.id === editing.id)
@@ -162,11 +202,25 @@ export default function GeneratorsPage() {
     } else {
       addGenerator(editing)
     }
+
+    // If we are a creation target, save and navigate back
+    if (isCreationTarget) {
+      saveAndReturn(editing.id)
+      return
+    }
+
+    if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
+
     setShowForm(false)
     setEditing(null)
   }
 
   const cancel = () => {
+    if (isCreationTarget) {
+      cancelAndReturn()
+      return
+    }
+    if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
     setShowForm(false)
     setEditing(null)
   }
@@ -187,6 +241,19 @@ export default function GeneratorsPage() {
           </h1>
           <button onClick={cancel} className="btn-icon"><X className="w-5 h-5" /></button>
         </div>
+
+        {isCreationTarget && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-400">Erstelle neuen Erzeuger und kehre automatisch zurück</span>
+          </div>
+        )}
+        {(isFlowEdit || flowCreateNew) && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-400">{isFlowEdit ? 'Bearbeitung' : 'Erstellt'} aus Energiefluss — nach Speichern/Abbrechen zurück zum Diagramm</span>
+          </div>
+        )}
 
         <div className="space-y-4">
           {/* Grunddaten */}
@@ -211,13 +278,28 @@ export default function GeneratorsPage() {
             <div className="grid grid-cols-3 gap-4">
               <InputField label="Inbetriebnahme" value={editing.commissioningDate} onChange={(v) => updateField('commissioningDate', v)} type="date" />
               <InputField label="Standort / Position" value={editing.location} onChange={(v) => updateField('location', v)} placeholder="z.B. Dach Gebäude A" />
-              <SelectField
-                label="Zugeordnete Zähler"
-                value={editing.assignedMeterIds[0] || ''}
-                onChange={(v) => updateField('assignedMeterIds', v ? [v] : [])}
-                options={meterOptions}
-                hint="Zähler zuerst unter 'Zähler' anlegen"
-              />
+              {meterOptions.length > 0 ? (
+                <div>
+                  <SelectField
+                    label="Zugeordnete Zähler"
+                    value={editing.assignedMeterIds[0] || ''}
+                    onChange={(v) => updateField('assignedMeterIds', v ? [v] : [])}
+                    options={meterOptions}
+                  />
+                  <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Zähler anlegen</button>
+                </div>
+              ) : (
+                <div>
+                  <label className="label">Zugeordnete Zähler</label>
+                  <button
+                    onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })}
+                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm">Zähler jetzt anlegen</span>
+                  </button>
+                </div>
+              )}
             </div>
           </Section>
 
@@ -338,7 +420,7 @@ export default function GeneratorsPage() {
               </Section>
 
               <Section title="COP-Kennlinie" defaultOpen={false} badge={`${(editing as HeatPumpGenerator).copCurve.length} Punkte`}>
-                <p className="text-sm text-gray-500 mb-3">COP-Werte bei verschiedenen Außentemperaturen (für selbstlernende Regelung)</p>
+                <p className="text-sm text-dark-faded mb-3">COP-Werte bei verschiedenen Außentemperaturen (für selbstlernende Regelung)</p>
                 {(editing as HeatPumpGenerator).copCurve.map((point, i) => (
                   <div key={i} className="grid grid-cols-3 gap-3 items-end">
                     <InputField label={i === 0 ? 'Außentemp.' : ''} value={point.outdoorTempC} onChange={(v) => {
@@ -445,7 +527,7 @@ export default function GeneratorsPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="page-header">Erzeuger</h1>
-          <p className="text-sm text-gray-500 mt-1">Alle Energieerzeuger der Anlage konfigurieren</p>
+          <p className="text-sm text-dark-faded mt-1">Alle Energieerzeuger der Anlage konfigurieren</p>
         </div>
       </div>
 
@@ -457,13 +539,13 @@ export default function GeneratorsPage() {
             <button
               key={value}
               onClick={() => startAdd(value as GeneratorType)}
-              className="card hover:border-emerald-300 hover:shadow-md transition-all flex flex-col items-center gap-2 py-4 cursor-pointer"
+              className="card hover:border-emerald-500/50 hover:shadow-md transition-all flex flex-col items-center gap-2 py-4 cursor-pointer"
             >
               <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${typeColors[value as GeneratorType]}`}>
                 <Icon className="w-5 h-5" />
               </div>
               <span className="text-sm font-medium text-center">{label}</span>
-              <Plus className="w-4 h-4 text-gray-400" />
+              <Plus className="w-4 h-4 text-dark-faded" />
             </button>
           )
         })}
@@ -472,9 +554,9 @@ export default function GeneratorsPage() {
       {/* Liste */}
       {generators.length === 0 ? (
         <div className="card text-center py-12">
-          <Sun className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Noch keine Erzeuger konfiguriert</p>
-          <p className="text-sm text-gray-400 mt-1">Wähle oben einen Typ aus, um einen Erzeuger hinzuzufügen</p>
+          <Sun className="w-12 h-12 text-dark-border mx-auto mb-3" />
+          <p className="text-dark-faded">Noch keine Erzeuger konfiguriert</p>
+          <p className="text-sm text-dark-faded mt-1">Wähle oben einen Typ aus, um einen Erzeuger hinzuzufügen</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -487,16 +569,16 @@ export default function GeneratorsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-gray-900">{g.name || 'Unbenannt'}</h3>
-                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">{typeLabels[g.type]}</span>
+                    <h3 className="font-semibold text-dark-text">{g.name || 'Unbenannt'}</h3>
+                    <span className="px-2 py-0.5 bg-dark-hover text-dark-faded text-xs rounded-full">{typeLabels[g.type]}</span>
                   </div>
-                  <p className="text-sm text-gray-500 mt-0.5">{getGeneratorSummary(g)}</p>
-                  {g.manufacturer && <p className="text-xs text-gray-400 mt-0.5">{g.manufacturer} {g.model}</p>}
+                  <p className="text-sm text-dark-faded mt-0.5">{getGeneratorSummary(g)}</p>
+                  {g.manufacturer && <p className="text-xs text-dark-faded mt-0.5">{g.manufacturer} {g.model}</p>}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button onClick={() => duplicate(g)} className="btn-icon" title="Duplizieren"><Copy className="w-4 h-4" /></button>
                   <button onClick={() => startEdit(g)} className="btn-icon" title="Bearbeiten"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => removeGenerator(g.id)} className="btn-icon text-red-400 hover:text-red-600 hover:bg-red-50" title="Löschen"><Trash2 className="w-4 h-4" /></button>
+                  <ConfirmDelete onConfirm={() => removeGenerator(g.id)} itemName={g.name} />
                 </div>
               </div>
             )

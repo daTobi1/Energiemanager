@@ -1,60 +1,98 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
-  LayoutDashboard, Sun, Gauge, Plug, Battery,
-  GitBranch, BarChart3, Settings, Zap,
+  LayoutDashboard, Settings, Gauge, Sun, Plug, Battery,
+  Home, Waypoints, Monitor,
+  GitBranch, BarChart3, Zap,
 } from 'lucide-react'
 
-const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/generators', icon: Sun, label: 'Erzeuger' },
-  { to: '/meters', icon: Gauge, label: 'Zähler' },
-  { to: '/consumers', icon: Plug, label: 'Verbraucher' },
-  { to: '/storage', icon: Battery, label: 'Speicher' },
-  { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
-  { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
-  { to: '/settings', icon: Settings, label: 'Einstellungen' },
+interface NavGroup {
+  title: string
+  items: { to: string; icon: typeof LayoutDashboard; label: string }[]
+}
+
+const navGroups: NavGroup[] = [
+  {
+    title: '',
+    items: [
+      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    ],
+  },
+  {
+    title: 'KONFIGURATION',
+    items: [
+      { to: '/settings', icon: Settings, label: 'Anlage & Standort' },
+      { to: '/generators', icon: Sun, label: 'Erzeuger' },
+      { to: '/storage', icon: Battery, label: 'Speicher' },
+      { to: '/circuits', icon: Waypoints, label: 'Heizkreise' },
+      { to: '/rooms', icon: Home, label: 'Räume' },
+      { to: '/consumers', icon: Plug, label: 'Verbraucher' },
+      { to: '/meters', icon: Gauge, label: 'Zähler' },
+    ],
+  },
+  {
+    title: 'VISUALISIERUNG',
+    items: [
+      { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
+      { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
+    ],
+  },
+  {
+    title: 'SYSTEM',
+    items: [
+      { to: '/system', icon: Monitor, label: 'Systemverwaltung' },
+    ],
+  },
 ]
 
 export default function Layout() {
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-dark-bg">
       {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 text-white flex flex-col shrink-0">
-        <div className="p-5 border-b border-gray-700">
+      <aside className="w-64 bg-dark-card text-dark-text flex flex-col shrink-0 border-r border-dark-border">
+        <div className="p-5 border-b border-dark-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-500 rounded-lg flex items-center justify-center">
+            <div className="w-10 h-10 bg-emerald-600 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-600/20">
               <Zap className="w-6 h-6 text-white" />
             </div>
             <div>
               <h1 className="text-lg font-bold leading-tight">EnergyManager</h1>
-              <p className="text-xs text-gray-400">Energiemanagementsystem</p>
+              <p className="text-xs text-dark-faded">Energiemanagementsystem</p>
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
-          {navItems.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors text-sm ${
-                  isActive
-                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-                    : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                }`
-              }
-            >
-              <Icon className="w-5 h-5 shrink-0" />
-              <span className="font-medium">{label}</span>
-            </NavLink>
+        <nav className="flex-1 p-3 overflow-y-auto">
+          {navGroups.map((group, gi) => (
+            <div key={gi} className={gi > 0 ? 'mt-4' : ''}>
+              {group.title && (
+                <p className="px-4 mb-1 text-[10px] font-semibold text-dark-faded tracking-widest uppercase">{group.title}</p>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map(({ to, icon: Icon, label }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={to === '/'}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors text-sm ${
+                        isActive
+                          ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
+                          : 'text-dark-faded hover:bg-dark-hover hover:text-dark-text'
+                      }`
+                    }
+                  >
+                    <Icon className="w-5 h-5 shrink-0" />
+                    <span className="font-medium">{label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
-        <div className="p-4 border-t border-gray-700">
-          <p className="text-xs text-gray-500">EnergyManager v0.1.0</p>
-          <p className="text-xs text-gray-600">Prototyp</p>
+        <div className="p-4 border-t border-dark-border">
+          <p className="text-xs text-dark-faded">EnergyManager v0.1.0</p>
+          <p className="text-xs text-dark-hover">Prototyp</p>
         </div>
       </aside>
 

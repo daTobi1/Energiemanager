@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus, Trash2, Edit2, Plug, X, Copy, Home, Factory, Lightbulb, Wind, Car, Droplets } from 'lucide-react'
+import { Plus, Edit2, Plug, X, Copy, Home, Factory, Lightbulb, Wind, Car, Droplets, ArrowLeft } from 'lucide-react'
+import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type { Consumer, ConsumerType, LoadProfile } from '../types'
 import { createDefaultCommunication } from '../types'
 
@@ -47,15 +49,15 @@ const typeIcons: Record<ConsumerType, typeof Plug> = {
 }
 
 const typeColors: Record<ConsumerType, string> = {
-  household: 'bg-green-100 text-green-700',
-  commercial: 'bg-purple-100 text-purple-700',
-  production: 'bg-orange-100 text-orange-700',
-  lighting: 'bg-yellow-100 text-yellow-700',
-  hvac: 'bg-blue-100 text-blue-700',
-  ventilation: 'bg-cyan-100 text-cyan-700',
-  wallbox: 'bg-emerald-100 text-emerald-700',
-  hot_water: 'bg-red-100 text-red-700',
-  other: 'bg-gray-100 text-gray-700',
+  household: 'bg-green-500/15 text-green-400',
+  commercial: 'bg-purple-500/15 text-purple-400',
+  production: 'bg-orange-500/15 text-orange-400',
+  lighting: 'bg-yellow-500/15 text-yellow-400',
+  hvac: 'bg-blue-500/15 text-blue-400',
+  ventilation: 'bg-cyan-500/15 text-cyan-400',
+  wallbox: 'bg-emerald-500/100/15 text-emerald-400',
+  hot_water: 'bg-red-500/15 text-red-400',
+  other: 'bg-dark-hover text-dark-muted',
 }
 
 const typeLabels: Record<ConsumerType, string> = {
@@ -81,6 +83,7 @@ function createDefaultConsumer(type: ConsumerType): Consumer {
     controllable: type === 'wallbox',
     sheddable: false,
     priority: 5,
+    connectedSourceIds: [],
     assignedMeterIds: [],
     communication: createDefaultCommunication(),
     notes: '',
@@ -94,24 +97,105 @@ function createDefaultConsumer(type: ConsumerType): Consumer {
 }
 
 export default function ConsumersPage() {
-  const { consumers, meters, addConsumer, updateConsumer, removeConsumer } = useEnergyStore()
+  const { consumers, rooms, meters, addConsumer, updateConsumer, removeConsumer, updateRoom } = useEnergyStore()
   const [editing, setEditing] = useState<Consumer | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [selectedRoomId, setSelectedRoomId] = useState('')
+  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
-  const startAdd = (type: ConsumerType) => { setEditing(createDefaultConsumer(type)); setShowForm(true) }
-  const startEdit = (c: Consumer) => { setEditing({ ...c }); setShowForm(true) }
+  const startAdd = (type: ConsumerType) => { setEditing(createDefaultConsumer(type)); setSelectedRoomId(''); setShowForm(true) }
+  const startEdit = (c: Consumer) => {
+    setEditing({ ...c })
+    setSelectedRoomId(rooms.find((r) => r.consumerIds.includes(c.id))?.id || '')
+    setShowForm(true)
+  }
+
+  // Auto-open form when this page is a creation target
+  useEffect(() => {
+    if (isCreationTarget && !showForm) {
+      startAdd('household')
+    }
+  }, [isCreationTarget])
+
+  // Flow-Edit: Aus Energiefluss-Diagramm zum Bearbeiten navigiert
+  useEffect(() => {
+    if (flowEditId && !showForm) {
+      const c = consumers.find((c) => c.id === flowEditId)
+      if (c) startEdit(c)
+    }
+  }, [flowEditId])
+
+  // Flow-Create: Aus Energiefluss-Diagramm zum Erstellen navigiert
+  useEffect(() => {
+    if (flowCreateNew && !showForm) {
+      startAdd('household')
+    }
+  }, [flowCreateNew])
+
+  // Handle return from other pages with a created entity
+  useEffect(() => {
+    if (pendingReturn) {
+      if (pendingReturn.assignField === 'selectedRoomId') {
+        setSelectedRoomId(pendingReturn.createdEntityId!)
+        setEditing({ ...pendingReturn.draft } as Consumer)
+      } else {
+        const draft = { ...pendingReturn.draft } as Consumer
+        if (pendingReturn.assignMode === 'single') {
+          (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
+        } else {
+          (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
+        }
+        setEditing(draft)
+      }
+      setShowForm(true)
+      if (pendingReturn.extraState?.selectedRoomId !== undefined) {
+        setSelectedRoomId(pendingReturn.extraState.selectedRoomId)
+      }
+      clearPendingCreation()
+    }
+  }, [pendingReturn])
+
   const save = () => {
     if (!editing) return
     if (consumers.find((c) => c.id === editing.id)) updateConsumer(editing.id, editing)
     else addConsumer(editing)
+
+    // Raumzuordnung aktualisieren
+    const currentRoom = rooms.find((r) => r.consumerIds.includes(editing.id))
+    if (currentRoom && currentRoom.id !== selectedRoomId) {
+      updateRoom(currentRoom.id, { ...currentRoom, consumerIds: currentRoom.consumerIds.filter((id) => id !== editing.id) })
+    }
+    if (selectedRoomId && (!currentRoom || currentRoom.id !== selectedRoomId)) {
+      const newRoom = rooms.find((r) => r.id === selectedRoomId)
+      if (newRoom) {
+        updateRoom(newRoom.id, { ...newRoom, consumerIds: [...newRoom.consumerIds, editing.id] })
+      }
+    }
+
+    // If we are a creation target, save and navigate back
+    if (isCreationTarget) {
+      saveAndReturn(editing.id)
+      return
+    }
+
+    if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
+
     setShowForm(false); setEditing(null)
   }
-  const cancel = () => { setShowForm(false); setEditing(null) }
+  const cancel = () => {
+    if (isCreationTarget) {
+      cancelAndReturn()
+      return
+    }
+    if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
+    setShowForm(false); setEditing(null)
+  }
   const update = <K extends keyof Consumer>(key: K, value: Consumer[K]) => {
     if (editing) setEditing({ ...editing, [key]: value })
   }
 
   const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
+  const roomOptions = [{ value: '', label: '— Kein Raum —' }, ...rooms.map((r) => ({ value: r.id, label: r.name || 'Unbenannt' }))]
 
   if (showForm && editing) {
     return (
@@ -120,6 +204,20 @@ export default function ConsumersPage() {
           <h1 className="page-header">{consumers.find((c) => c.id === editing.id) ? 'Verbraucher bearbeiten' : 'Neuer Verbraucher'}</h1>
           <button onClick={cancel} className="btn-icon"><X className="w-5 h-5" /></button>
         </div>
+
+        {isCreationTarget && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-400">Erstelle neuen Verbraucher und kehre automatisch zurück</span>
+          </div>
+        )}
+        {(isFlowEdit || flowCreateNew) && (
+          <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg flex items-center gap-2">
+            <ArrowLeft className="w-4 h-4 text-blue-400" />
+            <span className="text-sm text-blue-400">{isFlowEdit ? 'Bearbeitung' : 'Erstellt'} aus Energiefluss — nach Speichern/Abbrechen zurück zum Diagramm</span>
+          </div>
+        )}
+
         <div className="space-y-4">
           <Section title="Grunddaten" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
@@ -131,12 +229,51 @@ export default function ConsumersPage() {
               <InputField label="Jahresverbrauch" value={editing.annualConsumptionKwh} onChange={(v) => update('annualConsumptionKwh', Number(v))} type="number" unit="kWh" hint="Geschätzter Jahresverbrauch" />
               <SelectField label="Lastprofil" value={editing.loadProfile} onChange={(v) => update('loadProfile', v as LoadProfile)} options={loadProfileOptions} hint="Standardlastprofil BDEW" />
             </div>
-            <SelectField
-              label="Zugeordneter Zähler"
-              value={editing.assignedMeterIds[0] || ''}
-              onChange={(v) => update('assignedMeterIds', v ? [v] : [])}
-              options={meterOptions}
-            />
+            {meterOptions.length > 0 ? (
+              <div>
+                <SelectField
+                  label="Zugeordneter Zähler"
+                  value={editing.assignedMeterIds[0] || ''}
+                  onChange={(v) => update('assignedMeterIds', v ? [v] : [])}
+                  options={meterOptions}
+                />
+                <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing, extraState: { selectedRoomId } })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Zähler anlegen</button>
+              </div>
+            ) : (
+              <div>
+                <label className="label">Zugeordneter Zähler</label>
+                <button
+                  onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing, extraState: { selectedRoomId } })}
+                  className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm">Zähler jetzt anlegen</span>
+                </button>
+              </div>
+            )}
+            {rooms.length > 0 ? (
+              <div>
+                <SelectField
+                  label="Zugeordneter Raum"
+                  value={selectedRoomId}
+                  onChange={(v) => setSelectedRoomId(v)}
+                  options={roomOptions}
+                  hint="Optional — in welchem Raum befindet sich der Verbraucher?"
+                />
+                <button onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'selectedRoomId', assignMode: 'single', draft: editing, extraState: { selectedRoomId } })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Raum anlegen</button>
+              </div>
+            ) : (
+              <div>
+                <label className="label">Zugeordneter Raum</label>
+                <button
+                  onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'selectedRoomId', assignMode: 'single', draft: editing, extraState: { selectedRoomId } })}
+                  className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm">Raum jetzt anlegen</span>
+                </button>
+              </div>
+            )}
           </Section>
 
           <Section title="Lastmanagement" defaultOpen={true}>
@@ -183,7 +320,7 @@ export default function ConsumersPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="page-header">Verbraucher</h1>
-          <p className="text-sm text-gray-500 mt-1">Alle Energieverbraucher erfassen und zuordnen</p>
+          <p className="text-sm text-dark-faded mt-1">Alle Energieverbraucher erfassen und zuordnen</p>
         </div>
       </div>
 
@@ -192,12 +329,12 @@ export default function ConsumersPage() {
           const Icon = typeIcons[value as ConsumerType]
           return (
             <button key={value} onClick={() => startAdd(value as ConsumerType)}
-              className="card hover:border-emerald-300 hover:shadow-md transition-all flex items-center gap-3 py-3 px-4 cursor-pointer">
+              className="card hover:border-emerald-500/50 hover:shadow-md transition-all flex items-center gap-3 py-3 px-4 cursor-pointer">
               <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${typeColors[value as ConsumerType]}`}>
                 <Icon className="w-4 h-4" />
               </div>
               <span className="text-sm font-medium">{label}</span>
-              <Plus className="w-4 h-4 text-gray-400 ml-auto" />
+              <Plus className="w-4 h-4 text-dark-faded ml-auto" />
             </button>
           )
         })}
@@ -205,8 +342,8 @@ export default function ConsumersPage() {
 
       {consumers.length === 0 ? (
         <div className="card text-center py-12">
-          <Plug className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Noch keine Verbraucher konfiguriert</p>
+          <Plug className="w-12 h-12 text-dark-border mx-auto mb-3" />
+          <p className="text-dark-faded">Noch keine Verbraucher konfiguriert</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -219,19 +356,19 @@ export default function ConsumersPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-semibold text-gray-900">{c.name || 'Unbenannt'}</h3>
-                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">{typeLabels[c.type]}</span>
-                    {c.controllable && <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-xs rounded-full">Steuerbar</span>}
-                    {c.sheddable && <span className="px-2 py-0.5 bg-amber-50 text-amber-600 text-xs rounded-full">Abschaltbar</span>}
+                    <h3 className="font-semibold text-dark-text">{c.name || 'Unbenannt'}</h3>
+                    <span className="px-2 py-0.5 bg-dark-hover text-dark-faded text-xs rounded-full">{typeLabels[c.type]}</span>
+                    {c.controllable && <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 text-xs rounded-full">Steuerbar</span>}
+                    {c.sheddable && <span className="px-2 py-0.5 bg-amber-500/10 text-amber-400 text-xs rounded-full">Abschaltbar</span>}
                   </div>
-                  <p className="text-sm text-gray-500 mt-0.5">
+                  <p className="text-sm text-dark-faded mt-0.5">
                     {c.nominalPowerKw} kW | {c.annualConsumptionKwh.toLocaleString()} kWh/a | Profil: {c.loadProfile} | Priorität: {c.priority}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button onClick={() => { addConsumer({ ...c, id: uuid(), name: c.name + ' (Kopie)' }) }} className="btn-icon"><Copy className="w-4 h-4" /></button>
                   <button onClick={() => startEdit(c)} className="btn-icon"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => removeConsumer(c.id)} className="btn-icon text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button>
+                  <ConfirmDelete onConfirm={() => removeConsumer(c.id)} itemName={c.name} />
                 </div>
               </div>
             )

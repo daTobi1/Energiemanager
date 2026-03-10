@@ -10,7 +10,7 @@ from app.models.base import Base, TimestampMixin
 class ChargingMode(str, enum.Enum):
     MAX_SPEED = "max_speed"          # Modus 1: Maximale Ladeleistung
     PV_SURPLUS = "pv_surplus"        # Modus 2: Nur PV-Überschuss
-    TARGET_CHARGE = "target_charge"  # Modus 3: Zielladung
+    TARGET_CHARGE = "target_charge"  # Modus 3: Zielladung+PV-Überschuss
 
 
 class SessionStatus(str, enum.Enum):
@@ -56,7 +56,7 @@ class ChargingSession(Base, TimestampMixin):
     vehicle_soc_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     vehicle_efficiency_kwh_per_km: Mapped[float] = mapped_column(Float, default=0.167)  # ~6km/kWh
 
-    # Target charge (Modus 3) fields
+    # Target charge + PV surplus (Modus 3) fields
     target_km: Mapped[float | None] = mapped_column(Float, nullable=True)
     target_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     target_energy_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)

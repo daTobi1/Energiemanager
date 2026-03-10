@@ -20,9 +20,9 @@ export default function SankeyPage() {
     const linkColors: string[] = []
 
     // Quellen (Links)
-    // 0: Stromnetz
-    labels.push('Stromnetz')
-    colors.push('#6366f1')
+    // 0: Hausanschluss — Netzbezug über Hausanschluss-Zähler
+    labels.push('Hausanschluss')
+    colors.push('#3b82f6')
 
     // Erzeuger
     const genStartIdx = labels.length
@@ -239,7 +239,7 @@ export default function SankeyPage() {
         node: {
           pad: 20,
           thickness: 25,
-          line: { color: 'white', width: 2 },
+          line: { color: '#0d1117', width: 2 },
           label: sankeyData.labels,
           color: sankeyData.colors,
           hovertemplate: '%{label}<br>%{value:,.0f} kWh<extra></extra>',
@@ -256,9 +256,9 @@ export default function SankeyPage() {
       const layout = {
         title: {
           text: 'Energieflussbilanz (geschätzt, jährlich)',
-          font: { size: 16, color: '#374151' },
+          font: { size: 16, color: '#e6edf3' },
         },
-        font: { size: 12, family: 'system-ui, sans-serif', color: '#374151' },
+        font: { size: 12, family: 'system-ui, sans-serif', color: '#b1bac4' },
         paper_bgcolor: 'transparent',
         plot_bgcolor: 'transparent',
         margin: { t: 50, l: 20, r: 20, b: 20 },
@@ -281,24 +281,24 @@ export default function SankeyPage() {
     <div className="p-6">
       <div className="mb-6">
         <h1 className="page-header">Sankey-Diagramm</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <p className="text-sm text-dark-faded mt-1">
           Energieflussbilanz — geschätzte Jahreswerte basierend auf den konfigurierten Anlagenparametern
         </p>
       </div>
 
       {isEmpty ? (
         <div className="card text-center py-16">
-          <BarChart3 className="w-16 h-16 text-gray-200 mx-auto mb-4" />
-          <p className="text-gray-500 text-lg">Noch keine Daten für das Sankey-Diagramm</p>
-          <p className="text-sm text-gray-400 mt-2">
+          <BarChart3 className="w-16 h-16 text-dark-border mx-auto mb-4" />
+          <p className="text-dark-faded text-lg">Noch keine Daten für das Sankey-Diagramm</p>
+          <p className="text-sm text-dark-faded mt-2">
             Konfiguriere Erzeuger und Verbraucher, um die Energieflüsse zu visualisieren
           </p>
         </div>
       ) : (
         <div className="card">
           <div ref={plotRef} />
-          <div className="mt-4 p-3 bg-amber-50 rounded-lg">
-            <p className="text-xs text-amber-700">
+          <div className="mt-4 p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+            <p className="text-xs text-amber-400">
               <strong>Hinweis:</strong> Die dargestellten Werte sind Schätzungen basierend auf Nennleistungen und
               typischen Betriebsstunden. Reale Werte werden nach Inbetriebnahme des Systems durch Messdaten ersetzt.
             </p>

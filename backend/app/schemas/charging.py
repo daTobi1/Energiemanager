@@ -25,7 +25,7 @@ class ChargingSessionCreate(BaseModel):
     vehicle_soc_pct: float | None = None
     vehicle_efficiency_kwh_per_km: float = 0.167
 
-    # Target charge (Modus 3)
+    # Target charge + PV surplus (Modus 3)
     target_km: float | None = None
     target_time: datetime | None = None
 

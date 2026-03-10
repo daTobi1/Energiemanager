@@ -179,7 +179,7 @@ export type Generator = PvGenerator | ChpGenerator | HeatPumpGenerator | BoilerG
 
 export type MeterType = 'electricity' | 'heat' | 'gas' | 'water' | 'cold'
 export type MeterDirection = 'consumption' | 'generation' | 'bidirectional' | 'grid_feed_in' | 'grid_consumption'
-export type MeterCategory = 'main' | 'sub'
+export type MeterCategory = 'source' | 'generation' | 'consumption' | 'circuit' | 'group' | 'end' | 'unassigned'
 export type MeterAssignmentType = 'generator' | 'consumer' | 'storage' | 'grid' | 'none'
 
 export interface MeterRegisterMapping {
@@ -241,6 +241,7 @@ export interface Consumer {
   controllable: boolean
   sheddable: boolean
   priority: number
+  connectedSourceIds: string[]
   assignedMeterIds: string[]
   communication: CommunicationConfig
   notes: string
@@ -296,6 +297,8 @@ export interface BatteryStorage {
   cRateDischarge: number
   selfDischargePerMonth: number
   temperatureSensors: TemperatureSensor[]
+  connectedGeneratorIds: string[]
+  connectedConsumerIds: string[]
   communication: CommunicationConfig
   assignedMeterIds: string[]
   notes: string
@@ -332,6 +335,91 @@ export interface ThermalStorage {
 export type Storage = BatteryStorage | ThermalStorage
 
 // ============================================================
+// Räume (Rooms)
+// ============================================================
+
+export type FloorLevel = 'UG' | 'EG' | 'OG1' | 'OG2' | 'OG3' | 'DG'
+export type RoomType =
+  | 'wohnen' | 'schlafen' | 'kueche' | 'bad' | 'buero'
+  | 'flur' | 'lager' | 'technik' | 'sonstige'
+
+export interface SchedulePeriod {
+  id: string
+  name: string
+  days: ('mo' | 'di' | 'mi' | 'do' | 'fr' | 'sa' | 'so')[]
+  startTime: string // "HH:MM"
+  endTime: string   // "HH:MM"
+  targetTemperatureC: number
+}
+
+export interface Room {
+  id: string
+  name: string
+  floor: FloorLevel
+  areaM2: number
+  heightM: number
+  roomType: RoomType
+  // Klima-Sollwerte
+  targetTemperatureC: number
+  nightSetbackK: number
+  minTemperatureC: number
+  maxTemperatureC: number
+  coolingEnabled: boolean
+  coolingTargetTemperatureC: number
+  // Zeitprogramm
+  schedule: SchedulePeriod[]
+  // Zuordnungen
+  heatingCircuitId: string
+  coolingCircuitId: string
+  consumerIds: string[]
+  meterIds: string[]
+  notes: string
+}
+
+// ============================================================
+// Heiz-/Kältekreise (Heating/Cooling Circuits)
+// ============================================================
+
+export type CircuitType = 'heating' | 'cooling' | 'combined'
+export type PumpType = 'fixed_speed' | 'variable_speed' | 'high_efficiency'
+export type DistributionType = 'floor_heating' | 'radiator' | 'fan_coil' | 'ceiling_cooling' | 'mixed'
+
+export interface HeatingCurve {
+  steepness: number       // Heizkurven-Steilheit (0.2 - 3.0)
+  parallelShift: number   // Parallelverschiebung (-5 bis +5 K)
+}
+
+export interface ControllableComponent {
+  enabled: boolean
+  communication: CommunicationConfig
+}
+
+export interface HeatingCoolingCircuit {
+  id: string
+  name: string
+  type: CircuitType
+  controllable: boolean
+  // Regelbare Komponenten (jeweils eigenes Busprotokoll)
+  flowTempSetpoint: ControllableComponent   // Vorlaufsollwert-Vorgabe
+  mixerValve: ControllableComponent         // Mischventil
+  pumpControl: ControllableComponent        // Umwälzpumpe
+  zoneValves: ControllableComponent         // Zonenventile / Stellantriebe
+  distributionType: DistributionType
+  flowTemperatureC: number
+  returnTemperatureC: number
+  designOutdoorTemperatureC: number
+  heatingCurve: HeatingCurve
+  pumpType: PumpType
+  pumpPowerW: number
+  // Versorgungsquelle
+  supplyStorageIds: string[]   // Aus welchem Puffer-/Kältespeicher gespeist
+  generatorIds: string[]       // Direkt angeschlossene Erzeuger (wenn kein Speicher dazwischen)
+  roomIds: string[]
+  meterIds: string[]
+  notes: string
+}
+
+// ============================================================
 // Systemeinstellungen
 // ============================================================
 
@@ -359,13 +447,16 @@ export interface SystemSettings {
   annualHeatingDemandKwh: number
   annualCoolingDemandKwh: number
 
+  address: string
   latitude: number
   longitude: number
   altitudeM: number
   timezone: string
 
+  // Komfort-Vorgaben (Gebäude-Defaults)
+  hasIndividualRoomControl: boolean
   targetRoomTemperatureC: number
-  nightSetbackC: number
+  nightSetbackK: number
   hotWaterTemperatureC: number
   coolingThresholdC: number
   heatingThresholdOutdoorC: number
@@ -450,6 +541,61 @@ export function createDefaultTemperatureSensor(): TemperatureSensor {
   }
 }
 
+export function createDefaultRoom(): Room {
+  return {
+    id: '',
+    name: '',
+    floor: 'EG',
+    areaM2: 20,
+    heightM: 2.5,
+    roomType: 'wohnen',
+    targetTemperatureC: 21,
+    nightSetbackK: 3,
+    minTemperatureC: 16,
+    maxTemperatureC: 26,
+    coolingEnabled: false,
+    coolingTargetTemperatureC: 24,
+    schedule: [],
+    heatingCircuitId: '',
+    coolingCircuitId: '',
+    consumerIds: [],
+    meterIds: [],
+    notes: '',
+  }
+}
+
+export function createDefaultControllableComponent(): ControllableComponent {
+  return {
+    enabled: false,
+    communication: createDefaultCommunication(),
+  }
+}
+
+export function createDefaultCircuit(): HeatingCoolingCircuit {
+  return {
+    id: '',
+    name: '',
+    type: 'heating',
+    controllable: true,
+    flowTempSetpoint: { enabled: true, communication: createDefaultCommunication() },
+    mixerValve: createDefaultControllableComponent(),
+    pumpControl: createDefaultControllableComponent(),
+    zoneValves: createDefaultControllableComponent(),
+    distributionType: 'radiator',
+    flowTemperatureC: 55,
+    returnTemperatureC: 45,
+    designOutdoorTemperatureC: -12,
+    heatingCurve: { steepness: 1.2, parallelShift: 0 },
+    pumpType: 'high_efficiency',
+    pumpPowerW: 50,
+    supplyStorageIds: [],
+    generatorIds: [],
+    roomIds: [],
+    meterIds: [],
+    notes: '',
+  }
+}
+
 export function createDefaultSettings(): SystemSettings {
   return {
     buildingName: '',
@@ -461,12 +607,14 @@ export function createDefaultSettings(): SystemSettings {
     heatedArea: 130,
     annualHeatingDemandKwh: 15000,
     annualCoolingDemandKwh: 0,
+    address: '',
     latitude: 51.1657,
     longitude: 10.4515,
     altitudeM: 200,
     timezone: 'Europe/Berlin',
+    hasIndividualRoomControl: false,
     targetRoomTemperatureC: 21,
-    nightSetbackC: 3,
+    nightSetbackK: 3,
     hotWaterTemperatureC: 55,
     coolingThresholdC: 26,
     heatingThresholdOutdoorC: 15,
@@ -481,7 +629,7 @@ export function createDefaultSettings(): SystemSettings {
     gridMaxPowerKw: 30,
     gridPhases: 3,
     gridVoltageV: 400,
-    feedInLimitPercent: 70,
+    feedInLimitPercent: 100,
     feedInLimitKw: 0,
     gridOperator: '',
     meterPointId: '',

@@ -55,7 +55,7 @@ async def create_session(
         target_time=data.target_time,
     )
 
-    # Berechne Zielenergie für Modus 3
+    # Berechne Zielenergie für Modus 3 (Zielladung+PV-Überschuss)
     if data.mode == ChargingMode.TARGET_CHARGE and data.target_km:
         session.target_energy_kwh = data.target_km * data.vehicle_efficiency_kwh_per_km
 
