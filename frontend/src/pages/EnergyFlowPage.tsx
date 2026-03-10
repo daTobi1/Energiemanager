@@ -608,10 +608,10 @@ export default function EnergyFlowPage() {
       const mc = meterColors[m.type] || meterColors.electricity
       if (m.assignedToType === 'grid') {
         // Hauptzähler → Hausanschluss (EVU-Einspeisung)
-        edges.push({ from: `meter-${m.id}`, to: 'bus', color: '#3b82f6', deletable: true, bidirectional: true })
+        edges.push({ from: `meter-${m.id}`, to: 'bus', color: '#3b82f6', deletable: true, animated: true, bidirectional: true })
       } else {
         const gen = generators.find((g) => g.id === m.assignedToId)
-        if (gen) edges.push({ from: `meter-${m.id}`, to: `gen-${gen.id}`, color: mc.icon, deletable: true })
+        if (gen) edges.push({ from: `meter-${m.id}`, to: `gen-${gen.id}`, color: mc.icon, deletable: true, animated: true })
       }
     })
 
@@ -648,43 +648,43 @@ export default function EnergyFlowPage() {
         if (!gen) return
         const c = genColors[gen.type]
         if (storMeter) {
-          edges.push({ from: `gen-${gid}`, to: `meter-${storMeter.id}`, color: c.icon, deletable: true, animated: isBat, bidirectional: isBat })
+          edges.push({ from: `gen-${gid}`, to: `meter-${storMeter.id}`, color: c.icon, deletable: true, animated: true, bidirectional: isBat })
         } else {
-          edges.push({ from: `gen-${gid}`, to: `stor-${s.id}`, color: c.icon, deletable: true, animated: isBat, bidirectional: isBat })
+          edges.push({ from: `gen-${gid}`, to: `stor-${s.id}`, color: c.icon, deletable: true, animated: true, bidirectional: isBat })
         }
       })
 
       if (storMeter) {
         const mc = meterColors[storMeter.type]
-        edges.push({ from: `meter-${storMeter.id}`, to: `stor-${s.id}`, color: mc.icon, deletable: true, animated: isBat, bidirectional: isBat })
+        edges.push({ from: `meter-${storMeter.id}`, to: `stor-${s.id}`, color: mc.icon, deletable: true, animated: true, bidirectional: isBat })
       }
 
       // Speicher → Verbraucher (bidirektional bei Batterie)
       const connCons = s.connectedConsumerIds || []
       connCons.forEach((cid) => {
         if (!consumers.some((c) => c.id === cid)) return
-        edges.push({ from: `stor-${s.id}`, to: `con-${cid}`, color: isBat ? '#7c3aed' : storColors[s.type].icon, deletable: true, animated: isBat, bidirectional: isBat })
+        edges.push({ from: `stor-${s.id}`, to: `con-${cid}`, color: isBat ? '#7c3aed' : storColors[s.type].icon, deletable: true, animated: true, bidirectional: isBat })
       })
     })
 
     // (d) Speicher → Kreise
     circuits.forEach((c) => {
       const cc = circuitColors[c.type]
-      c.supplyStorageIds?.forEach((sid) => edges.push({ from: `stor-${sid}`, to: `circ-${c.id}`, color: cc.icon, deletable: true }))
-      c.generatorIds.forEach((gid) => edges.push({ from: `gen-${gid}`, to: `circ-${c.id}`, color: cc.icon, dashed: true, deletable: true }))
+      c.supplyStorageIds?.forEach((sid) => edges.push({ from: `stor-${sid}`, to: `circ-${c.id}`, color: cc.icon, deletable: true, animated: true }))
+      c.generatorIds.forEach((gid) => edges.push({ from: `gen-${gid}`, to: `circ-${c.id}`, color: cc.icon, deletable: true, animated: true }))
     })
 
     // (e) Kreise → Räume
     circuits.forEach((c) => {
       const cc = circuitColors[c.type]
-      c.roomIds.forEach((rid) => edges.push({ from: `circ-${c.id}`, to: `room-${rid}`, color: cc.icon, deletable: true }))
+      c.roomIds.forEach((rid) => edges.push({ from: `circ-${c.id}`, to: `room-${rid}`, color: cc.icon, deletable: true, animated: true }))
     })
 
     // (f) Räume → Verbraucher
     rooms.forEach((r) => {
       (r.consumerIds || []).forEach((cid) => {
         if (consumers.some((c) => c.id === cid)) {
-          edges.push({ from: `room-${r.id}`, to: `con-${cid}`, color: '#16a34a', deletable: true })
+          edges.push({ from: `room-${r.id}`, to: `con-${cid}`, color: '#16a34a', deletable: true, animated: true })
         }
       })
     })
@@ -692,7 +692,7 @@ export default function EnergyFlowPage() {
     // (g0) Hausanschluss → Verbraucher (über connectedSourceIds)
     consumers.forEach((c) => {
       if ((c.connectedSourceIds || []).includes('grid')) {
-        edges.push({ from: 'bus', to: `con-${c.id}`, color: '#3b82f6', deletable: true })
+        edges.push({ from: 'bus', to: `con-${c.id}`, color: '#3b82f6', deletable: true, animated: true })
       }
     })
 
@@ -700,7 +700,7 @@ export default function EnergyFlowPage() {
     meters.forEach((m) => {
       if (m.assignedToType === 'consumer' && m.assignedToId && m.category !== 'end') {
         const mc = meterColors[m.type] || meterColors.electricity
-        edges.push({ from: `meter-${m.id}`, to: `con-${m.assignedToId}`, color: mc.icon, deletable: true })
+        edges.push({ from: `meter-${m.id}`, to: `con-${m.assignedToId}`, color: mc.icon, deletable: true, animated: true })
       }
     })
 
@@ -710,12 +710,12 @@ export default function EnergyFlowPage() {
       const mc = meterColors[m.type] || meterColors.heat
       rooms.forEach((r) => {
         if (!(r.meterIds || []).includes(m.id)) return
-        edges.push({ from: `meter-${m.id}`, to: `room-${r.id}`, color: mc.icon })
+        edges.push({ from: `meter-${m.id}`, to: `room-${r.id}`, color: mc.icon, animated: true })
         if (r.heatingCircuitId) {
-          edges.push({ from: `circ-${r.heatingCircuitId}`, to: `meter-${m.id}`, color: mc.icon })
+          edges.push({ from: `circ-${r.heatingCircuitId}`, to: `meter-${m.id}`, color: mc.icon, animated: true })
         }
         if (r.coolingCircuitId) {
-          edges.push({ from: `circ-${r.coolingCircuitId}`, to: `meter-${m.id}`, color: mc.icon })
+          edges.push({ from: `circ-${r.coolingCircuitId}`, to: `meter-${m.id}`, color: mc.icon, animated: true })
         }
       })
     })
@@ -725,7 +725,7 @@ export default function EnergyFlowPage() {
       if (m.category !== 'end') return
       if (m.assignedToId) {
         const mc = meterColors[m.type] || meterColors.electricity
-        edges.push({ from: `con-${m.assignedToId}`, to: `meter-${m.id}`, color: mc.icon, deletable: true })
+        edges.push({ from: `con-${m.assignedToId}`, to: `meter-${m.id}`, color: mc.icon, deletable: true, animated: true })
       }
     })
 
