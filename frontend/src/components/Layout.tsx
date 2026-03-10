@@ -2,8 +2,9 @@ import { NavLink, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard, Settings, Gauge, Sun, Plug, Battery,
   Home, Waypoints, Monitor,
-  GitBranch, BarChart3, Zap,
+  GitBranch, BarChart3, Zap, Wifi, WifiOff,
 } from 'lucide-react'
+import { useEnergyStore } from '../store/useEnergyStore'
 
 interface NavGroup {
   title: string
@@ -45,6 +46,9 @@ const navGroups: NavGroup[] = [
 ]
 
 export default function Layout() {
+  const apiConnected = useEnergyStore((s) => s.apiConnected)
+  const syncing = useEnergyStore((s) => s.syncing)
+
   return (
     <div className="flex h-screen bg-dark-bg">
       {/* Sidebar */}
@@ -91,8 +95,19 @@ export default function Layout() {
         </nav>
 
         <div className="p-4 border-t border-dark-border">
+          <div className="flex items-center gap-2 mb-1">
+            {syncing ? (
+              <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            ) : apiConnected ? (
+              <Wifi className="w-3 h-3 text-emerald-400" />
+            ) : (
+              <WifiOff className="w-3 h-3 text-dark-faded" />
+            )}
+            <span className="text-xs text-dark-faded">
+              {syncing ? 'Synchronisiere...' : apiConnected ? 'Backend verbunden' : 'Offline-Modus'}
+            </span>
+          </div>
           <p className="text-xs text-dark-faded">EnergyManager v0.1.0</p>
-          <p className="text-xs text-dark-hover">Prototyp</p>
         </div>
       </aside>
 

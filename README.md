@@ -180,7 +180,7 @@ Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angeb
 |---|---|
 | Framework | React 19, TypeScript, Vite |
 | Styling | Tailwind CSS (Dark Theme) |
-| State | Zustand + localStorage Persistenz |
+| State | Zustand + API-Sync (localStorage Fallback) |
 | Diagramme | Plotly.js (Sankey), SVG (Energiefluss) |
 | Icons | Lucide React |
 
@@ -211,10 +211,14 @@ energiemanager/
 │   │   ├── config.py                    # Settings & Environment
 │   │   ├── api/                         # REST API Endpoints
 │   │   │   ├── router.py
+│   │   │   ├── crud.py                  # Generische CRUD-Router-Factory
 │   │   │   ├── endpoints/               # dashboard, generators, storage,
-│   │   │   │                            # charging, forecasts, settings
+│   │   │   │                            # charging, settings, seed
 │   │   │   └── websocket.py
 │   │   ├── models/                      # SQLAlchemy DB-Modelle
+│   │   │   ├── config.py               # JSONB-Konfigurationsmodelle (7 Entitaeten)
+│   │   │   ├── generator.py            # Runtime-Generator-Modell (Phase 2)
+│   │   │   └── ...
 │   │   ├── schemas/                     # Pydantic DTOs
 │   │   ├── services/                    # Business-Logik
 │   │   ├── forecasting/                 # Prognose-Engine (Wetter, PV, Last, Thermisch)
@@ -247,8 +251,10 @@ energiemanager/
 │       │   └── SystemPage.tsx           # Systemverwaltung
 │       ├── hooks/
 │       │   └── useCreateNavigation.ts   # Seitenuebergreifende Erstellung + Flow-Edit
+│       ├── api/
+│       │   └── client.ts               # API-Client (CRUD + Seed + Health)
 │       ├── store/
-│       │   └── useEnergyStore.ts        # Zustand Store + localStorage
+│       │   └── useEnergyStore.ts        # Zustand Store + API-Sync
 │       ├── types/
 │       │   └── index.ts                 # Alle TypeScript-Typen
 │       └── data/
@@ -305,10 +311,20 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - Konsistente Terminologie (Spalten-basierte Zaehlerkategorien)
 - Testdaten MFH Bayern vollstaendig mit allen Zuordnungen
 
+**Erledigt (Backend-Anbindung):**
+- JSONB-Konfigurationsmodelle: Frontend-JSON wird 1:1 in PostgreSQL gespeichert
+- Generische CRUD-Factory: Ein Router-Generator fuer alle 7 Entitaetstypen
+- API-Endpoints: GET/POST/PUT/DELETE fuer Generators, Meters, Consumers, Storages, Rooms, Circuits
+- Settings-Endpoint: GET/PUT fuer SystemSettings (Singleton)
+- Seed/Clear-Endpoints: POST /data/seed (Testdaten) + DELETE /data/all (Reset)
+- Frontend API-Client: Typisierter fetch-Wrapper mit CRUD-Factory
+- Zustand Store: Optimistischer Sync (lokales Update + API-Call im Hintergrund)
+- Offline-Modus: localStorage-Fallback wenn Backend nicht erreichbar
+- Verbindungsstatus: Sidebar-Indikator + SystemPage Backend-Sektion
+
 **Naechste Schritte:**
-- Datenmodelle aus UI-Struktur finalisieren
-- Backend-API an Frontend-Bedarf anpassen
-- Frontend: Backend-Anbindung (API-Calls statt localStorage)
+- Backend + Docker starten und End-to-End testen
+- Alembic-Migration fuer die neuen Config-Tabellen
 
 ---
 

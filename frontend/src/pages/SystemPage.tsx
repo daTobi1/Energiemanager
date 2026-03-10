@@ -3,10 +3,16 @@ import { InputField, Section } from '../components/ui/FormField'
 import {
   Clock, Wifi, Bluetooth, Download, Power, RotateCcw,
   RefreshCw, AlertTriangle, WifiOff, Info, Monitor,
+  Database, Server, CheckCircle2, XCircle,
 } from 'lucide-react'
+import { useEnergyStore } from '../store/useEnergyStore'
 
 export default function SystemPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
+  const apiConnected = useEnergyStore((s) => s.apiConnected)
+  const syncing = useEnergyStore((s) => s.syncing)
+  const syncFromApi = useEnergyStore((s) => s.syncFromApi)
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
@@ -23,6 +29,52 @@ export default function SystemPage() {
       </div>
 
       <div className="space-y-4">
+        <Section title="Backend-Verbindung" icon={<Server className="w-4 h-4 text-emerald-400" />} defaultOpen={true}>
+          <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-dark-faded uppercase tracking-wider">API-Status</p>
+              <span className="flex items-center gap-2 text-sm">
+                {syncing ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-amber-400">Synchronisiere...</span>
+                  </>
+                ) : apiConnected ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-400">Verbunden</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4 text-dark-faded" />
+                    <span className="text-dark-faded">Nicht verbunden</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-dark-faded">Backend-URL</span>
+                <span className="text-dark-text font-mono text-xs">{import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-dark-faded">Datenspeicherung</span>
+                <span className={apiConnected ? 'text-emerald-400' : 'text-amber-400'}>
+                  {apiConnected ? 'PostgreSQL (Backend)' : 'localStorage (Browser)'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => syncFromApi()} className="btn-secondary flex items-center gap-2 text-sm" disabled={syncing}>
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} /> Verbindung prüfen
+            </button>
+            {!apiConnected && (
+              <p className="text-xs text-dark-faded">Frontend arbeitet im Offline-Modus mit localStorage. Starte das Backend um Daten in PostgreSQL zu speichern.</p>
+            )}
+          </div>
+        </Section>
+
         <Section title="Zeit & Datum" icon={<Clock className="w-4 h-4 text-cyan-400" />} defaultOpen={true}>
           <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
             <div className="flex items-center justify-between">

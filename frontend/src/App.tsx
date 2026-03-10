@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import Layout from './components/Layout'
+import { useEnergyStore } from './store/useEnergyStore'
 import DashboardPage from './pages/DashboardPage'
 import GeneratorsPage from './pages/GeneratorsPage'
 import MetersPage from './pages/MetersPage'
@@ -13,6 +15,12 @@ import SettingsPage from './pages/SettingsPage'
 import SystemPage from './pages/SystemPage'
 
 export default function App() {
+  const syncFromApi = useEnergyStore((s) => s.syncFromApi)
+
+  useEffect(() => {
+    syncFromApi()
+  }, [syncFromApi])
+
   return (
     <Routes>
       <Route element={<Layout />}>
