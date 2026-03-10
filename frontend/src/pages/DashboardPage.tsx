@@ -5,6 +5,7 @@ import {
   Sun, Gauge, Plug, Battery, Home, Waypoints, GitBranch, Settings,
   CheckCircle2, AlertCircle, ArrowRight, Database, Trash2,
 } from 'lucide-react'
+import LiveDashboard from '../components/LiveDashboard'
 import type { GeneratorType } from '../types'
 import { createBavariaSeedData } from '../data/seedBavaria'
 
@@ -86,6 +87,11 @@ export default function DashboardPage() {
         <p className="text-sm text-dark-faded mt-1">
           {settings.buildingName || 'EnergyManager'} — Anlagenkonfiguration
         </p>
+      </div>
+
+      {/* Live-Daten */}
+      <div className="mb-6">
+        <LiveDashboard />
       </div>
 
       {/* Übersichtskarten */}

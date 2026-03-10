@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.crud import create_crud_router
-from app.api.endpoints import seed, settings
+from app.api.endpoints import seed, settings, simulator
 from app.config import settings as app_settings
 from app.models.config import (
     CircuitConfig,
@@ -45,6 +45,9 @@ api_router.include_router(settings.router, prefix="/settings", tags=["Settings"]
 
 # Seed-Daten & Reset
 api_router.include_router(seed.router, prefix="/data", tags=["Data"])
+
+# Simulator
+api_router.include_router(simulator.router, prefix="/simulator", tags=["Simulator"])
 
 # Runtime-Endpoints nur bei PostgreSQL (brauchen alte Modelle mit Enum-Spalten)
 if not app_settings.database_url.startswith("sqlite"):

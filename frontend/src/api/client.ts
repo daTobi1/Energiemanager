@@ -70,6 +70,27 @@ export const api = {
     clearAll: () => request<void>('/data/all', { method: 'DELETE' }),
   },
 
+  simulator: {
+    status: () => request<{
+      running: boolean
+      interval_seconds: number
+      speed_factor: number
+      state: {
+        battery_soc_pct: number
+        heat_storage_temp_c: number
+        outdoor_temp_c: number
+        total_pv_kwh: number
+        total_import_kwh: number
+        total_export_kwh: number
+      }
+    }>('/simulator/status'),
+    start: (interval = 5, speed = 1) =>
+      request<{ status: string }>(`/simulator/start?interval=${interval}&speed=${speed}`, { method: 'POST' }),
+    stop: () => request<{ status: string }>('/simulator/stop', { method: 'POST' }),
+    latest: () => request<Record<string, { value: number; unit: string; timestamp: string }>>('/simulator/measurements/latest'),
+    clearMeasurements: () => request<void>('/simulator/measurements', { method: 'DELETE' }),
+  },
+
   /** Prüft ob das Backend erreichbar ist. */
   health: async () => {
     try {
