@@ -383,84 +383,101 @@ export default function StoragePage() {
                 }} className="btn-secondary text-sm">+ Sensor hinzufügen</button>
               </Section>
 
-              {/* Zuordnungen */}
-              <Section title="Anschlüsse / Zuordnungen" defaultOpen={true}>
-                <p className="text-sm text-dark-faded mb-3">Welche Erzeuger und Verbraucher sind mit diesem Speicher verbunden?</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">Verbundene Erzeuger</label>
-                    <div className="space-y-2">
-                      {generatorOptions.map((g) => (
-                        <label key={g.value} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={(editing as ThermalStorage).connectedGeneratorIds.includes(g.value)}
-                            onChange={(e) => {
-                              const ids = e.target.checked
-                                ? [...(editing as ThermalStorage).connectedGeneratorIds, g.value]
-                                : (editing as ThermalStorage).connectedGeneratorIds.filter((id) => id !== g.value)
-                              update('connectedGeneratorIds', ids)
-                            }}
-                            className="w-4 h-4 text-emerald-600 rounded"
-                          />
-                          {g.label}
-                        </label>
-                      ))}
-                      {generatorOptions.length === 0 && (
-                        <button
-                          onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })}
-                          className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span className="text-sm">Erzeuger jetzt anlegen</span>
-                        </button>
-                      )}
-                      {generatorOptions.length > 0 && (
-                        <button onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1">
-                          <Plus className="w-3 h-3" /> Neuen Erzeuger anlegen
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">Verbundene Verbraucher</label>
-                    <div className="space-y-2">
-                      {consumerOptions.map((c) => (
-                        <label key={c.value} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="checkbox"
-                            checked={(editing as ThermalStorage).connectedConsumerIds.includes(c.value)}
-                            onChange={(e) => {
-                              const ids = e.target.checked
-                                ? [...(editing as ThermalStorage).connectedConsumerIds, c.value]
-                                : (editing as ThermalStorage).connectedConsumerIds.filter((id) => id !== c.value)
-                              update('connectedConsumerIds', ids)
-                            }}
-                            className="w-4 h-4 text-emerald-600 rounded"
-                          />
-                          {c.label}
-                        </label>
-                      ))}
-                      {consumerOptions.length === 0 && (
-                        <button
-                          onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'connectedConsumerIds', assignMode: 'append', draft: editing })}
-                          className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span className="text-sm">Verbraucher jetzt anlegen</span>
-                        </button>
-                      )}
-                      {consumerOptions.length > 0 && (
-                        <button onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'connectedConsumerIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1">
-                          <Plus className="w-3 h-3" /> Neuen Verbraucher anlegen
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </Section>
             </>
           )}
+
+          {/* Anschlüsse für alle Speichertypen */}
+          <Section title="Anschlüsse / Zuordnungen" defaultOpen={true}>
+            <p className="text-sm text-dark-faded mb-3">Welche Quellen und Verbraucher sind mit diesem Speicher verbunden?</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="label">Verbundene Quellen</label>
+                <div className="space-y-2">
+                  {isBattery && (
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={editing.connectedGeneratorIds.includes('grid')}
+                        onChange={(e) => {
+                          const ids = e.target.checked
+                            ? [...editing.connectedGeneratorIds, 'grid']
+                            : editing.connectedGeneratorIds.filter((id) => id !== 'grid')
+                          update('connectedGeneratorIds', ids)
+                        }}
+                        className="w-4 h-4 text-emerald-600 rounded"
+                      />
+                      Netz (Hausanschluss)
+                    </label>
+                  )}
+                  {generatorOptions.map((g) => (
+                    <label key={g.value} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={editing.connectedGeneratorIds.includes(g.value)}
+                        onChange={(e) => {
+                          const ids = e.target.checked
+                            ? [...editing.connectedGeneratorIds, g.value]
+                            : editing.connectedGeneratorIds.filter((id) => id !== g.value)
+                          update('connectedGeneratorIds', ids)
+                        }}
+                        className="w-4 h-4 text-emerald-600 rounded"
+                      />
+                      {g.label}
+                    </label>
+                  ))}
+                  {generatorOptions.length === 0 && !isBattery && (
+                    <button
+                      onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Erzeuger jetzt anlegen</span>
+                    </button>
+                  )}
+                  {generatorOptions.length > 0 && (
+                    <button onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1">
+                      <Plus className="w-3 h-3" /> Neuen Erzeuger anlegen
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="label">Verbundene Verbraucher</label>
+                <div className="space-y-2">
+                  {consumerOptions.map((c) => (
+                    <label key={c.value} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={editing.connectedConsumerIds.includes(c.value)}
+                        onChange={(e) => {
+                          const ids = e.target.checked
+                            ? [...editing.connectedConsumerIds, c.value]
+                            : editing.connectedConsumerIds.filter((id) => id !== c.value)
+                          update('connectedConsumerIds', ids)
+                        }}
+                        className="w-4 h-4 text-emerald-600 rounded"
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                  {consumerOptions.length === 0 && (
+                    <button
+                      onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'connectedConsumerIds', assignMode: 'append', draft: editing })}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Verbraucher jetzt anlegen</span>
+                    </button>
+                  )}
+                  {consumerOptions.length > 0 && (
+                    <button onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'connectedConsumerIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1">
+                      <Plus className="w-3 h-3" /> Neuen Verbraucher anlegen
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Section>
 
           <Section title="Zähler-Zuordnung" defaultOpen={true}>
             {meterOptions.length > 0 ? (

@@ -97,7 +97,7 @@ function createDefaultConsumer(type: ConsumerType): Consumer {
 }
 
 export default function ConsumersPage() {
-  const { consumers, rooms, meters, addConsumer, updateConsumer, removeConsumer, updateRoom } = useEnergyStore()
+  const { consumers, rooms, meters, storages, addConsumer, updateConsumer, removeConsumer, updateRoom } = useEnergyStore()
   const [editing, setEditing] = useState<Consumer | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [selectedRoomId, setSelectedRoomId] = useState('')
@@ -221,7 +221,7 @@ export default function ConsumersPage() {
         <div className="space-y-4">
           <Section title="Grunddaten" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
-              <SelectField label="Typ" value={editing.type} onChange={(v) => { const c = createDefaultConsumer(v as ConsumerType); setEditing({ ...c, id: editing.id, name: editing.name }) }} options={consumerTypeOptions} />
+              <SelectField label="Typ" value={editing.type} onChange={(v) => { const c = createDefaultConsumer(v as ConsumerType); setEditing({ ...c, id: editing.id, name: editing.name, connectedSourceIds: editing.connectedSourceIds, assignedMeterIds: editing.assignedMeterIds }) }} options={consumerTypeOptions} />
               <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Haushalt EG, Wallbox Carport" />
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -274,6 +274,42 @@ export default function ConsumersPage() {
                 </button>
               </div>
             )}
+          </Section>
+
+          <Section title="Energiequellen" defaultOpen={true}>
+            <p className="text-sm text-dark-faded mb-3">Von welchen Quellen wird dieser Verbraucher versorgt?</p>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={(editing.connectedSourceIds || []).includes('grid')}
+                  onChange={(e) => {
+                    const ids = e.target.checked
+                      ? [...(editing.connectedSourceIds || []), 'grid']
+                      : (editing.connectedSourceIds || []).filter((id) => id !== 'grid')
+                    update('connectedSourceIds', ids)
+                  }}
+                  className="w-4 h-4 text-emerald-600 rounded"
+                />
+                Netz (Hausanschluss)
+              </label>
+              {storages.filter((s) => s.type === 'battery').map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={(editing.connectedSourceIds || []).includes(s.id)}
+                    onChange={(e) => {
+                      const ids = e.target.checked
+                        ? [...(editing.connectedSourceIds || []), s.id]
+                        : (editing.connectedSourceIds || []).filter((id) => id !== s.id)
+                      update('connectedSourceIds', ids)
+                    }}
+                    className="w-4 h-4 text-emerald-600 rounded"
+                  />
+                  {s.name || 'Batteriespeicher'}
+                </label>
+              ))}
+            </div>
           </Section>
 
           <Section title="Lastmanagement" defaultOpen={true}>
