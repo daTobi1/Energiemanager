@@ -17,7 +17,7 @@ export default function DashboardPage() {
   const [confirmClear, setConfirmClear] = useState(false)
 
   const configComplete = generators.length > 0 && meters.length > 0 && consumers.length > 0
-  const hasErzeugerzaehler = meters.some((m) => m.category === 'generation' && m.assignedToType === 'grid')
+  const hasHausanschlussZaehler = meters.some((m) => m.assignedToType === 'grid')
 
   const sections = [
     {
@@ -73,7 +73,7 @@ export default function DashboardPage() {
     { label: 'Heizkreise konfigurieren', done: circuits.length > 0, to: '/circuits' },
     { label: 'Räume anlegen und zuordnen', done: rooms.length > 0, to: '/rooms' },
     { label: 'Mindestens einen Verbraucher anlegen', done: consumers.length > 0, to: '/consumers' },
-    { label: 'Hausanschluss-Zähler anlegen', done: hasErzeugerzaehler, to: '/meters' },
+    { label: 'Hausanschluss-Zähler anlegen', done: hasHausanschlussZaehler, to: '/meters' },
     { label: 'Kommunikation der Geräte konfigurieren', done: generators.some((g) => g.communication.ipAddress), to: '/generators' },
   ]
 
