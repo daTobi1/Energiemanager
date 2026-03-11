@@ -158,10 +158,10 @@ function getGeneratorSummary(g: Generator): string {
 }
 
 export default function GeneratorsPage() {
-  const { generators, meters, addGenerator, updateGenerator, removeGenerator } = useEnergyStore()
+  const { generators, addGenerator, updateGenerator, removeGenerator } = useEnergyStore()
   const [editing, setEditing] = useState<Generator | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = (type: GeneratorType) => {
     setEditing(createDefaultGenerator(type))
@@ -200,20 +200,6 @@ export default function GeneratorsPage() {
     }
   }, [flowCreateNew])
 
-  // Handle return from other pages with a created entity
-  useEffect(() => {
-    if (pendingReturn) {
-      const draft = { ...pendingReturn.draft }
-      if (pendingReturn.assignMode === 'single') {
-        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
-      } else {
-        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
-      }
-      setEditing(draft)
-      setShowForm(true)
-      clearPendingCreation()
-    }
-  }, [pendingReturn])
 
   const save = () => {
     if (!editing) return
@@ -251,7 +237,6 @@ export default function GeneratorsPage() {
     setEditing({ ...editing, [key]: value } as Generator)
   }
 
-  const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || 'ohne Nr.'})` }))
 
   if (showForm && editing) {
     return (
@@ -296,32 +281,11 @@ export default function GeneratorsPage() {
               <InputField label="Modell" value={editing.model} onChange={(v) => updateField('model', v)} />
               <InputField label="Seriennummer" value={editing.serialNumber} onChange={(v) => updateField('serialNumber', v)} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <InputField label="Inbetriebnahme" value={editing.commissioningDate} onChange={(v) => updateField('commissioningDate', v)} type="date" />
               <InputField label="Standort / Position" value={editing.location} onChange={(v) => updateField('location', v)} placeholder="z.B. Dach Gebäude A" />
-              {meterOptions.length > 0 ? (
-                <div>
-                  <SelectField
-                    label="Zugeordnete Zähler"
-                    value={editing.assignedMeterIds[0] || ''}
-                    onChange={(v) => updateField('assignedMeterIds', v ? [v] : [])}
-                    options={meterOptions}
-                  />
-                  <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Zähler anlegen</button>
-                </div>
-              ) : (
-                <div>
-                  <label className="label">Zugeordnete Zähler</label>
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Zähler jetzt anlegen</span>
-                  </button>
-                </div>
-              )}
             </div>
+            <p className="text-xs text-dark-faded mt-2">Zähler- und Gerätezuordnungen werden im <a href="/energy-flow" className="text-emerald-400 hover:underline">Energiefluss-Diagramm</a> per Drag & Drop hergestellt.</p>
           </Section>
 
           {/* PV-spezifische Felder */}

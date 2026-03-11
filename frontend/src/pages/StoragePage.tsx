@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus, Trash2, Edit2, Battery, X, Copy, Thermometer, Snowflake, ArrowLeft } from 'lucide-react'
+import { Plus, Edit2, Battery, X, Copy, Thermometer, Snowflake, ArrowLeft } from 'lucide-react'
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
@@ -123,10 +123,10 @@ function createDefaultThermal(type: 'heat' | 'cold'): ThermalStorage {
 }
 
 export default function StoragePage() {
-  const { storages, generators, consumers, meters, addStorage, updateStorage, removeStorage } = useEnergyStore()
+  const { storages, addStorage, updateStorage, removeStorage } = useEnergyStore()
   const [editing, setEditing] = useState<Storage | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = (type: StorageType) => {
     const s = type === 'battery' ? createDefaultBattery() : createDefaultThermal(type as 'heat' | 'cold')
@@ -157,20 +157,6 @@ export default function StoragePage() {
     }
   }, [flowCreateNew])
 
-  // Handle return from other pages with a created entity
-  useEffect(() => {
-    if (pendingReturn) {
-      const draft = { ...pendingReturn.draft } as Storage
-      if (pendingReturn.assignMode === 'single') {
-        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
-      } else {
-        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
-      }
-      setEditing(draft)
-      setShowForm(true)
-      clearPendingCreation()
-    }
-  }, [pendingReturn])
 
   const save = () => {
     if (!editing) return
@@ -198,9 +184,6 @@ export default function StoragePage() {
     if (editing) setEditing({ ...editing, [key]: value } as Storage)
   }
 
-  const generatorOptions = generators.map((g) => ({ value: g.id, label: g.name || 'Unbenannt' }))
-  const consumerOptions = consumers.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
-  const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
 
   if (showForm && editing) {
     const isBattery = editing.type === 'battery'
@@ -409,123 +392,9 @@ export default function StoragePage() {
             nodeColor={storageNodeColors[editing.type]}
           />
 
-          {/* Anschlüsse für alle Speichertypen */}
-          <Section title="Anschlüsse / Zuordnungen" defaultOpen={true}>
-            <p className="text-sm text-dark-faded mb-3">Welche Quellen und Verbraucher sind mit diesem Speicher verbunden?</p>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="label">Verbundene Quellen</label>
-                <div className="space-y-2">
-                  {isBattery && (
-                    <label className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={editing.connectedGeneratorIds.includes('grid')}
-                        onChange={(e) => {
-                          const ids = e.target.checked
-                            ? [...editing.connectedGeneratorIds, 'grid']
-                            : editing.connectedGeneratorIds.filter((id) => id !== 'grid')
-                          update('connectedGeneratorIds', ids)
-                        }}
-                        className="w-4 h-4 text-emerald-600 rounded"
-                      />
-                      Netz (Hausanschluss)
-                    </label>
-                  )}
-                  {generatorOptions.map((g) => (
-                    <label key={g.value} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={editing.connectedGeneratorIds.includes(g.value)}
-                        onChange={(e) => {
-                          const ids = e.target.checked
-                            ? [...editing.connectedGeneratorIds, g.value]
-                            : editing.connectedGeneratorIds.filter((id) => id !== g.value)
-                          update('connectedGeneratorIds', ids)
-                        }}
-                        className="w-4 h-4 text-emerald-600 rounded"
-                      />
-                      {g.label}
-                    </label>
-                  ))}
-                  {generatorOptions.length === 0 && !isBattery && (
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Erzeuger jetzt anlegen</span>
-                    </button>
-                  )}
-                  {generatorOptions.length > 0 && (
-                    <button onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1">
-                      <Plus className="w-3 h-3" /> Neuen Erzeuger anlegen
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div>
-                <label className="label">Verbundene Verbraucher</label>
-                <div className="space-y-2">
-                  {consumerOptions.map((c) => (
-                    <label key={c.value} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={editing.connectedConsumerIds.includes(c.value)}
-                        onChange={(e) => {
-                          const ids = e.target.checked
-                            ? [...editing.connectedConsumerIds, c.value]
-                            : editing.connectedConsumerIds.filter((id) => id !== c.value)
-                          update('connectedConsumerIds', ids)
-                        }}
-                        className="w-4 h-4 text-emerald-600 rounded"
-                      />
-                      {c.label}
-                    </label>
-                  ))}
-                  {consumerOptions.length === 0 && (
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'connectedConsumerIds', assignMode: 'append', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Verbraucher jetzt anlegen</span>
-                    </button>
-                  )}
-                  {consumerOptions.length > 0 && (
-                    <button onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'connectedConsumerIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1">
-                      <Plus className="w-3 h-3" /> Neuen Verbraucher anlegen
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Section>
-
-          <Section title="Zähler-Zuordnung" defaultOpen={true}>
-            {meterOptions.length > 0 ? (
-              <div>
-                <SelectField
-                  label="Zugeordneter Zähler"
-                  value={editing.assignedMeterIds[0] || ''}
-                  onChange={(v) => update('assignedMeterIds', v ? [v] : [])}
-                  options={meterOptions}
-                />
-                <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Zähler anlegen</button>
-              </div>
-            ) : (
-              <div>
-                <label className="label">Zugeordneter Zähler</label>
-                <button
-                  onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })}
-                  className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm">Zähler jetzt anlegen</span>
-                </button>
-              </div>
-            )}
-          </Section>
+          <div className="p-3 bg-dark-hover rounded-lg border border-dark-border">
+            <p className="text-xs text-dark-faded">Verbindungen zu Erzeugern, Verbrauchern und Zählern werden im <a href="/energy-flow" className="text-emerald-400 hover:underline">Energiefluss-Diagramm</a> per Drag & Drop hergestellt.</p>
+          </div>
 
           <CommunicationForm config={editing.communication} onChange={(c) => update('communication', c)} />
 

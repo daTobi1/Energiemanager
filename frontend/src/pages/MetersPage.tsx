@@ -6,7 +6,7 @@ import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Meter, MeterType, MeterDirection, MeterCategory, MeterAssignmentType, EnergyPort } from '../types'
+import type { Meter, MeterType, MeterDirection, MeterCategory, EnergyPort } from '../types'
 import { createDefaultCommunication } from '../types'
 import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
@@ -34,14 +34,6 @@ const categoryOptions = [
   { value: 'group', label: 'Verbrauchergruppenzähler' },
   { value: 'end', label: 'Endzähler' },
   { value: 'unassigned', label: 'Nicht zugeordnet' },
-]
-
-const assignmentTypeOptions = [
-  { value: 'none', label: '— Keine Zuordnung —' },
-  { value: 'generator', label: 'Erzeuger' },
-  { value: 'consumer', label: 'Verbraucher' },
-  { value: 'storage', label: 'Speicher' },
-  { value: 'grid', label: 'Hausanschluss' },
 ]
 
 const typeColors: Record<MeterType, string> = {
@@ -119,11 +111,11 @@ function createDefaultMeter(): Meter {
 }
 
 export default function MetersPage() {
-  const { meters, generators, consumers, storages, addMeter, updateMeter, removeMeter } = useEnergyStore()
+  const { meters, addMeter, updateMeter, removeMeter } = useEnergyStore()
   const [editing, setEditing] = useState<Meter | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [draftMeter, setDraftMeter] = useState<Meter | null>(null)
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = () => {
     setEditing(createDefaultMeter())
@@ -162,20 +154,6 @@ export default function MetersPage() {
     }
   }, [flowCreateNew])
 
-  // Handle return from other pages with a created entity
-  useEffect(() => {
-    if (pendingReturn) {
-      const draft = { ...pendingReturn.draft } as Meter
-      if (pendingReturn.assignMode === 'single') {
-        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
-      } else {
-        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
-      }
-      setEditing(draft)
-      setShowForm(true)
-      clearPendingCreation()
-    }
-  }, [pendingReturn])
 
   const save = () => {
     if (!editing) return
@@ -220,18 +198,6 @@ export default function MetersPage() {
   const update = <K extends keyof Meter>(key: K, value: Meter[K]) => {
     if (!editing) return
     setEditing({ ...editing, [key]: value })
-  }
-
-  // Zuordnungs-Optionen basierend auf Typ
-  const getAssignmentOptions = () => {
-    if (!editing) return []
-    switch (editing.assignedToType) {
-      case 'generator': return generators.map((g) => ({ value: g.id, label: g.name || 'Unbenannt' }))
-      case 'consumer': return consumers.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
-      case 'storage': return storages.map((s) => ({ value: s.id, label: s.name || 'Unbenannt' }))
-      case 'grid': return [{ value: 'grid', label: 'Hausanschluss' }]
-      default: return []
-    }
   }
 
   const parentMeterOptions = meters
@@ -300,75 +266,9 @@ export default function MetersPage() {
             </Section>
           )}
 
-          <Section title="Zuordnung" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <SelectField
-                label="Zuordnung zu"
-                value={editing.assignedToType}
-                onChange={(v) => { update('assignedToType', v as MeterAssignmentType); update('assignedToId', '') }}
-                options={assignmentTypeOptions}
-              />
-              {editing.assignedToType !== 'none' && (
-                getAssignmentOptions().length > 0 ? (
-                  <div>
-                    <SelectField
-                      label="Zugeordnetes Gerät"
-                      value={editing.assignedToId}
-                      onChange={(v) => update('assignedToId', v)}
-                      options={getAssignmentOptions()}
-                    />
-                    {editing.assignedToType === 'consumer' && (
-                      <button onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Verbraucher anlegen</button>
-                    )}
-                    {editing.assignedToType === 'generator' && (
-                      <button onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Erzeuger anlegen</button>
-                    )}
-                    {editing.assignedToType === 'storage' && (
-                      <button onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Speicher anlegen</button>
-                    )}
-                  </div>
-                ) : editing.assignedToType === 'consumer' ? (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Verbraucher jetzt anlegen</span>
-                    </button>
-                  </div>
-                ) : editing.assignedToType === 'generator' ? (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Erzeuger jetzt anlegen</span>
-                    </button>
-                  </div>
-                ) : editing.assignedToType === 'storage' ? (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Speicher jetzt anlegen</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <p className="text-sm text-dark-faded mt-1">Hausanschluss wird automatisch zugeordnet</p>
-                  </div>
-                )
-              )}
-            </div>
-          </Section>
+          <div className="p-3 bg-dark-hover rounded-lg border border-dark-border">
+            <p className="text-xs text-dark-faded">Gerätezuordnungen werden im <a href="/energy-flow" className="text-emerald-400 hover:underline">Energiefluss-Diagramm</a> per Drag & Drop hergestellt.</p>
+          </div>
 
           <PortEditor
             ports={editing.ports || []}

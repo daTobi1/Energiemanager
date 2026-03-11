@@ -66,10 +66,10 @@ const dayOptions = [
 ]
 
 export default function RoomsPage() {
-  const { rooms, circuits, consumers, meters, addRoom, updateRoom, removeRoom } = useEnergyStore()
+  const { rooms, circuits, addRoom, updateRoom, removeRoom } = useEnergyStore()
   const [editing, setEditing] = useState<Room | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = () => {
     setEditing({ ...createDefaultRoom(), id: uuid(), ports: createDefaultRoomPorts(false) })
@@ -99,20 +99,6 @@ export default function RoomsPage() {
     }
   }, [flowCreateNew])
 
-  // Handle return from other pages with a created entity
-  useEffect(() => {
-    if (pendingReturn) {
-      const draft = { ...pendingReturn.draft } as Room
-      if (pendingReturn.assignMode === 'single') {
-        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
-      } else {
-        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
-      }
-      setEditing(draft)
-      setShowForm(true)
-      clearPendingCreation()
-    }
-  }, [pendingReturn])
 
   const save = () => {
     if (!editing) return
@@ -141,11 +127,6 @@ export default function RoomsPage() {
     if (editing) setEditing({ ...editing, [key]: value })
   }
 
-  const circuitOptions = circuits.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
-  const heatingCircuitOptions = [{ value: '', label: '— Kein Heizkreis —' }, ...circuitOptions.filter((_, i) => circuits[i].type !== 'cooling')]
-  const coolingCircuitOptions = [{ value: '', label: '— Kein Kältekreis —' }, ...circuitOptions.filter((_, i) => circuits[i].type !== 'heating')]
-  const consumerOptions = consumers.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
-  const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
 
   // Schedule helpers
   const addSchedule = () => {
@@ -277,102 +258,9 @@ export default function RoomsPage() {
             </button>
           </Section>
 
-          <Section title="Zuordnungen" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              {heatingCircuitOptions.length > 1 ? (
-                <div>
-                  <SelectField label="Heizkreis" value={editing.heatingCircuitId} onChange={(v) => update('heatingCircuitId', v)} options={heatingCircuitOptions} info="Welcher Heizkreis versorgt diesen Raum?" />
-                  <button onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'heatingCircuitId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Heizkreis anlegen</button>
-                </div>
-              ) : (
-                <div>
-                  <label className="label">Heizkreis</label>
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'heatingCircuitId', assignMode: 'single', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Heizkreis jetzt anlegen</span>
-                  </button>
-                </div>
-              )}
-              {coolingCircuitOptions.length > 1 ? (
-                <div>
-                  <SelectField label="Kältekreis" value={editing.coolingCircuitId} onChange={(v) => update('coolingCircuitId', v)} options={coolingCircuitOptions} info="Welcher Kältekreis versorgt diesen Raum?" />
-                  <button onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'coolingCircuitId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Kältekreis anlegen</button>
-                </div>
-              ) : (
-                <div>
-                  <label className="label">Kältekreis</label>
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'coolingCircuitId', assignMode: 'single', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Kältekreis jetzt anlegen</span>
-                  </button>
-                </div>
-              )}
-            </div>
-            <div className="mt-3">
-              <label className="label">Zugeordnete Verbraucher</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {consumerOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      const ids = editing.consumerIds.includes(opt.value)
-                        ? editing.consumerIds.filter((id) => id !== opt.value)
-                        : [...editing.consumerIds, opt.value]
-                      update('consumerIds', ids)
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                      editing.consumerIds.includes(opt.value)
-                        ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
-                        : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                <button
-                  onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'consumerIds', assignMode: 'append', draft: editing })}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-emerald-500/50 hover:bg-emerald-500/5 text-dark-faded hover:text-emerald-400 transition-colors"
-                >
-                  <Plus className="w-3 h-3" /> Neuen Verbraucher anlegen
-                </button>
-              </div>
-            </div>
-            <div className="mt-3">
-              <label className="label">Zugeordnete Zähler</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {meterOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      const ids = editing.meterIds.includes(opt.value)
-                        ? editing.meterIds.filter((id) => id !== opt.value)
-                        : [...editing.meterIds, opt.value]
-                      update('meterIds', ids)
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                      editing.meterIds.includes(opt.value)
-                        ? 'bg-yellow-600/20 border-yellow-500/40 text-yellow-400'
-                        : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                <button
-                  onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'meterIds', assignMode: 'append', draft: editing })}
-                  className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-yellow-500/50 hover:bg-yellow-500/5 text-dark-faded hover:text-yellow-400 transition-colors"
-                >
-                  <Plus className="w-3 h-3" /> Neuen Zähler anlegen
-                </button>
-              </div>
-            </div>
-          </Section>
+          <div className="p-3 bg-dark-hover rounded-lg border border-dark-border">
+            <p className="text-xs text-dark-faded">Zuordnungen zu Heizkreisen, Verbrauchern und Zählern werden im <a href="/energy-flow" className="text-emerald-400 hover:underline">Energiefluss-Diagramm</a> per Drag & Drop hergestellt.</p>
+          </div>
 
           <PortEditor
             ports={editing.ports || []}
