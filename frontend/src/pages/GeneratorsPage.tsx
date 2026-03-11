@@ -9,8 +9,10 @@ import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type {
   Generator, GeneratorType, PvGenerator, ChpGenerator,
   HeatPumpGenerator, BoilerGenerator, ChillerGenerator,
+  EnergyPort, PortEnergy,
 } from '../types'
 import { createDefaultCommunication } from '../types'
+import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
 const typeOptions = [
   { value: 'pv', label: 'PV-Anlage (Photovoltaik)' },
@@ -59,6 +61,24 @@ const typeLabels: Record<GeneratorType, string> = {
   chiller: 'Kältemaschine',
 }
 
+const genNodeColors: Record<GeneratorType, string> = {
+  pv: '#fef3c7', chp: '#ffedd5', heat_pump: '#fee2e2', boiler: '#fee2e2', chiller: '#dbeafe',
+}
+
+function createDefaultPorts(type: GeneratorType, coolingCapable = false): EnergyPort[] {
+  switch (type) {
+    case 'pv':        return [mkPort('output', 'electricity', 'Strom')]
+    case 'chp':       return [mkPort('input', 'gas', 'Erdgas'), mkPort('output', 'electricity', 'Strom'), mkPort('output', 'heat', 'Heizwärme')]
+    case 'heat_pump': {
+      const ports = [mkPort('input', 'electricity', 'Strom'), mkPort('input', 'source', 'Quellenenergie'), mkPort('output', 'heat', 'Heizwärme')]
+      if (coolingCapable) ports.push(mkPort('output', 'cold', 'Kälte'))
+      return ports
+    }
+    case 'boiler':    return [mkPort('input', 'gas', 'Erdgas'), mkPort('output', 'heat', 'Heizwärme')]
+    case 'chiller':   return [mkPort('input', 'electricity', 'Strom'), mkPort('output', 'cold', 'Kälte')]
+  }
+}
+
 function createDefaultGenerator(type: GeneratorType): Generator {
   const base = {
     id: uuid(),
@@ -71,6 +91,7 @@ function createDefaultGenerator(type: GeneratorType): Generator {
     notes: '',
     communication: createDefaultCommunication(),
     assignedMeterIds: [],
+    ports: createDefaultPorts(type),
   }
   switch (type) {
     case 'pv':
@@ -499,6 +520,15 @@ export default function GeneratorsPage() {
               </div>
             </Section>
           )}
+
+          {/* Energie-Ports */}
+          <PortEditor
+            ports={editing.ports || []}
+            onChange={(ports) => updateField('ports' as keyof Generator, ports as never)}
+            onReset={() => updateField('ports' as keyof Generator, createDefaultPorts(editing.type, 'coolingCapable' in editing ? (editing as HeatPumpGenerator).coolingCapable : false) as never)}
+            nodeName={editing.name || typeLabels[editing.type]}
+            nodeColor={genNodeColors[editing.type]}
+          />
 
           {/* Kommunikation */}
           <CommunicationForm

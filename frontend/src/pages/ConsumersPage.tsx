@@ -6,8 +6,9 @@ import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Consumer, ConsumerType, LoadProfile } from '../types'
+import type { Consumer, ConsumerType, LoadProfile, EnergyPort, PortEnergy } from '../types'
 import { createDefaultCommunication } from '../types'
+import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
 const consumerTypeOptions = [
   { value: 'household', label: 'Haushalt' },
@@ -72,6 +73,20 @@ const typeLabels: Record<ConsumerType, string> = {
   other: 'Sonstige',
 }
 
+function createDefaultConsumerPorts(type: ConsumerType): EnergyPort[] {
+  switch (type) {
+    case 'hvac':       return [mkPort('input', 'electricity', 'Strom'), mkPort('input', 'heat', 'Heizung'), mkPort('input', 'cold', 'Kälte')]
+    case 'hot_water':  return [mkPort('input', 'electricity', 'Strom'), mkPort('input', 'heat', 'Wärme')]
+    default:           return [mkPort('input', 'electricity', 'Strom')]
+  }
+}
+
+const consumerNodeColors: Record<ConsumerType, string> = {
+  household: '#dcfce7', commercial: '#f3e8ff', production: '#ffedd5',
+  lighting: '#fef9c3', hvac: '#dbeafe', ventilation: '#cffafe',
+  wallbox: '#d1fae5', hot_water: '#fee2e2', other: '#f3f4f6',
+}
+
 function createDefaultConsumer(type: ConsumerType): Consumer {
   return {
     id: uuid(),
@@ -86,6 +101,7 @@ function createDefaultConsumer(type: ConsumerType): Consumer {
     connectedSourceIds: [],
     assignedMeterIds: [],
     communication: createDefaultCommunication(),
+    ports: createDefaultConsumerPorts(type),
     notes: '',
     wallboxMaxPowerKw: 22,
     wallboxPhases: 3,
@@ -221,7 +237,7 @@ export default function ConsumersPage() {
         <div className="space-y-4">
           <Section title="Grunddaten" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
-              <SelectField label="Typ" value={editing.type} onChange={(v) => { const c = createDefaultConsumer(v as ConsumerType); setEditing({ ...c, id: editing.id, name: editing.name, connectedSourceIds: editing.connectedSourceIds, assignedMeterIds: editing.assignedMeterIds }) }} options={consumerTypeOptions} />
+              <SelectField label="Typ" value={editing.type} onChange={(v) => { const c = createDefaultConsumer(v as ConsumerType); setEditing({ ...c, id: editing.id, name: editing.name, connectedSourceIds: editing.connectedSourceIds, assignedMeterIds: editing.assignedMeterIds, ports: createDefaultConsumerPorts(v as ConsumerType) }) }} options={consumerTypeOptions} />
               <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Haushalt EG, Wallbox Carport" />
             </div>
             <div className="grid grid-cols-3 gap-4">
@@ -275,6 +291,14 @@ export default function ConsumersPage() {
               </div>
             )}
           </Section>
+
+          <PortEditor
+            ports={editing.ports || []}
+            onChange={(ports) => update('ports', ports)}
+            onReset={() => update('ports', createDefaultConsumerPorts(editing.type))}
+            nodeName={editing.name || typeLabels[editing.type]}
+            nodeColor={consumerNodeColors[editing.type]}
+          />
 
           <Section title="Energiequellen" defaultOpen={true}>
             <p className="text-sm text-dark-faded mb-3">Von welchen Quellen wird dieser Verbraucher versorgt?</p>

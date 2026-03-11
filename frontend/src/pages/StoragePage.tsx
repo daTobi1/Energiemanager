@@ -6,8 +6,9 @@ import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Storage, StorageType, BatteryStorage, ThermalStorage, TemperatureSensor } from '../types'
+import type { Storage, StorageType, BatteryStorage, ThermalStorage, TemperatureSensor, EnergyPort, PortEnergy } from '../types'
 import { createDefaultCommunication, createDefaultTemperatureSensor } from '../types'
+import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
 const storageTypeOptions = [
   { value: 'battery', label: 'Batteriespeicher' },
@@ -60,6 +61,20 @@ const typeLabels: Record<StorageType, string> = {
   cold: 'Kältespeicher',
 }
 
+function createDefaultStoragePorts(type: StorageType): EnergyPort[] {
+  switch (type) {
+    case 'battery': return [mkPort('input', 'electricity', 'Laden'), mkPort('output', 'electricity', 'Entladen')]
+    case 'heat':    return [mkPort('input', 'heat', 'Wärmeeintrag'), mkPort('output', 'heat', 'Wärmeentnahme')]
+    case 'cold':    return [mkPort('input', 'cold', 'Kälteeintrag'), mkPort('output', 'cold', 'Kälteentnahme')]
+  }
+}
+
+const storageNodeColors: Record<StorageType, string> = {
+  battery: '#f3e8ff',
+  heat: '#fee2e2',
+  cold: '#dbeafe',
+}
+
 function createDefaultBattery(): BatteryStorage {
   return {
     id: uuid(), name: '', type: 'battery',
@@ -74,7 +89,7 @@ function createDefaultBattery(): BatteryStorage {
     temperatureSensors: [],
     connectedGeneratorIds: [], connectedConsumerIds: [],
     communication: createDefaultCommunication(),
-    assignedMeterIds: [], notes: '',
+    assignedMeterIds: [], ports: createDefaultStoragePorts('battery'), notes: '',
   }
 }
 
@@ -98,7 +113,7 @@ function createDefaultThermal(type: 'heat' | 'cold'): ThermalStorage {
       { ...createDefaultTemperatureSensor(), id: uuid(), name: 'Unten', position: 'bottom' },
     ],
     connectedGeneratorIds: [], connectedConsumerIds: [],
-    assignedMeterIds: [],
+    assignedMeterIds: [], ports: createDefaultStoragePorts(type),
     stratificationEnabled: isHeat, numberOfLayers: isHeat ? 4 : 1,
     hasElectricalHeatingElement: isHeat,
     heatingElementPowerKw: isHeat ? 3 : 0,
@@ -217,7 +232,7 @@ export default function StoragePage() {
               <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder={isBattery ? 'z.B. Hausbatterie' : 'z.B. Pufferspeicher'} />
               <SelectField label="Typ" value={editing.type} onChange={(v) => {
                 const s = v === 'battery' ? createDefaultBattery() : createDefaultThermal(v as 'heat' | 'cold')
-                setEditing({ ...s, id: editing.id, name: editing.name })
+                setEditing({ ...s, id: editing.id, name: editing.name, ports: createDefaultStoragePorts(v as StorageType) })
               }} options={storageTypeOptions} />
             </div>
             {isBattery && (
@@ -385,6 +400,14 @@ export default function StoragePage() {
 
             </>
           )}
+
+          <PortEditor
+            ports={editing.ports || []}
+            onChange={(ports) => update('ports', ports as any)}
+            onReset={() => update('ports', createDefaultStoragePorts(editing.type) as any)}
+            nodeName={editing.name || typeLabels[editing.type]}
+            nodeColor={storageNodeColors[editing.type]}
+          />
 
           {/* Anschlüsse für alle Speichertypen */}
           <Section title="Anschlüsse / Zuordnungen" defaultOpen={true}>

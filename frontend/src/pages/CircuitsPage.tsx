@@ -6,8 +6,9 @@ import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { HeatingCoolingCircuit, CircuitType, DistributionType, PumpType, ControllableComponent, CommunicationConfig } from '../types'
+import type { HeatingCoolingCircuit, CircuitType, DistributionType, PumpType, ControllableComponent, CommunicationConfig, EnergyPort, PortEnergy } from '../types'
 import { createDefaultCircuit, createDefaultControllableComponent } from '../types'
+import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
 const circuitTypeOptions = [
   { value: 'heating', label: 'Heizkreis' },
@@ -37,6 +38,20 @@ const typeColors: Record<CircuitType, string> = {
   heating: 'bg-red-500/15 text-red-400',
   cooling: 'bg-blue-500/15 text-blue-400',
   combined: 'bg-purple-500/15 text-purple-400',
+}
+
+function createDefaultCircuitPorts(type: CircuitType): EnergyPort[] {
+  switch (type) {
+    case 'heating':  return [mkPort('input', 'heat', 'Wärme'), mkPort('output', 'heat', 'Wärmeabgabe')]
+    case 'cooling':  return [mkPort('input', 'cold', 'Kälte'), mkPort('output', 'cold', 'Kälteabgabe')]
+    case 'combined': return [mkPort('input', 'heat', 'Wärme'), mkPort('input', 'cold', 'Kälte'), mkPort('output', 'heat', 'Wärmeabgabe'), mkPort('output', 'cold', 'Kälteabgabe')]
+  }
+}
+
+const circuitNodeColors: Record<CircuitType, string> = {
+  heating: '#fee2e2',
+  cooling: '#dbeafe',
+  combined: '#f3e8ff',
 }
 
 const distributionLabels: Record<DistributionType, string> = {
@@ -93,8 +108,8 @@ export default function CircuitsPage() {
   const [showForm, setShowForm] = useState(false)
   const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
-  const startAdd = () => {
-    setEditing({ ...createDefaultCircuit(), id: uuid() })
+  const startAdd = (type: CircuitType = 'heating') => {
+    setEditing({ ...createDefaultCircuit(), id: uuid(), type, ports: createDefaultCircuitPorts(type) })
     setShowForm(true)
   }
   const startEdit = (c: HeatingCoolingCircuit) => { setEditing({ ...c }); setShowForm(true) }
@@ -117,10 +132,8 @@ export default function CircuitsPage() {
   // Flow-Create: Aus Energiefluss-Diagramm zum Erstellen navigiert
   useEffect(() => {
     if (flowCreateNew && !showForm) {
-      const circuit = { ...createDefaultCircuit(), id: uuid() }
-      if (flowInitialValues?.type) {
-        circuit.type = flowInitialValues.type as CircuitType
-      }
+      const type = (flowInitialValues?.type as CircuitType) || 'heating'
+      const circuit = { ...createDefaultCircuit(), id: uuid(), type, ports: createDefaultCircuitPorts(type) }
       setEditing(circuit)
       setShowForm(true)
     }
@@ -210,7 +223,7 @@ export default function CircuitsPage() {
           <Section title="Grunddaten" defaultOpen={true}>
             <div className="grid grid-cols-2 gap-4">
               <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. FBH Erdgeschoss, Heizkörper OG" />
-              <SelectField label="Typ" value={editing.type} onChange={(v) => update('type', v as CircuitType)} options={circuitTypeOptions} />
+              <SelectField label="Typ" value={editing.type} onChange={(v) => { update('type', v as CircuitType); update('ports', createDefaultCircuitPorts(v as CircuitType)) }} options={circuitTypeOptions} />
             </div>
             <SelectField label="Verteilsystem" value={editing.distributionType} onChange={(v) => {
               const dt = v as DistributionType
@@ -229,6 +242,14 @@ export default function CircuitsPage() {
               setEditing({ ...editing, ...updates })
             }} options={distributionOptions} info="Art der Wärme-/Kälteabgabe im Raum. Temperaturen und Heizkurve werden automatisch vorbelegt." />
           </Section>
+
+          <PortEditor
+            ports={editing.ports || []}
+            onChange={(ports) => update('ports', ports)}
+            onReset={() => update('ports', createDefaultCircuitPorts(editing.type))}
+            nodeName={editing.name || typeLabels[editing.type]}
+            nodeColor={circuitNodeColors[editing.type]}
+          />
 
           <Section title="Regelung" defaultOpen={true} badge={editing.controllable ? `${countActive(editing)} Komponenten` : undefined}>
             <CheckboxField

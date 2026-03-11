@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef } from 'react'
+import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { Sun, Flame, Thermometer, Snowflake, Battery, Plug, Zap, Home, Waypoints, Gauge, Plus } from 'lucide-react'
@@ -25,10 +25,13 @@ interface FlowEdge {
   dashed?: boolean
   deletable?: boolean
   bidirectional?: boolean
+  fromY?: number
+  toY?: number
 }
 
 const NODE_W = 100
 const NODE_H = 36
+const NODE_H_DUAL = 48
 const METER_W = 84
 const METER_H = 30
 
@@ -64,6 +67,112 @@ const meterColors: Record<MeterType, { bg: string; icon: string }> = {
   gas: { bg: '#fff7ed', icon: '#ea580c' },
   water: { bg: '#eff6ff', icon: '#2563eb' },
   cold: { bg: '#eff6ff', icon: '#0891b2' },
+}
+
+// Energieform-Farben (konsistent im ganzen Diagramm)
+const energyColors: Record<string, string> = {
+  electricity: '#3b82f6', // blau
+  heat: '#dc2626',        // rot
+  hot_water: '#ea580c',   // orange-rot (Warmwasser)
+  gas: '#d97706',         // orange
+  source: '#0891b2',      // cyan (Quellenenergie WP)
+  cold: '#2563eb',        // blau
+}
+
+// Port-Definitionen pro Erzeuger: welche Energieformen rein/raus
+type PortDef = { energy: string; color: string }
+type PortLayout = { left: PortDef[]; right: PortDef[] }
+
+// Port-Layout aus konfigurierten EnergyPorts berechnen (Fallback: Defaults pro Typ)
+import type { EnergyPort } from '../types'
+
+const portsToLayout = (ports: EnergyPort[]): PortLayout => {
+  const left = ports.filter((p) => p.side === 'input').map((p) => ({ energy: p.energy, color: energyColors[p.energy] || '#888' }))
+  const right = ports.filter((p) => p.side === 'output').map((p) => ({ energy: p.energy, color: energyColors[p.energy] || '#888' }))
+  return { left, right }
+}
+
+// Default-Ports pro Erzeugertyp (Fallback wenn ports[] leer)
+const getDefaultPortDefs = (genType: string, coolingCapable = false): PortLayout => {
+  switch (genType) {
+    case 'pv':
+      return { left: [], right: [{ energy: 'electricity', color: energyColors.electricity }] }
+    case 'chp':
+      return { left: [{ energy: 'gas', color: energyColors.gas }], right: [{ energy: 'electricity', color: energyColors.electricity }, { energy: 'heat', color: energyColors.heat }] }
+    case 'heat_pump': {
+      const right: PortDef[] = [{ energy: 'heat', color: energyColors.heat }]
+      if (coolingCapable) right.push({ energy: 'cold', color: energyColors.cold })
+      return { left: [{ energy: 'electricity', color: energyColors.electricity }, { energy: 'source', color: energyColors.source }], right }
+    }
+    case 'boiler':
+      return { left: [{ energy: 'gas', color: energyColors.gas }], right: [{ energy: 'heat', color: energyColors.heat }] }
+    case 'chiller':
+      return { left: [{ energy: 'electricity', color: energyColors.electricity }], right: [{ energy: 'cold', color: energyColors.cold }] }
+    default:
+      return { left: [], right: [] }
+  }
+}
+
+// Generator-Ports: konfiguriert oder Default
+const getGenPortLayout = (gen: { type: string; ports?: EnergyPort[]; coolingCapable?: boolean }): PortLayout => {
+  if (gen.ports && gen.ports.length > 0) return portsToLayout(gen.ports)
+  return getDefaultPortDefs(gen.type, gen.coolingCapable)
+}
+
+// Speicher-Ports: konfiguriert oder Default
+const getStorPortLayout = (stor: { type: string; ports?: EnergyPort[] }): PortLayout => {
+  if (stor.ports && stor.ports.length > 0) return portsToLayout(stor.ports)
+  const e = stor.type === 'battery' ? 'electricity' : stor.type === 'heat' ? 'heat' : 'cold'
+  const c = energyColors[e] || '#888'
+  return { left: [{ energy: e, color: c }], right: [{ energy: e, color: c }] }
+}
+
+// Verbraucher-Ports: konfiguriert oder Default
+const getConPortLayout = (con: { type: string; ports?: EnergyPort[] }): PortLayout => {
+  if (con.ports && con.ports.length > 0) return portsToLayout(con.ports)
+  if (con.type === 'hvac') return { left: [{ energy: 'electricity', color: energyColors.electricity }, { energy: 'heat', color: energyColors.heat }, { energy: 'cold', color: energyColors.cold }], right: [] }
+  if (con.type === 'hot_water') return { left: [{ energy: 'electricity', color: energyColors.electricity }, { energy: 'heat', color: energyColors.heat }], right: [] }
+  return { left: [{ energy: 'electricity', color: energyColors.electricity }], right: [] }
+}
+
+// Heiz-/Kühlkreis-Ports: konfiguriert oder Default
+const getCircPortLayout = (circ: { type: string; ports?: EnergyPort[] }): PortLayout => {
+  if (circ.ports && circ.ports.length > 0) return portsToLayout(circ.ports)
+  if (circ.type === 'combined') return { left: [{ energy: 'heat', color: energyColors.heat }, { energy: 'cold', color: energyColors.cold }], right: [{ energy: 'heat', color: energyColors.heat }, { energy: 'cold', color: energyColors.cold }] }
+  if (circ.type === 'cooling') return { left: [{ energy: 'cold', color: energyColors.cold }], right: [{ energy: 'cold', color: energyColors.cold }] }
+  return { left: [{ energy: 'heat', color: energyColors.heat }], right: [{ energy: 'heat', color: energyColors.heat }] }
+}
+
+// Zähler-Ports: konfiguriert oder Default
+const getMeterPortLayout = (meter: { type: string; direction?: string; ports?: EnergyPort[] }): PortLayout => {
+  if (meter.ports && meter.ports.length > 0) return portsToLayout(meter.ports)
+  const e = meter.type === 'heat' ? 'heat' : meter.type === 'gas' ? 'gas' : meter.type === 'cold' ? 'cold' : 'electricity'
+  const c = energyColors[e] || '#888'
+  return { left: [{ energy: e, color: c }], right: [{ energy: e, color: c }] }
+}
+
+// Raum-Ports: konfiguriert oder Default
+const getRoomPortLayout = (room: { coolingEnabled?: boolean; ports?: EnergyPort[] }): PortLayout => {
+  if (room.ports && room.ports.length > 0) return portsToLayout(room.ports)
+  const left: PortDef[] = [{ energy: 'heat', color: energyColors.heat }]
+  if (room.coolingEnabled) left.push({ energy: 'cold', color: energyColors.cold })
+  return { left, right: [] }
+}
+
+// Energieform-Farbe für Generator→Ziel-Verbindung bestimmen
+const getGenEdgeEnergy = (genType: string, targetStorType?: string): { color: string; energy: string } => {
+  if (genType === 'chp') {
+    if (targetStorType === 'battery') return { color: energyColors.electricity, energy: 'electricity' }
+    return { color: energyColors.heat, energy: 'heat' }
+  }
+  if (genType === 'pv') return { color: energyColors.electricity, energy: 'electricity' }
+  if (genType === 'heat_pump') {
+    if (targetStorType === 'cold') return { color: energyColors.cold, energy: 'cold' }
+    return { color: energyColors.heat, energy: 'heat' }
+  }
+  if (genType === 'boiler') return { color: energyColors.heat, energy: 'heat' }
+  if (genType === 'chiller') return { color: energyColors.cold, energy: 'cold' }
+  return { color: '#888', energy: '' }
 }
 
 const nodePathMap: Record<string, string> = {
@@ -116,9 +225,61 @@ export default function EnergyFlowPage() {
   const [showCircuitTypeDialog, setShowCircuitTypeDialog] = useState(false)
   const [openColumnPopup, setOpenColumnPopup] = useState<string | null>(null)
   const [connecting, setConnecting] = useState<{
-    nodeId: string; type: FlowNode['type']; entityId: string; x: number; y: number
+    nodeId: string; type: FlowNode['type']; entityId: string; x: number; y: number; energy?: string
   } | null>(null)
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
+
+  // --- Drag-to-reorder: Y-Position manuell verschieben ---
+  const LS_KEY = 'energyflow-yoffsets'
+  const [yOffsets, setYOffsets] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem(LS_KEY) || '{}') } catch { return {} }
+  })
+  const saveOffsets = useCallback((next: Record<string, number>) => {
+    setYOffsets(next)
+    localStorage.setItem(LS_KEY, JSON.stringify(next))
+  }, [])
+
+  const dragging = useRef<{
+    nodeId: string; startMouseY: number; startOffset: number; moved: boolean
+  } | null>(null)
+
+  const handleDragStart = (node: FlowNode, e: React.MouseEvent) => {
+    if (connecting) return
+    if (node.type === 'grid') return // Hausanschluss nicht verschiebbar
+    e.stopPropagation()
+    const pt = getSvgPoint(e)
+    dragging.current = {
+      nodeId: node.id,
+      startMouseY: pt.y,
+      startOffset: yOffsets[node.id] || 0,
+      moved: false,
+    }
+  }
+
+  const handleDragMove = (e: React.MouseEvent) => {
+    if (!dragging.current) return
+    const pt = getSvgPoint(e)
+    const dy = pt.y - dragging.current.startMouseY
+    if (Math.abs(dy) > 3) dragging.current.moved = true
+    if (!dragging.current.moved) return
+    const newOffset = dragging.current.startOffset + dy
+    saveOffsets({ ...yOffsets, [dragging.current.nodeId]: newOffset })
+  }
+
+  const handleDragEnd = () => {
+    dragging.current = null
+  }
+
+  // Globaler mouseup (falls Maus das SVG verlässt)
+  useEffect(() => {
+    const up = () => { dragging.current = null }
+    window.addEventListener('mouseup', up)
+    return () => window.removeEventListener('mouseup', up)
+  }, [])
+
+  const resetPositions = useCallback(() => {
+    saveOffsets({})
+  }, [saveOffsets])
 
   const handleNodeClick = (node: FlowNode) => {
     const path = nodePathMap[node.type]
@@ -216,13 +377,14 @@ export default function EnergyFlowPage() {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }
 
-  const startConnect = (node: FlowNode, side: 'left' | 'right', e: React.MouseEvent) => {
+  const startConnect = (node: FlowNode, side: 'left' | 'right', e: React.MouseEvent, energy?: string, cy?: number) => {
     e.stopPropagation()
     const entityId = node.id === 'bus' ? 'grid' : node.id.substring(node.id.indexOf('-') + 1)
     setConnecting({
       nodeId: node.id, type: node.type, entityId,
       x: side === 'right' ? node.x + node.w / 2 : node.x - node.w / 2,
-      y: node.y + node.h / 2,
+      y: cy ?? (node.y + node.h / 2),
+      energy,
     })
     setMousePos(getSvgPoint(e))
   }
@@ -346,18 +508,33 @@ export default function EnergyFlowPage() {
           }
         }
       }
-      // Wenn der Zähler einem Verbraucher zugeordnet ist und man grid verbindet → connectedSourceIds
+      // Wenn der Zähler einem Erzeuger zugeordnet ist und man grid verbindet → Durchverbindung (Erzeuger → Zähler → Hausanschluss)
+      if (m.assignedToType === 'generator' && m.assignedToId && otherType === 'grid') {
+        if (m.parentMeterId !== 'grid') {
+          updateMeter(meterId, { ...m, parentMeterId: 'grid' })
+        }
+        setConnecting(null); return
+      }
+      // Wenn der Zähler einem Verbraucher zugeordnet ist und man grid verbindet → connectedSourceIds + parentMeterId
       if (m.assignedToType === 'consumer' && m.assignedToId && otherType === 'grid') {
         const c = consumers.find((c) => c.id === m.assignedToId)
         if (c && !(c.connectedSourceIds || []).includes('grid')) {
           updateConsumer(c.id, { ...c, connectedSourceIds: [...(c.connectedSourceIds || []), 'grid'] })
+        }
+        if (m.parentMeterId !== 'grid') {
+          updateMeter(meterId, { ...m, parentMeterId: 'grid' })
         }
         setConnecting(null); return
       }
 
       // Standard: Zähler dem Gerät zuordnen
       const aType = otherType === 'grid' ? 'grid' : otherType as any
-      updateMeter(meterId, { ...m, assignedToType: aType, assignedToId: otherType === 'grid' ? 'grid' : otherId })
+      updateMeter(meterId, {
+        ...m,
+        assignedToType: aType,
+        assignedToId: otherType === 'grid' ? 'grid' : otherId,
+        ...(otherType === 'grid' ? { parentMeterId: 'grid' } : {}),
+      })
     }
 
     setConnecting(null)
@@ -429,21 +606,27 @@ export default function EnergyFlowPage() {
           }
         }
       }
+      // Wenn Zähler einem Erzeuger zugeordnet ist und grid-Kante gelöscht wird → nur parentMeterId löschen
+      if (m.assignedToType === 'generator' && m.assignedToId && other.prefix === 'bus') {
+        updateMeter(meterId, { ...m, parentMeterId: '' })
+        return
+      }
       // Wenn Zähler einem Verbraucher zugeordnet ist und grid-Kante gelöscht wird
       if (m.assignedToType === 'consumer' && m.assignedToId && other.prefix === 'bus') {
         const c = consumers.find((c) => c.id === m.assignedToId)
         if (c) {
           updateConsumer(c.id, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== 'grid') })
-          return
         }
+        updateMeter(meterId, { ...m, parentMeterId: '' })
+        return
       }
 
-      // Standard: Zähler-Zuweisung löschen
-      updateMeter(meterId, { ...m, assignedToType: 'none', assignedToId: '' })
+      // Standard: Zähler-Zuweisung löschen (parentMeterId zurücksetzen bei Grid-Verbindung)
+      updateMeter(meterId, { ...m, assignedToType: 'none', assignedToId: '', ...(other.prefix === 'bus' ? { parentMeterId: '' } : {}) })
     }
   }
 
-  const { nodes, edges, roomGroups } = useMemo(() => {
+  const { nodes, edges, roomGroups, genPortMap, storPortMap, conPortMap, circPortMap, roomPortMap, meterPortMap } = useMemo(() => {
     const nodes: FlowNode[] = []
     const edges: FlowEdge[] = []
 
@@ -460,10 +643,10 @@ export default function EnergyFlowPage() {
     // Y reservieren ohne zu incrementen
     const peekY = (col: string) => colNext[col] ?? startY
 
-    const mkNode = (id: string, label: string, type: FlowNode['type'], subType: string, x: number, y: number, color: string, iconColor: string): FlowNode =>
-      ({ id, label, type, subType, x, y, color, iconColor, w: NODE_W, h: NODE_H })
+    const mkNode = (id: string, label: string, type: FlowNode['type'], subType: string, x: number, y: number, color: string, iconColor: string, h = NODE_H): FlowNode =>
+      ({ id, label, type, subType, x, y: y + (yOffsets[id] || 0), color, iconColor, w: NODE_W, h })
     const mkMeter = (id: string, label: string, subType: string, x: number, y: number, color: string, iconColor: string): FlowNode =>
-      ({ id, label, type: 'meter', subType, x, y, color, iconColor, w: METER_W, h: METER_H })
+      ({ id, label, type: 'meter', subType, x, y: y + (yOffsets[id] || 0), color, iconColor, w: METER_W, h: METER_H })
 
     // ============================
     // 1) ERZEUGER-SPALTE (col 2)
@@ -473,17 +656,34 @@ export default function EnergyFlowPage() {
     nodes.push(mkNode('bus', 'Hausanschluss', 'grid', 'grid', cx.gen, busY, '#dbeafe', '#3b82f6'))
 
     const genYMap: Record<string, number> = {}
+    const genPortMap: Record<string, PortLayout> = {} // Port-Layout pro Generator-ID
     generators.forEach((g) => {
       const c = genColors[g.type]
       const y = getY('gen')
       genYMap[g.id] = y
-      nodes.push(mkNode(`gen-${g.id}`, g.name || g.type, 'generator', g.type, cx.gen, y, c.bg, c.icon))
+      const ports = getGenPortLayout(g as any)
+      genPortMap[g.id] = ports
+      const hasDualPorts = ports.left.length > 1 || ports.right.length > 1
+      nodes.push(mkNode(`gen-${g.id}`, g.name || g.type, 'generator', g.type, cx.gen, y, c.bg, c.icon, hasDualPorts ? NODE_H_DUAL : NODE_H))
     })
+
+    // Port-Y-Position für einen Energie-Port an einem Generator-Node
+    const portY = (genId: string, energy: string, side: 'left' | 'right'): number | undefined => {
+      const layout = genPortMap[genId]
+      const node = nodes.find((n) => n.id === `gen-${genId}`)
+      if (!layout || !node) return undefined
+      const defs = layout[side]
+      if (defs.length <= 1) return undefined // kein Offset nötig bei single-port
+      const idx = defs.findIndex((p) => p.energy === energy)
+      if (idx < 0) return undefined
+      return node.y + node.h * ((idx + 0.5) / defs.length)
+    }
 
     // ============================
     // 2) SPEICHER-SPALTE (col 4)
     // ============================
     const storYMap: Record<string, number> = {}
+    const storPortMap: Record<string, PortLayout> = {}
     // Thermische Speicher zuerst, dann Batterie (damit Batteriezähler horizontal passt)
     const thermStor = storages.filter((s) => s.type !== 'battery')
     const batStor = storages.filter((s) => s.type === 'battery')
@@ -491,34 +691,54 @@ export default function EnergyFlowPage() {
       const c = storColors[s.type]
       const y = getY('stor')
       storYMap[s.id] = y
-      nodes.push(mkNode(`stor-${s.id}`, s.name || s.type, 'storage', s.type, cx.stor, y, c.bg, c.icon))
+      const ports = getStorPortLayout(s as any)
+      storPortMap[s.id] = ports
+      const hasDual = ports.left.length > 1 || ports.right.length > 1
+      nodes.push(mkNode(`stor-${s.id}`, s.name || s.type, 'storage', s.type, cx.stor, y, c.bg, c.icon, hasDual ? NODE_H_DUAL : NODE_H))
     })
 
     // ============================
     // 3) HEIZ-/KÜHLKREISE (col 6)
     // ============================
+    const circPortMap: Record<string, PortLayout> = {}
     circuits.forEach((c) => {
       const cc = circuitColors[c.type]
       const y = getY('circuit')
-      nodes.push(mkNode(`circ-${c.id}`, c.name, 'circuit', c.type, cx.circuit, y, cc.bg, cc.icon))
+      const ports = getCircPortLayout(c as any)
+      circPortMap[c.id] = ports
+      const hasDual = ports.left.length > 1 || ports.right.length > 1
+      nodes.push(mkNode(`circ-${c.id}`, c.name, 'circuit', c.type, cx.circuit, y, cc.bg, cc.icon, hasDual ? NODE_H_DUAL : NODE_H))
     })
 
     // ============================
     // 4) RÄUME (col 8)
     // ============================
     const roomYMap: Record<string, number> = {}
+    const roomPortMap: Record<string, PortLayout> = {}
     rooms.forEach((r) => {
       const y = getY('room')
       roomYMap[r.id] = y
-      nodes.push(mkNode(`room-${r.id}`, r.name, 'room', r.roomType, cx.room, y, '#ecfdf5', '#16a34a'))
+      const ports = getRoomPortLayout(r as any)
+      roomPortMap[r.id] = ports
+      const hasDual = ports.left.length > 1 || ports.right.length > 1
+      nodes.push(mkNode(`room-${r.id}`, r.name, 'room', r.roomType, cx.room, y, '#ecfdf5', '#16a34a', hasDual ? NODE_H_DUAL : NODE_H))
     })
 
     // ============================
     // 5) VERBRAUCHER (col 10)
     // ============================
+    const conPortMap: Record<string, PortLayout> = {}
     const consumersInRooms = new Set<string>()
     rooms.forEach((r) => (r.consumerIds || []).forEach((cid) => consumersInRooms.add(cid)))
     const unassignedConsumers = consumers.filter((c) => !consumersInRooms.has(c.id))
+
+    const mkConNode = (consumer: typeof consumers[0]) => {
+      const y = getY('con')
+      const ports = getConPortLayout(consumer as any)
+      conPortMap[consumer.id] = ports
+      const hasDual = ports.left.length > 1 || ports.right.length > 1
+      nodes.push(mkNode(`con-${consumer.id}`, consumer.name || consumer.type, 'consumer', consumer.type, cx.con, y, '#f0fdf4', conColors[consumer.type], hasDual ? NODE_H_DUAL : NODE_H))
+    }
 
     interface RoomGroup { roomId: string; roomName: string; y: number; consumerIds: string[] }
     const roomGroupsInner: RoomGroup[] = []
@@ -530,16 +750,12 @@ export default function EnergyFlowPage() {
         roomGroupsInner.push({ roomId: r.id, roomName: r.name, y: groupY, consumerIds: rCons })
         rCons.forEach((cid) => {
           const consumer = consumers.find((c) => c.id === cid)
-          if (consumer) {
-            const y = getY('con')
-            nodes.push(mkNode(`con-${consumer.id}`, consumer.name || consumer.type, 'consumer', consumer.type, cx.con, y, '#f0fdf4', conColors[consumer.type]))
-          }
+          if (consumer) mkConNode(consumer)
         })
       }
     })
     unassignedConsumers.forEach((c) => {
-      const y = getY('con')
-      nodes.push(mkNode(`con-${c.id}`, c.name || c.type, 'consumer', c.type, cx.con, y, '#f0fdf4', conColors[c.type]))
+      mkConNode(c)
     })
 
     // ============================
@@ -550,6 +766,7 @@ export default function EnergyFlowPage() {
       circuit: 'circM', group: 'groupM', end: 'endM',
     }
     const meterNodeMap: Record<string, FlowNode> = {}
+    const meterPortMap: Record<string, PortLayout> = {}
 
     // Kollisionserkennung: pro Spalte belegte Y-Positionen tracken
     const meterColUsedY: Record<string, number[]> = {}
@@ -593,6 +810,8 @@ export default function EnergyFlowPage() {
 
       const meterY = claimMeterY(colKey, desiredY)
       const mid = `meter-${m.id}`
+      const ports = getMeterPortLayout(m as any)
+      meterPortMap[m.id] = ports
       const node = mkMeter(mid, m.name || m.meterNumber || 'Zähler', m.type, cx[colKey], meterY, mc.bg, mc.icon)
       nodes.push(node)
       meterNodeMap[m.id] = node
@@ -607,24 +826,33 @@ export default function EnergyFlowPage() {
       if (m.category !== 'source') return
       const mc = meterColors[m.type] || meterColors.electricity
       if (m.assignedToType === 'grid') {
-        // Hauptzähler → Hausanschluss (EVU-Einspeisung)
-        edges.push({ from: `meter-${m.id}`, to: 'bus', color: '#3b82f6', deletable: true, animated: true, bidirectional: true })
+        edges.push({ from: `meter-${m.id}`, to: 'bus', color: energyColors[m.type === 'gas' ? 'gas' : 'electricity'], deletable: true, animated: true, bidirectional: m.type === 'electricity' })
       } else {
         const gen = generators.find((g) => g.id === m.assignedToId)
-        if (gen) edges.push({ from: `meter-${m.id}`, to: `gen-${gen.id}`, color: mc.icon, deletable: true, animated: true })
+        if (gen) {
+          // Quellenzähler → linker Port des Erzeugers (Eingang)
+          const leftEnergy = m.type === 'gas' ? 'gas' : m.type === 'heat' ? 'source' : 'electricity'
+          const toY = portY(gen.id, leftEnergy, 'left')
+          const edgeColor = energyColors[leftEnergy] || mc.icon
+          edges.push({ from: `meter-${m.id}`, to: `gen-${gen.id}`, color: edgeColor, deletable: true, animated: true, toY })
+        }
       }
     })
 
     // (b) Erzeuger → Erzeugerzähler (PV/CHP → Zähler)
     meters.forEach((m) => {
       if (m.category !== 'generation') return
-      if (m.assignedToType === 'storage') return // wird in (c) über connectedGeneratorIds behandelt
+      if (m.assignedToType === 'storage') return
       if (m.assignedToType === 'generator') {
         const gen = generators.find((g) => g.id === m.assignedToId)
         if (!gen) return
-        edges.push({ from: `gen-${gen.id}`, to: `meter-${m.id}`, color: genColors[gen.type].icon, animated: true, deletable: true })
+        // Zählertyp bestimmt den Energie-Port (Stromzähler → Strom-Port, Wärmezähler → Wärme-Port)
+        const meterEnergy = m.type === 'electricity' ? 'electricity' : m.type === 'heat' ? 'heat' : m.type === 'cold' ? 'cold' : m.type === 'gas' ? 'gas' : 'electricity'
+        const edgeColor = energyColors[meterEnergy] || genColors[gen.type].icon
+        const fromY = portY(gen.id, meterEnergy, 'right')
+        edges.push({ from: `gen-${gen.id}`, to: `meter-${m.id}`, color: edgeColor, animated: true, deletable: true, fromY })
       } else if (m.assignedToType === 'grid') {
-        edges.push({ from: 'bus', to: `meter-${m.id}`, color: '#3b82f6', animated: true, deletable: true })
+        edges.push({ from: 'bus', to: `meter-${m.id}`, color: energyColors.electricity, animated: true, deletable: true })
       }
     })
 
@@ -636,21 +864,22 @@ export default function EnergyFlowPage() {
 
       connGens.forEach((gid) => {
         if (gid === 'grid') {
-          // Grid ↔ Speicher (bidirektional bei Batterie)
+          const gridColor = isBat ? energyColors.electricity : storColors[s.type].icon
           if (storMeter) {
-            edges.push({ from: 'bus', to: `meter-${storMeter.id}`, color: '#7c3aed', deletable: true, animated: true, bidirectional: isBat })
+            edges.push({ from: 'bus', to: `meter-${storMeter.id}`, color: gridColor, deletable: true, animated: true, bidirectional: isBat })
           } else {
-            edges.push({ from: 'bus', to: `stor-${s.id}`, color: '#7c3aed', deletable: true, animated: true, bidirectional: isBat })
+            edges.push({ from: 'bus', to: `stor-${s.id}`, color: gridColor, deletable: true, animated: true, bidirectional: isBat })
           }
           return
         }
         const gen = generators.find((g) => g.id === gid)
         if (!gen) return
-        const c = genColors[gen.type]
+        const ee = getGenEdgeEnergy(gen.type, s.type)
+        const fromY = portY(gid, ee.energy, 'right')
         if (storMeter) {
-          edges.push({ from: `gen-${gid}`, to: `meter-${storMeter.id}`, color: c.icon, deletable: true, animated: true, bidirectional: isBat })
+          edges.push({ from: `gen-${gid}`, to: `meter-${storMeter.id}`, color: ee.color, deletable: true, animated: true, bidirectional: isBat, fromY })
         } else {
-          edges.push({ from: `gen-${gid}`, to: `stor-${s.id}`, color: c.icon, deletable: true, animated: true, bidirectional: isBat })
+          edges.push({ from: `gen-${gid}`, to: `stor-${s.id}`, color: ee.color, deletable: true, animated: true, bidirectional: isBat, fromY })
         }
       })
 
@@ -663,15 +892,20 @@ export default function EnergyFlowPage() {
       const connCons = s.connectedConsumerIds || []
       connCons.forEach((cid) => {
         if (!consumers.some((c) => c.id === cid)) return
-        edges.push({ from: `stor-${s.id}`, to: `con-${cid}`, color: isBat ? '#7c3aed' : storColors[s.type].icon, deletable: true, animated: true, bidirectional: isBat })
+        edges.push({ from: `stor-${s.id}`, to: `con-${cid}`, color: isBat ? energyColors.electricity : storColors[s.type].icon, deletable: true, animated: true, bidirectional: isBat })
       })
     })
 
-    // (d) Speicher → Kreise
+    // (d) Speicher/Erzeuger → Kreise
     circuits.forEach((c) => {
       const cc = circuitColors[c.type]
       c.supplyStorageIds?.forEach((sid) => edges.push({ from: `stor-${sid}`, to: `circ-${c.id}`, color: cc.icon, deletable: true, animated: true }))
-      c.generatorIds.forEach((gid) => edges.push({ from: `gen-${gid}`, to: `circ-${c.id}`, color: cc.icon, deletable: true, animated: true }))
+      c.generatorIds.forEach((gid) => {
+        // Heiz-/Kühlkreis bekommt Wärme/Kälte-Port
+        const energy = c.type === 'cooling' ? 'cold' : 'heat'
+        const fromY = portY(gid, energy, 'right')
+        edges.push({ from: `gen-${gid}`, to: `circ-${c.id}`, color: cc.icon, deletable: true, animated: true, fromY })
+      })
     })
 
     // (e) Kreise → Räume
@@ -689,10 +923,14 @@ export default function EnergyFlowPage() {
       })
     })
 
-    // (g0) Hausanschluss → Verbraucher (über connectedSourceIds)
+    // (g0) Hausanschluss → Verbraucher (über connectedSourceIds, aber nur direkt wenn kein Zähler dazwischen)
     consumers.forEach((c) => {
       if ((c.connectedSourceIds || []).includes('grid')) {
-        edges.push({ from: 'bus', to: `con-${c.id}`, color: '#3b82f6', deletable: true, animated: true })
+        // Wenn ein Zähler den Weg grid→meter→consumer abbildet, keine Direkt-Kante zeichnen
+        const hasMeterRoute = meters.some((m) => m.parentMeterId === 'grid' && m.assignedToType === 'consumer' && m.assignedToId === c.id)
+        if (!hasMeterRoute) {
+          edges.push({ from: 'bus', to: `con-${c.id}`, color: '#3b82f6', deletable: true, animated: true })
+        }
       }
     })
 
@@ -720,17 +958,41 @@ export default function EnergyFlowPage() {
       })
     })
 
-    // (i) Endzähler: Verbraucher → Endzähler
+    // (i) Endzähler: Verbraucher → Endzähler (oder Meter → Verbraucher wenn grid-connected)
     meters.forEach((m) => {
       if (m.category !== 'end') return
       if (m.assignedToId) {
         const mc = meterColors[m.type] || meterColors.electricity
-        edges.push({ from: `con-${m.assignedToId}`, to: `meter-${m.id}`, color: mc.icon, deletable: true, animated: true })
+        if (m.parentMeterId === 'grid') {
+          // Grid-connected: Kabel geht grid → meter → consumer
+          edges.push({ from: `meter-${m.id}`, to: `con-${m.assignedToId}`, color: mc.icon, deletable: true, animated: true })
+        } else {
+          edges.push({ from: `con-${m.assignedToId}`, to: `meter-${m.id}`, color: mc.icon, deletable: true, animated: true })
+        }
       }
     })
 
-    return { nodes, edges, roomGroups: roomGroupsInner }
-  }, [generators, storages, consumers, circuits, rooms, meters, settings])
+    // (j) Hausanschluss ↔ Zähler (über parentMeterId — Kabel zwischen Netz und Zähler)
+    meters.forEach((m) => {
+      if (m.parentMeterId !== 'grid') return
+      if (!meterNodeMap[m.id]) return
+      // Quellen-/Erzeugerzähler die grid-assigned sind werden bereits in (a)/(b) gezeichnet
+      if (m.category === 'source' && m.assignedToType === 'grid') return
+      if (m.category === 'generation' && m.assignedToType === 'grid') return
+      // Storage-zugeordnete Zähler werden in (c) durch connectedGeneratorIds gezeichnet
+      if (m.assignedToType === 'storage') return
+      const mc = meterColors[m.type] || meterColors.electricity
+      if (m.assignedToType === 'generator') {
+        // Erzeugerzähler: Erzeuger speist ins Netz → Zähler → Hausanschluss (Einspeisung)
+        edges.push({ from: `meter-${m.id}`, to: 'bus', color: energyColors[m.type] || mc.icon, deletable: true, animated: true })
+      } else {
+        // Verbraucherzähler: Hausanschluss → Zähler → Verbraucher (Bezug)
+        edges.push({ from: 'bus', to: `meter-${m.id}`, color: mc.icon, deletable: true, animated: true })
+      }
+    })
+
+    return { nodes, edges, roomGroups: roomGroupsInner, genPortMap, storPortMap, conPortMap, circPortMap, roomPortMap, meterPortMap }
+  }, [generators, storages, consumers, circuits, rooms, meters, settings, yOffsets])
 
   const getIcon = (subType: string) => {
     switch (subType) {
@@ -755,31 +1017,20 @@ export default function EnergyFlowPage() {
     }
   }
 
-  const isEmpty = generators.length === 0 && consumers.length === 0 && storages.length === 0 && meters.length === 0
-
   const svgWidth = 1230
-  const maxNodeY = nodes.reduce((max, n) => Math.max(max, n.y), 0)
-  const svgHeight = Math.max(400, maxNodeY + 80)
+  const maxNodeY = nodes.reduce((max, n) => Math.max(max, n.y + n.h), 0)
+  const svgHeight = Math.max(400, maxNodeY + 60)
 
   return (
     <div className="p-6">
       <div className="mb-6">
         <h1 className="page-header">Energiefluss-Diagramm</h1>
-        <p className="text-sm text-dark-faded mt-1">Interaktive Darstellung der Energieflüsse — Klicke auf ein Element, um es zu konfigurieren</p>
+        <p className="text-sm text-dark-faded mt-1">Interaktive Darstellung der Energieflüsse — Ziehen zum Verschieben, Doppelklick zum Konfigurieren</p>
       </div>
 
-      {isEmpty ? (
-        <div className="card text-center py-16">
-          <Zap className="w-16 h-16 text-dark-border mx-auto mb-4" />
-          <p className="text-dark-faded text-lg">Noch keine Komponenten konfiguriert</p>
-          <p className="text-sm text-dark-faded mt-2">
-            Lege Erzeuger, Verbraucher und Speicher an, um das Energiefluss-Diagramm zu sehen
-          </p>
-        </div>
-      ) : (
-        <div className="card overflow-x-auto">
+      <div className="card overflow-x-auto">
           {/* Legende */}
-          <div className="flex flex-wrap gap-4 mb-4 text-xs">
+          <div className="flex flex-wrap gap-4 mb-4 text-xs items-center">
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-500" /> Erzeuger</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-500" /> Speicher</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500" /> Heizkreis</span>
@@ -787,10 +1038,19 @@ export default function EnergyFlowPage() {
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500" /> Verbraucher</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500" /> Hausanschluss</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-cyan-600" /> Zähler</span>
+            {Object.keys(yOffsets).length > 0 && (
+              <button onClick={resetPositions} className="ml-auto text-dark-faded hover:text-dark-text transition-colors">
+                Positionen zurücksetzen
+              </button>
+            )}
           </div>
 
           <svg ref={svgRef} width={svgWidth} height={svgHeight} className="mx-auto"
-            onMouseMove={(e) => { if (connecting) setMousePos(getSvgPoint(e)) }}
+            onMouseMove={(e) => {
+              if (connecting) setMousePos(getSvgPoint(e))
+              handleDragMove(e)
+            }}
+            onMouseUp={handleDragEnd}
             onClick={() => { if (connecting) setConnecting(null) }}>
             <defs />
 
@@ -842,9 +1102,9 @@ export default function EnergyFlowPage() {
 
               const ltr = fn.x <= tn.x
               const x1 = ltr ? fn.x + fn.w / 2 : fn.x - fn.w / 2
-              const y1 = fn.y + fn.h / 2
+              const y1 = edge.fromY ?? (fn.y + fn.h / 2)
               const x2 = ltr ? tn.x - tn.w / 2 : tn.x + tn.w / 2
-              const y2 = tn.y + tn.h / 2
+              const y2 = edge.toY ?? (tn.y + tn.h / 2)
               const midX = (x1 + x2) / 2
               const path = `M${x1},${y1} C${midX},${y1} ${midX},${y2} ${x2},${y2}`
 
@@ -890,57 +1150,82 @@ export default function EnergyFlowPage() {
               const clickable = node.type !== 'grid'
               const isMeter = node.type === 'meter'
               const validTarget = connecting ? isValidTarget(node) : false
+              const isDragging = dragging.current?.nodeId === node.id
               return (
                 <g key={node.id}
-                  className={clickable && !connecting ? 'cursor-pointer flow-node-clickable' : ''}
-                  onClick={clickable && !connecting ? () => handleNodeClick(node) : undefined}
+                  className={clickable && !connecting ? 'cursor-grab flow-node-clickable' : ''}
+                  style={isDragging ? { cursor: 'grabbing' } : undefined}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    if (clickable && !connecting) handleNodeClick(node)
+                  }}
+                  onMouseDown={(e) => { if (e.button === 0) handleDragStart(node, e) }}
                 >
                   <rect x={node.x - node.w / 2} y={node.y} width={node.w} height={node.h}
                     rx={isMeter ? 6 : 8} fill={node.color}
                     stroke={validTarget ? '#4ade80' : node.iconColor}
                     strokeWidth={validTarget ? 2.5 : 1.5} strokeOpacity={validTarget ? 0.8 : 0.4} />
-                  <foreignObject x={node.x - node.w / 2} y={node.y} width={node.w} height={node.h}>
-                    <div className={`flex items-center gap-1 h-full px-1.5 ${clickable ? 'pointer-events-none' : ''}`}>
+                  <foreignObject x={node.x - node.w / 2} y={node.y} width={node.w} height={node.h} style={{ pointerEvents: 'none' }}>
+                    <div className="flex items-center gap-1 h-full px-1.5 pointer-events-none">
                       <Icon style={{ color: node.iconColor, width: isMeter ? 10 : 13, height: isMeter ? 10 : 13, flexShrink: 0 }} />
                       <span className={`font-medium truncate ${isMeter ? 'text-[8px]' : 'text-[9px]'}`} style={{ color: node.iconColor }}>
                         {node.label}
                       </span>
                     </div>
                   </foreignObject>
-                  {/* Port links — bidirektional (Ein- und Ausgang) */}
-                  <circle cx={node.x - node.w / 2} cy={node.y + node.h / 2} r={validTarget ? 4 : 3}
-                    fill={validTarget ? '#4ade80' : node.iconColor}
-                    fillOpacity={validTarget ? 0.7 : 0.5}
-                    stroke={validTarget ? '#4ade80' : node.iconColor}
-                    strokeWidth={1} strokeOpacity={validTarget ? 1 : 0.7}
-                    style={{ cursor: validTarget || !connecting ? 'crosshair' : 'default' }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (validTarget) finishConnect(node, e)
-                      else if (!connecting) startConnect(node, 'left', e)
-                    }}>
-                    {(validTarget || !connecting) && <title>{validTarget ? 'Hier verbinden' : 'Verbindung ziehen'}</title>}
-                  </circle>
-                  {/* Port rechts — bidirektional (Ein- und Ausgang) */}
-                  <circle cx={node.x + node.w / 2} cy={node.y + node.h / 2} r={validTarget ? 4 : 3}
-                    fill={validTarget ? '#4ade80' : node.iconColor}
-                    fillOpacity={validTarget ? 0.7 : 0.5}
-                    stroke={validTarget ? '#4ade80' : node.iconColor}
-                    strokeWidth={1} strokeOpacity={validTarget ? 1 : 0.7}
-                    style={{ cursor: validTarget || !connecting ? 'crosshair' : 'default' }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      if (validTarget) finishConnect(node, e)
-                      else if (!connecting) startConnect(node, 'right', e)
-                    }}>
-                    {(validTarget || !connecting) && <title>{validTarget ? 'Hier verbinden' : 'Verbindung ziehen'}</title>}
-                  </circle>
+                  {/* Ports — dynamisch basierend auf Energieform */}
+                  {(() => {
+                    const entityId = node.id.indexOf('-') >= 0 ? node.id.substring(node.id.indexOf('-') + 1) : ''
+                    const ports = node.type === 'generator' ? genPortMap[entityId]
+                      : node.type === 'storage' ? storPortMap[entityId]
+                      : node.type === 'consumer' ? conPortMap[entityId]
+                      : node.type === 'circuit' ? circPortMap[entityId]
+                      : node.type === 'room' ? roomPortMap[entityId]
+                      : node.type === 'meter' ? meterPortMap[entityId]
+                      : undefined
+                    const hasCustomPorts = !!ports
+                    const portList: Array<{ side: 'left' | 'right'; energy: string; portColor: string; cy: number }> = []
+                    if (hasCustomPorts) {
+                      const addSide = (side: 'left' | 'right', defs: PortDef[]) => {
+                        if (defs.length === 0) return
+                        if (defs.length === 1) {
+                          portList.push({ side, energy: defs[0].energy, portColor: defs[0].color, cy: node.y + node.h / 2 })
+                        } else {
+                          defs.forEach((p, idx) => {
+                            portList.push({ side, energy: p.energy, portColor: p.color, cy: node.y + node.h * ((idx + 0.5) / defs.length) })
+                          })
+                        }
+                      }
+                      addSide('left', ports.left)
+                      addSide('right', ports.right)
+                    } else {
+                      portList.push({ side: 'left', energy: '', portColor: node.iconColor, cy: node.y + node.h / 2 })
+                      portList.push({ side: 'right', energy: '', portColor: node.iconColor, cy: node.y + node.h / 2 })
+                    }
+                    return portList.map((port, pi) => {
+                      const pcx = port.side === 'left' ? node.x - node.w / 2 : node.x + node.w / 2
+                      const fillColor = validTarget ? '#4ade80' : port.portColor
+                      const energyLabel = port.energy === 'electricity' ? '⚡ Strom' : port.energy === 'heat' ? '🔥 Wärme' : port.energy === 'gas' ? '🔶 Gas' : port.energy === 'source' ? '♨ Quelle' : port.energy === 'cold' ? '❄ Kälte' : ''
+                      return (
+                        <circle key={pi} cx={pcx} cy={port.cy} r={validTarget ? 4 : 3}
+                          fill={fillColor} fillOpacity={validTarget ? 0.7 : 0.5}
+                          stroke={fillColor} strokeWidth={1} strokeOpacity={validTarget ? 1 : 0.7}
+                          style={{ cursor: validTarget || !connecting ? 'crosshair' : 'default' }}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (validTarget) finishConnect(node, e)
+                            else if (!connecting) startConnect(node, port.side, e, port.energy, port.cy)
+                          }}>
+                          {(validTarget || !connecting) && <title>{validTarget ? 'Hier verbinden' : `${energyLabel ? energyLabel + ' — ' : ''}Verbindung ziehen`}</title>}
+                        </circle>
+                      )
+                    })
+                  })()}
                 </g>
               )
             })}
           </svg>
         </div>
-      )}
       {/* Heiz-/Kühlkreis Auswahl-Dialog */}
       {showCircuitTypeDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowCircuitTypeDialog(false)}>

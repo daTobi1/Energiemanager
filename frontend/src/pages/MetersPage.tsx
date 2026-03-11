@@ -6,8 +6,9 @@ import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Meter, MeterType, MeterDirection, MeterCategory, MeterAssignmentType } from '../types'
+import type { Meter, MeterType, MeterDirection, MeterCategory, MeterAssignmentType, EnergyPort } from '../types'
 import { createDefaultCommunication } from '../types'
+import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
 const meterTypeOptions = [
   { value: 'electricity', label: 'Stromzähler' },
@@ -77,6 +78,22 @@ const directionLabels: Record<MeterDirection, string> = {
   grid_consumption: 'Netzbezug',
 }
 
+function createDefaultMeterPorts(type: MeterType, direction: MeterDirection): EnergyPort[] {
+  const energy = type === 'electricity' ? 'electricity' : type === 'heat' ? 'heat' : type === 'gas' ? 'gas' : type === 'cold' ? 'cold' : 'electricity'
+  const label = typeLabels[type] || 'Energie'
+  if (direction === 'bidirectional') return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
+  if (direction === 'generation' || direction === 'grid_feed_in') return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
+  return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
+}
+
+const meterNodeColors: Record<MeterType, string> = {
+  electricity: '#ecfeff',
+  heat: '#fef2f2',
+  gas: '#fff7ed',
+  water: '#eff6ff',
+  cold: '#eff6ff',
+}
+
 function createDefaultMeter(): Meter {
   return {
     id: uuid(),
@@ -96,6 +113,7 @@ function createDefaultMeter(): Meter {
     assignedToId: '',
     communication: createDefaultCommunication(),
     registerMappings: [],
+    ports: createDefaultMeterPorts('electricity', 'consumption'),
     notes: '',
   }
 }
@@ -256,8 +274,8 @@ export default function MetersPage() {
               <InputField label="Zählernummer" value={editing.meterNumber} onChange={(v) => update('meterNumber', v)} placeholder="z.B. 1EMH0012345678" />
             </div>
             <div className="grid grid-cols-3 gap-4">
-              <SelectField label="Medium" value={editing.type} onChange={(v) => update('type', v as MeterType)} options={meterTypeOptions} />
-              <SelectField label="Messrichtung" value={editing.direction} onChange={(v) => update('direction', v as MeterDirection)} options={directionOptions} />
+              <SelectField label="Medium" value={editing.type} onChange={(v) => { update('type', v as MeterType); update('ports', createDefaultMeterPorts(v as MeterType, editing.direction)) }} options={meterTypeOptions} />
+              <SelectField label="Messrichtung" value={editing.direction} onChange={(v) => { update('direction', v as MeterDirection); update('ports', createDefaultMeterPorts(editing.type, v as MeterDirection)) }} options={directionOptions} />
               <SelectField label="Zählerart" value={editing.category} onChange={(v) => update('category', v as MeterCategory)} options={categoryOptions} />
             </div>
             {parentMeterOptions.length > 0 && (
@@ -351,6 +369,14 @@ export default function MetersPage() {
               )}
             </div>
           </Section>
+
+          <PortEditor
+            ports={editing.ports || []}
+            onChange={(ports) => update('ports', ports)}
+            onReset={() => update('ports', createDefaultMeterPorts(editing.type, editing.direction))}
+            nodeName={editing.name || typeLabels[editing.type] + 'zähler'}
+            nodeColor={meterNodeColors[editing.type]}
+          />
 
           <CommunicationForm config={editing.communication} onChange={(c) => update('communication', c)} />
 

@@ -61,6 +61,14 @@ export type GeneratorType = 'pv' | 'chp' | 'heat_pump' | 'boiler' | 'chiller'
 export type FuelType = 'natural_gas' | 'biogas' | 'lpg' | 'oil' | 'pellet' | 'wood_chips'
 export type HeatPumpType = 'air_water' | 'brine_water' | 'water_water'
 export type EnergyForm = 'electricity' | 'heat' | 'cold' | 'electricity_heat'
+export type PortEnergy = 'electricity' | 'heat' | 'hot_water' | 'cold' | 'gas' | 'source'
+
+export interface EnergyPort {
+  id: string
+  side: 'input' | 'output'
+  energy: PortEnergy
+  label: string
+}
 
 interface GeneratorBase {
   id: string
@@ -75,6 +83,7 @@ interface GeneratorBase {
   notes: string
   communication: CommunicationConfig
   assignedMeterIds: string[]
+  ports: EnergyPort[]
 }
 
 export interface PvGenerator extends GeneratorBase {
@@ -209,6 +218,7 @@ export interface Meter {
   assignedToId: string
   communication: CommunicationConfig
   registerMappings: MeterRegisterMapping[]
+  ports: EnergyPort[]
   notes: string
 }
 
@@ -244,6 +254,7 @@ export interface Consumer {
   connectedSourceIds: string[]
   assignedMeterIds: string[]
   communication: CommunicationConfig
+  ports: EnergyPort[]
   notes: string
   // Wallbox-spezifisch
   wallboxMaxPowerKw: number
@@ -301,6 +312,7 @@ export interface BatteryStorage {
   connectedConsumerIds: string[]
   communication: CommunicationConfig
   assignedMeterIds: string[]
+  ports: EnergyPort[]
   notes: string
 }
 
@@ -324,6 +336,7 @@ export interface ThermalStorage {
   connectedGeneratorIds: string[]
   connectedConsumerIds: string[]
   assignedMeterIds: string[]
+  ports: EnergyPort[]
   stratificationEnabled: boolean
   numberOfLayers: number
   hasElectricalHeatingElement: boolean
@@ -373,6 +386,7 @@ export interface Room {
   coolingCircuitId: string
   consumerIds: string[]
   meterIds: string[]
+  ports: EnergyPort[]
   notes: string
 }
 
@@ -416,6 +430,7 @@ export interface HeatingCoolingCircuit {
   generatorIds: string[]       // Direkt angeschlossene Erzeuger (wenn kein Speicher dazwischen)
   roomIds: string[]
   meterIds: string[]
+  ports: EnergyPort[]
   notes: string
 }
 
@@ -576,6 +591,7 @@ export function createDefaultRoom(): Room {
     coolingCircuitId: '',
     consumerIds: [],
     meterIds: [],
+    ports: [],
     notes: '',
   }
 }
@@ -608,6 +624,7 @@ export function createDefaultCircuit(): HeatingCoolingCircuit {
     generatorIds: [],
     roomIds: [],
     meterIds: [],
+    ports: [],
     notes: '',
   }
 }

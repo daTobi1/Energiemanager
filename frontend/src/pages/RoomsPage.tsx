@@ -5,8 +5,9 @@ import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Room, FloorLevel, RoomType, SchedulePeriod } from '../types'
+import type { Room, FloorLevel, RoomType, SchedulePeriod, EnergyPort } from '../types'
 import { createDefaultRoom } from '../types'
+import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
 const floorOptions = [
   { value: 'UG', label: 'Untergeschoss' },
@@ -46,6 +47,17 @@ const roomTypeColors: Record<RoomType, string> = {
   sonstige: 'bg-dark-hover text-dark-muted',
 }
 
+function createDefaultRoomPorts(coolingEnabled: boolean): EnergyPort[] {
+  const ports = [mkPort('input', 'heat', 'Heizung')]
+  if (coolingEnabled) ports.push(mkPort('input', 'cold', 'Kühlung'))
+  return ports
+}
+
+const roomNodeColors: Record<RoomType, string> = {
+  wohnen: '#ecfdf5', schlafen: '#eff6ff', kueche: '#fff7ed', bad: '#ecfeff',
+  buero: '#f3e8ff', flur: '#f3f4f6', lager: '#f3f4f6', technik: '#fef9c3', sonstige: '#f3f4f6',
+}
+
 const dayOptions = [
   { value: 'mo', label: 'Mo' }, { value: 'di', label: 'Di' },
   { value: 'mi', label: 'Mi' }, { value: 'do', label: 'Do' },
@@ -60,7 +72,7 @@ export default function RoomsPage() {
   const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = () => {
-    setEditing({ ...createDefaultRoom(), id: uuid() })
+    setEditing({ ...createDefaultRoom(), id: uuid(), ports: createDefaultRoomPorts(false) })
     setShowForm(true)
   }
   const startEdit = (r: Room) => { setEditing({ ...r }); setShowForm(true) }
@@ -197,7 +209,7 @@ export default function RoomsPage() {
               <InputField label="Mindesttemperatur" value={editing.minTemperatureC} onChange={(v) => update('minTemperatureC', Number(v))} type="number" unit="°C" info="Frostschutz-Grenzwert. Heizung schaltet ein wenn unterschritten." />
               <InputField label="Maximaltemperatur" value={editing.maxTemperatureC} onChange={(v) => update('maxTemperatureC', Number(v))} type="number" unit="°C" info="Obergrenze. Bei Überschreitung wird Kühlung aktiviert (falls verfügbar)." />
             </div>
-            <CheckboxField label="Kühlung aktiviert" checked={editing.coolingEnabled} onChange={(v) => update('coolingEnabled', v)} hint="Raum kann aktiv gekühlt werden" />
+            <CheckboxField label="Kühlung aktiviert" checked={editing.coolingEnabled} onChange={(v) => { update('coolingEnabled', v); update('ports', createDefaultRoomPorts(v)) }} hint="Raum kann aktiv gekühlt werden" />
             {editing.coolingEnabled && (
               <InputField label="Kühlsolltemperatur" value={editing.coolingTargetTemperatureC} onChange={(v) => update('coolingTargetTemperatureC', Number(v))} type="number" unit="°C" step="0.5" info="Solltemperatur bei aktiver Kühlung" />
             )}
@@ -361,6 +373,14 @@ export default function RoomsPage() {
               </div>
             </div>
           </Section>
+
+          <PortEditor
+            ports={editing.ports || []}
+            onChange={(ports) => update('ports', ports)}
+            onReset={() => update('ports', createDefaultRoomPorts(editing.coolingEnabled))}
+            nodeName={editing.name || roomTypeLabels[editing.roomType]}
+            nodeColor={roomNodeColors[editing.roomType]}
+          />
 
           <Section title="Notizen" defaultOpen={false}>
             <TextareaField label="Bemerkungen" value={editing.notes} onChange={(v) => update('notes', v)} />
