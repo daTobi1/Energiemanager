@@ -12,6 +12,7 @@ interface PaletteItem {
 const items: PaletteItem[] = [
   // Natürliche Quellen
   { type: 'sun_source', label: 'Sonne', icon: Sun, color: '#f59e0b', group: 'Quellen' },
+  { type: 'wind_source', label: 'Wind', icon: Wind, color: '#60a5fa', group: 'Quellen' },
   // Netzeinspeisung
   { type: 'transformer', label: 'Trafo / Hausanschluss', icon: Zap, color: '#6366f1', group: 'Netzeinspeisung' },
   // Erzeugung

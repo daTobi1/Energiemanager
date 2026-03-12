@@ -30,6 +30,9 @@ export default memo(function WellSourceNode({ data, selected }: NodeProps) {
           {d.label as string}
         </text>
       </svg>
+      {/* Messstelle links (Durchflussmesser, Temperaturfühler) */}
+      <Handle type="source" position={Position.Left} id="meter-L1"
+        style={{ background: '#0891b2', width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '40%' }} />
       {/* Quelle rechts */}
       <Handle type="source" position={Position.Right} id="source-R1"
         style={{ background: ENERGY_COLORS.source, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '40%' }} />

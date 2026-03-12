@@ -27,6 +27,7 @@ const typeLabels: Record<string, string> = {
   elec_bus: 'Sammelschiene',
   sub_distribution: 'Unterverteilung',
   sun_source: 'Sonne',
+  wind_source: 'Wind',
   wind_turbine: 'Windrad',
 }
 

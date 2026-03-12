@@ -32,7 +32,10 @@ export default memo(function SunSourceNode({ data, selected }: NodeProps) {
           {d.label as string}
         </text>
       </svg>
-      {/* Strom rechts */}
+      {/* Messstelle links (Pyranometer etc.) */}
+      <Handle type="source" position={Position.Left} id="meter-L1"
+        style={{ background: '#0891b2', width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '38%' }} />
+      {/* Energieausgang rechts */}
       <Handle type="source" position={Position.Right} id="elec-R1"
         style={{ background: ELEC_COLORS.generation, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '38%' }} />
     </div>

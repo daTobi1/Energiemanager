@@ -384,7 +384,7 @@ export default function ElectricalSchemaPage() {
         id: `emeter-${id}`, type: 'elec_meter', position,
         data: { label: m.name, entityId: id, direction: m.direction },
       }])
-    } else if (['elec_bus', 'sub_distribution', 'circuit_breaker', 'sun_source'].includes(type)) {
+    } else if (['elec_bus', 'sub_distribution', 'circuit_breaker', 'sun_source', 'wind_source'].includes(type)) {
       // Schema-only elements
       const nodeId = `eschema-${uuid()}`
       let nodeData: Record<string, unknown> = {}
@@ -394,6 +394,8 @@ export default function ElectricalSchemaPage() {
         nodeData = { label: 'Unterverteilung', outputs: 4 }
       } else if (type === 'sun_source') {
         nodeData = { label: 'Sonne' }
+      } else if (type === 'wind_source') {
+        nodeData = { label: 'Wind' }
       } else {
         nodeData = { label: 'LS-Schalter' }
       }
@@ -463,6 +465,7 @@ export default function ElectricalSchemaPage() {
     if (t === 'elec_bus') return '#eab308'
     if (t === 'sub_distribution') return '#eab308'
     if (t === 'sun_source') return '#f59e0b'
+    if (t === 'wind_source') return '#60a5fa'
     if (t === 'wind_turbine') return '#22c55e'
     return '#30363d'
   }, [])

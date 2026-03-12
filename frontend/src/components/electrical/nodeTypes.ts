@@ -12,6 +12,7 @@ import ElecMeterNode from './nodes/ElecMeterNode'
 import ElecBusNode from './nodes/ElecBusNode'
 import SubDistributionNode from './nodes/SubDistributionNode'
 import SunSourceNode from './nodes/SunSourceNode'
+import WindSourceNode from './nodes/WindSourceNode'
 import WindTurbineNode from './nodes/WindTurbineNode'
 
 export const elecNodeTypes = {
@@ -27,5 +28,6 @@ export const elecNodeTypes = {
   elec_bus: withRotation(ElecBusNode),
   sub_distribution: withRotation(SubDistributionNode),
   sun_source: withRotation(SunSourceNode),
+  wind_source: withRotation(WindSourceNode),
   wind_turbine: withRotation(WindTurbineNode),
 } as const
