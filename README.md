@@ -108,14 +108,16 @@ WP-Quell. Gaskessel HA-Zaehl. Puffer    WMZ Warmw.    HK OG              WE 2   
 Zwei dedizierte, interaktive Schema-Editoren ersetzen das klassische R&I-Fliessschema:
 
 **Hydraulikschema** — Thermische Anlagenseite:
+- Natuerliche Quellen: Solarthermie, Erdsonde, Luft (Umgebung), Brunnen/Grundwasser
 - Erzeuger: Heizkessel, Waermepumpe, BHKW, Kaeltemaschine
 - Speicher: Puffer-, Warmwasser-, Kaeltespeicher
 - Verteilung: Heizkreise, Hydraulische Weiche, Mischer, Pumpen
 - Farbcodierte Leitungen: Rot (VL), Blau (RL), Orange (Gas), Tuerkis (Quelle)
 
 **Stromschema** — Elektrische Anlagenseite:
+- Natuerliche Quellen: Sonne, Wind
 - Einspeisung: Trafo/Hausanschluss
-- Erzeugung: PV + Wechselrichter, BHKW-Generator
+- Erzeugung: PV + Wechselrichter, BHKW-Generator, Windrad (vollwertiger Erzeuger)
 - Speicher: Batterie + Wechselrichter
 - Verteilung: Sammelschiene, Unterverteilung, LS-Schalter, Stromzaehler
 - Verbraucher: Motor-Lasten, Wallboxen, allgemeine Verbraucher
@@ -127,6 +129,7 @@ Zwei dedizierte, interaktive Schema-Editoren ersetzen das klassische R&I-Fliesss
 - Konsistenz-Hinweise: Warnung wenn z.B. eine WP im Stromschema keinen Speicher/Heizkreis hat
 - Pumpen-Linking: Hydraulik-Pumpen werden automatisch als Strom-Verbraucher angelegt
 - Auto-Pump: Heizkreis-Drop erzeugt automatisch eine verlinkte Umwaelzpumpe
+- Mess-Handles: Alle Quellen-Nodes haben Mess-Anschluesse fuer Sensoren (Pyranometer, Anemometer, Temperaturfuehler)
 
 **Bedienung:**
 - Drag & Drop aus der Komponentenpalette
@@ -179,6 +182,7 @@ Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angeb
 | BHKW | Strom + Waerme | Ja | Kraft-Waerme-Kopplung, waerme-/stromgefuehrt |
 | Heizkessel | Waerme | Ja | Spitzenlastabdeckung, Brennwert, Modulation |
 | Kaeltemaschine | Kaelte | Ja | Klimatisierung, Prozesskaelte |
+| Windrad | Strom | Nein (prognostiziert) | Kleinwindkraftanlage, PMSG/Synchron/Asynchron |
 
 ### Speichermanagement
 
@@ -396,8 +400,11 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - Fallback-Polling wenn kein WebSocket verfuegbar
 
 **Erledigt (Hydraulik- & Stromschema):**
-- Hydraulikschema: 16 Node-Typen (Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreis, Pumpe, Mischer, Weiche, Zaehler, Verbraucher, Raum)
-- Stromschema: 11 Node-Typen (Trafo, PV+WR, Batterie+WR, Generator, Motor-Last, Wallbox, Verbraucher, LS-Schalter, Stromzaehler, Sammelschiene, Unterverteilung)
+- Hydraulikschema: 20 Node-Typen (Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreis, Pumpe, Mischer, Weiche, Zaehler, Verbraucher, Raum + 4 natuerliche Quellen)
+- Stromschema: 14 Node-Typen (Trafo, PV+WR, Batterie+WR, Generator, Windrad, Motor-Last, Wallbox, Verbraucher, LS-Schalter, Stromzaehler, Sammelschiene, UV + 2 natuerliche Quellen)
+- Natuerliche Energiequellen: Solarthermie, Erdsonde, Luft, Brunnen (Hydraulik) + Sonne, Wind (Strom)
+- Windrad als vollwertiger Generator-Typ mit technischen Parametern (Rotordurchmesser, Nabenhoehe, Windgeschwindigkeiten)
+- Alle Quellen-Nodes mit Mess-Handles fuer Sensor-Anbindung (Pyranometer, Anemometer, Temperaturfuehler)
 - Drag & Drop aus Komponentenpalette + Verbindungen zwischen Anschluss-Handles
 - Farbcodierte Leitungen: Rot (Waerme VL), Blau (RL), Gelb (Strom), Orange (Gas), Tuerkis (Quelle)
 - Properties-Panel mit Typ-Info, Nennleistung, Drehung, Port-Konfiguration
