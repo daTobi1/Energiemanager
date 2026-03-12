@@ -12,12 +12,12 @@ interface PaletteItem {
 const items: PaletteItem[] = [
   // Natürliche Quellen
   { type: 'sun_source', label: 'Sonne', icon: Sun, color: '#f59e0b', group: 'Quellen' },
-  { type: 'wind_turbine', label: 'Windrad', icon: Wind, color: '#22c55e', group: 'Quellen' },
   // Netzeinspeisung
   { type: 'transformer', label: 'Trafo / Hausanschluss', icon: Zap, color: '#6366f1', group: 'Netzeinspeisung' },
   // Erzeugung
   { type: 'pv_inverter', label: 'PV + Wechselrichter', icon: Sun, color: '#f59e0b', group: 'Erzeugung' },
   { type: 'generator', label: 'BHKW Generator', icon: CircleDot, color: '#22c55e', group: 'Erzeugung' },
+  { type: 'wind_turbine', label: 'Windrad', icon: Wind, color: '#22c55e', group: 'Erzeugung' },
   // Speicher
   { type: 'battery_system', label: 'Batterie + WR', icon: Battery, color: '#8b5cf6', group: 'Speicher' },
   // Verteilung

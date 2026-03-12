@@ -36,6 +36,7 @@ const typeRoutes: Record<string, string> = {
   generator: '/generators',
   battery_system: '/storage',
   motor_load: '/generators',
+  wind_turbine: '/generators',
   wallbox: '/consumers',
   consumer_load: '/consumers',
   elec_meter: '/meters',

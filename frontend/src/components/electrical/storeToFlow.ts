@@ -126,6 +126,24 @@ export function buildNodes(
     genRow++
   }
 
+  // --- Windrad → Wind Turbine ---
+  const windGens = store.generators.filter((g) => g.type === 'wind_turbine')
+  for (const g of windGens) {
+    const id = `egen-${g.id}`
+    nodes.push({
+      id,
+      type: 'wind_turbine',
+      position: pos(id, COL.generators, START_Y + genRow * ROW_GAP),
+      data: {
+        label: g.name,
+        entityId: g.id,
+        rotation: rot(id),
+        nominalPowerKw: (g as any).nominalPowerKw,
+      },
+    })
+    genRow++
+  }
+
   // --- Wärmepumpe / Kältemaschine → Motor-Last (Strom-Verbraucher) ---
   const motorGens = store.generators.filter((g) => g.type === 'heat_pump' || g.type === 'chiller')
   for (const g of motorGens) {
@@ -233,7 +251,7 @@ export function buildEdges(store: StoreData): Edge[] {
 
   // Handle-ID basierend auf Generator-Typ (Quell-Seite)
   const genOutHandle = (gen: Generator) =>
-    gen.type === 'grid' ? 'elec-B1' : 'elec-R1'
+    gen.type === 'grid' ? 'elec-B1' : 'elec-R1' // pv, chp, wind_turbine all use elec-R1
 
   // Handle-ID basierend auf Generator-Typ (Ziel-Seite, z.B. WP = Motor mit elec-L1)
   const genInHandle = (gen: Generator) =>
@@ -251,7 +269,7 @@ export function buildEdges(store: StoreData): Edge[] {
     for (const gId of s.connectedGeneratorIds) {
       const gen = store.generators.find((g) => g.id === gId)
       if (!gen) continue
-      if (gen.type === 'pv' || gen.type === 'chp' || gen.type === 'grid') {
+      if (gen.type === 'pv' || gen.type === 'chp' || gen.type === 'grid' || gen.type === 'wind_turbine') {
         addEdge(`egen-${gId}`, genOutHandle(gen), `estor-${s.id}`, 'elec-R1')
       }
     }
@@ -262,7 +280,7 @@ export function buildEdges(store: StoreData): Edge[] {
     for (const connId of g.connectedGeneratorIds) {
       const source = store.generators.find((s) => s.id === connId)
       if (!source) continue
-      if (source.type === 'pv' || source.type === 'chp' || source.type === 'grid') {
+      if (source.type === 'pv' || source.type === 'chp' || source.type === 'grid' || source.type === 'wind_turbine') {
         addEdge(`egen-${connId}`, genOutHandle(source), `egen-${g.id}`, genInHandle(g))
       }
     }
@@ -273,7 +291,7 @@ export function buildEdges(store: StoreData): Edge[] {
     const tgtHandle = conInHandle(c)
     for (const srcId of c.connectedSourceIds) {
       const gen = store.generators.find((g) => g.id === srcId)
-      if (gen && (gen.type === 'pv' || gen.type === 'chp' || gen.type === 'grid')) {
+      if (gen && (gen.type === 'pv' || gen.type === 'chp' || gen.type === 'grid' || gen.type === 'wind_turbine')) {
         addEdge(`egen-${srcId}`, genOutHandle(gen), `econ-${c.id}`, tgtHandle)
         continue
       }

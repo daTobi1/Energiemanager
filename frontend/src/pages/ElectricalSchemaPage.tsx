@@ -33,7 +33,7 @@ import { v4 as uuid } from 'uuid'
 import { Undo2, RotateCcw, Maximize, RotateCw } from 'lucide-react'
 
 import type {
-  Generator, PvGenerator, ChpGenerator, GridGenerator,
+  Generator, PvGenerator, ChpGenerator, GridGenerator, WindTurbineGenerator,
   Storage, BatteryStorage,
   Consumer, Meter,
 } from '../types'
@@ -194,7 +194,7 @@ export default function ElectricalSchemaPage() {
 
     if (entityId) {
       const type = node.type || ''
-      if (['transformer', 'pv_inverter', 'generator', 'motor_load'].includes(type)) {
+      if (['transformer', 'pv_inverter', 'generator', 'motor_load', 'wind_turbine'].includes(type)) {
         removeGenerator(entityId)
       } else if (type === 'battery_system') {
         removeStorage(entityId)
@@ -286,6 +286,22 @@ export default function ElectricalSchemaPage() {
         id: `egen-${id}`, type: 'generator', position,
         data: { label: gen.name, entityId: id, nominalPowerKw: gen.electricalPowerKw },
       }])
+    } else if (type === 'wind_turbine') {
+      const gen: WindTurbineGenerator = {
+        id, name: 'Windrad', type: 'wind_turbine', energyForm: 'electricity',
+        manufacturer: '', model: '', serialNumber: '',
+        commissioningDate: '', location: '', notes: '',
+        communication: createDefaultCommunication(),
+        assignedMeterIds: [], ports: [], connectedGeneratorIds: [],
+        nominalPowerKw: 10, rotorDiameterM: 12, hubHeightM: 30,
+        cutInWindSpeedMs: 3, ratedWindSpeedMs: 12, cutOutWindSpeedMs: 25,
+        numberOfBlades: 3, generatorType: 'pmsg',
+      }
+      addGenerator(gen as Generator)
+      setNodes((nds) => [...nds, {
+        id: `egen-${id}`, type: 'wind_turbine', position,
+        data: { label: gen.name, entityId: id, nominalPowerKw: gen.nominalPowerKw },
+      }])
     } else if (type === 'battery_system') {
       const s: BatteryStorage = {
         id, name: 'Batterie', type: 'battery', manufacturer: '', model: '',
@@ -368,7 +384,7 @@ export default function ElectricalSchemaPage() {
         id: `emeter-${id}`, type: 'elec_meter', position,
         data: { label: m.name, entityId: id, direction: m.direction },
       }])
-    } else if (['elec_bus', 'sub_distribution', 'circuit_breaker', 'sun_source', 'wind_turbine'].includes(type)) {
+    } else if (['elec_bus', 'sub_distribution', 'circuit_breaker', 'sun_source'].includes(type)) {
       // Schema-only elements
       const nodeId = `eschema-${uuid()}`
       let nodeData: Record<string, unknown> = {}
@@ -378,8 +394,6 @@ export default function ElectricalSchemaPage() {
         nodeData = { label: 'Unterverteilung', outputs: 4 }
       } else if (type === 'sun_source') {
         nodeData = { label: 'Sonne' }
-      } else if (type === 'wind_turbine') {
-        nodeData = { label: 'Windrad' }
       } else {
         nodeData = { label: 'LS-Schalter' }
       }

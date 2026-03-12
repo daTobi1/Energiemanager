@@ -57,7 +57,7 @@ export interface CommunicationConfig {
 // Erzeuger (Generators)
 // ============================================================
 
-export type GeneratorType = 'pv' | 'chp' | 'heat_pump' | 'boiler' | 'chiller' | 'grid'
+export type GeneratorType = 'pv' | 'chp' | 'heat_pump' | 'boiler' | 'chiller' | 'grid' | 'wind_turbine'
 export type FuelType = 'natural_gas' | 'biogas' | 'lpg' | 'oil' | 'pellet' | 'wood_chips'
 export type HeatPumpType = 'air_water' | 'brine_water' | 'water_water'
 export type EnergyForm = 'electricity' | 'heat' | 'cold' | 'electricity_heat'
@@ -193,7 +193,20 @@ export interface GridGenerator extends GeneratorBase {
   meterPointId: string
 }
 
-export type Generator = PvGenerator | ChpGenerator | HeatPumpGenerator | BoilerGenerator | ChillerGenerator | GridGenerator
+export interface WindTurbineGenerator extends GeneratorBase {
+  type: 'wind_turbine'
+  energyForm: 'electricity'
+  nominalPowerKw: number
+  rotorDiameterM: number
+  hubHeightM: number
+  cutInWindSpeedMs: number
+  ratedWindSpeedMs: number
+  cutOutWindSpeedMs: number
+  numberOfBlades: number
+  generatorType: 'synchronous' | 'asynchronous' | 'pmsg'
+}
+
+export type Generator = PvGenerator | ChpGenerator | HeatPumpGenerator | BoilerGenerator | ChillerGenerator | GridGenerator | WindTurbineGenerator
 
 // ============================================================
 // Zähler (Meters)
