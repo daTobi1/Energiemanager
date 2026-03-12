@@ -2,7 +2,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard, Settings, Gauge, Sun, Plug, Battery,
   Home, Waypoints, Monitor, Target,
-  GitBranch, BarChart3, Zap, Wifi, WifiOff,
+  GitBranch, BarChart3, Zap, Wifi, WifiOff, PenTool,
 } from 'lucide-react'
 import { useEnergyStore } from '../store/useEnergyStore'
 
@@ -21,6 +21,8 @@ const navGroups: NavGroup[] = [
   {
     title: 'VISUALISIERUNG',
     items: [
+      { to: '/hydraulic-schema', icon: PenTool, label: 'Hydraulikschema' },
+      { to: '/electrical-schema', icon: Zap, label: 'Stromschema' },
       { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
       { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
     ],

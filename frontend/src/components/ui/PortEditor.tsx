@@ -39,8 +39,8 @@ interface PortEditorProps {
 }
 
 export function PortEditor({ ports, onChange, onReset, nodeName, nodeColor }: PortEditorProps) {
-  const inputs = ports.filter(p => p.side === 'input')
-  const outputs = ports.filter(p => p.side === 'output')
+  const inputs = ports.filter(p => p.side === 'left')
+  const outputs = ports.filter(p => p.side === 'right')
 
   return (
     <Section title="Energie-Anschlüsse" defaultOpen={true}>
@@ -90,7 +90,7 @@ export function PortEditor({ ports, onChange, onReset, nodeName, nodeColor }: Po
 
         {/* Port-Liste: Eingänge */}
         <div className="space-y-2">
-          <div className="text-xs text-dark-faded font-semibold uppercase tracking-wider">Eingänge</div>
+          <div className="text-xs text-dark-faded font-semibold uppercase tracking-wider">Links</div>
           {inputs.map((port) => (
             <div key={port.id} className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: portEnergyColors[port.energy] }} />
@@ -106,14 +106,14 @@ export function PortEditor({ ports, onChange, onReset, nodeName, nodeColor }: Po
             </div>
           ))}
           <button className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-            onClick={() => onChange([...ports, { id: uuid(), side: 'input', energy: 'electricity', label: '' }])}>
-            <Plus className="w-3 h-3" /> Eingang hinzufügen
+            onClick={() => onChange([...ports, { id: uuid(), side: 'left', energy: 'electricity', label: '' }])}>
+            <Plus className="w-3 h-3" /> Links hinzufügen
           </button>
         </div>
 
         {/* Port-Liste: Ausgänge */}
         <div className="space-y-2">
-          <div className="text-xs text-dark-faded font-semibold uppercase tracking-wider">Ausgänge</div>
+          <div className="text-xs text-dark-faded font-semibold uppercase tracking-wider">Rechts</div>
           {outputs.map((port) => (
             <div key={port.id} className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: portEnergyColors[port.energy] }} />
@@ -129,8 +129,8 @@ export function PortEditor({ ports, onChange, onReset, nodeName, nodeColor }: Po
             </div>
           ))}
           <button className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-            onClick={() => onChange([...ports, { id: uuid(), side: 'output', energy: 'heat', label: '' }])}>
-            <Plus className="w-3 h-3" /> Ausgang hinzufügen
+            onClick={() => onChange([...ports, { id: uuid(), side: 'right', energy: 'heat', label: '' }])}>
+            <Plus className="w-3 h-3" /> Rechts hinzufügen
           </button>
         </div>
 
@@ -145,6 +145,6 @@ export function PortEditor({ ports, onChange, onReset, nodeName, nodeColor }: Po
 }
 
 /** Helper: erstellt einen einzelnen Port */
-export function mkPort(side: 'input' | 'output', energy: PortEnergy, label: string): EnergyPort {
+export function mkPort(side: 'left' | 'right' | 'top' | 'bottom', energy: PortEnergy, label: string): EnergyPort {
   return { id: uuid(), side, energy, label }
 }

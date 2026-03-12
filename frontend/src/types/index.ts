@@ -65,7 +65,7 @@ export type PortEnergy = 'electricity' | 'heat' | 'hot_water' | 'cold' | 'gas' |
 
 export interface EnergyPort {
   id: string
-  side: 'input' | 'output'
+  side: 'left' | 'right' | 'top' | 'bottom'
   energy: PortEnergy
   label: string
 }
