@@ -2,7 +2,7 @@
 
 > **STATUS: IN ENTWICKLUNG / WORK IN PROGRESS**
 >
-> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 1b).
+> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 2a abgeschlossen).
 > APIs, Datenmodelle und Schnittstellen koennen sich jederzeit aendern.
 > Beitraege und Feedback sind willkommen — siehe [Contributing](#contributing).
 
@@ -24,6 +24,7 @@ Ein selbstlernendes, prognosebasiertes Energiemanagementsystem fuer Gebaeude und
 │  │                    Web-Frontend (React)                          │    │
 │  │  Dashboard · Erzeuger · Speicher · Heizkreise · Raeume          │    │
 │  │  Verbraucher · Zaehler · Energiefluss · Sankey · System         │    │
+│  │  Hydraulikschema · Stromschema (React Flow)                     │    │
 │  └──────────────────────────┬──────────────────────────────────────┘    │
 │                              │ REST API                                 │
 │  ┌──────────────────────────┴──────────────────────────────────────┐    │
@@ -74,6 +75,8 @@ Das Frontend ist eine vollstaendige Konfigurationsoberflaeche fuer das Energiesy
 | **Zaehler** | Alle Energiezaehler mit 6 Kategorien (Spalten im Energiefluss) |
 | **Energiefluss** | Interaktives SVG-Diagramm mit 11 Spalten — Drag-to-Connect, Click-to-Delete, bidirektionale Verbindungen |
 | **Sankey-Diagramm** | Jahres-Energiebilanz (Plotly.js), geschaetzte Werte aus Nennleistungen |
+| **Hydraulikschema** | Interaktiver Schemaeditor (React Flow) — Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreise, Pumpen, Ventile |
+| **Stromschema** | Interaktiver Schemaeditor (React Flow) — Trafo, PV, Batterie, Generator, Motor-Lasten, Wallbox, Sammelschiene, UV |
 | **Systemverwaltung** | Systemzeit, WLAN, Bluetooth, Updates, Neustart/Herunterfahren |
 
 ### Energiefluss — Interaktives 11-Spalten-Diagramm
@@ -99,6 +102,39 @@ WP-Quell. Gaskessel HA-Zaehl. Puffer    WMZ Warmw.    HK OG              WE 2   
           Hausanschl.                                  HK Treph.         TG                     Wallbox 2
                                                                                                 ...
 ```
+
+### Hydraulik- & Stromschema (React Flow)
+
+Zwei dedizierte, interaktive Schema-Editoren ersetzen das klassische R&I-Fliessschema:
+
+**Hydraulikschema** — Thermische Anlagenseite:
+- Erzeuger: Heizkessel, Waermepumpe, BHKW, Kaeltemaschine
+- Speicher: Puffer-, Warmwasser-, Kaeltespeicher
+- Verteilung: Heizkreise, Hydraulische Weiche, Mischer, Pumpen
+- Farbcodierte Leitungen: Rot (VL), Blau (RL), Orange (Gas), Tuerkis (Quelle)
+
+**Stromschema** — Elektrische Anlagenseite:
+- Einspeisung: Trafo/Hausanschluss
+- Erzeugung: PV + Wechselrichter, BHKW-Generator
+- Speicher: Batterie + Wechselrichter
+- Verteilung: Sammelschiene, Unterverteilung, LS-Schalter, Stromzaehler
+- Verbraucher: Motor-Lasten, Wallboxen, allgemeine Verbraucher
+
+**Cross-Schema-Verlinkung:**
+- Klickbare Badges (⚡/🔥) auf Dual-Schema-Komponenten (WP, BHKW, Kaeltemaschine)
+- Auto-Focus beim Schema-Wechsel — zentriert automatisch auf die verlinkte Komponente
+- Erweiterte Properties: COP, Wirkungsgrade, thermische Daten direkt im Stromschema sichtbar
+- Konsistenz-Hinweise: Warnung wenn z.B. eine WP im Stromschema keinen Speicher/Heizkreis hat
+- Pumpen-Linking: Hydraulik-Pumpen werden automatisch als Strom-Verbraucher angelegt
+- Auto-Pump: Heizkreis-Drop erzeugt automatisch eine verlinkte Umwaelzpumpe
+
+**Bedienung:**
+- Drag & Drop aus der Komponentenpalette
+- Verbindungen per Maus zwischen Anschlusspunkten ziehen
+- Properties-Panel bei Klick auf Komponente (Typ, Name, Leistung, Drehung)
+- Sammelschiene/Weiche: Anzahl der Anschluesse konfigurierbar
+- Minimap zur Uebersicht
+- Legende fuer Leitungsfarben
 
 ### Zaehlerkategorien
 
@@ -181,7 +217,7 @@ Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angeb
 | Framework | React 19, TypeScript, Vite |
 | Styling | Tailwind CSS (Dark Theme) |
 | State | Zustand + API-Sync (localStorage Fallback) |
-| Diagramme | Plotly.js (Sankey), SVG (Energiefluss) |
+| Diagramme | Plotly.js (Sankey), SVG (Energiefluss), React Flow (Schemas) |
 | Icons | Lucide React |
 
 ### Zielsystem
@@ -236,7 +272,22 @@ energiemanager/
 │       ├── App.tsx                      # Router (React Router v7)
 │       ├── components/
 │       │   ├── Layout.tsx               # Sidebar-Navigation
-│       │   └── ui/                      # FormField, CommunicationForm, ConfirmDelete
+│       │   ├── ui/                      # FormField, CommunicationForm, ConfirmDelete
+│       │   ├── hydraulic/              # Hydraulikschema (React Flow)
+│       │   │   ├── nodes/              # 16 Node-Komponenten (Kessel, WP, Pumpe, ...)
+│       │   │   ├── edges/              # Thermisch, Gas, Quelle, Elektrisch
+│       │   │   ├── panels/             # Palette + PropertiesPanel
+│       │   │   ├── storeToFlow.ts      # Store → React-Flow-Nodes/Edges
+│       │   │   └── nodeTypes.ts
+│       │   ├── electrical/             # Stromschema (React Flow)
+│       │   │   ├── nodes/              # 11 Node-Komponenten (Trafo, PV, Bus, ...)
+│       │   │   ├── panels/             # Palette + PropertiesPanel
+│       │   │   ├── storeToFlow.ts
+│       │   │   └── nodeTypes.ts
+│       │   └── shared/                 # Cross-Schema-Utilities
+│       │       ├── CrossSchemaBadge.tsx # Klickbarer Schema-Wechsel-Badge
+│       │       ├── crossSchemaUtils.ts # Dual-Schema-Erkennung
+│       │       └── portUtils.ts        # Handle-ID-Parsing
 │       ├── pages/
 │       │   ├── DashboardPage.tsx        # Uebersicht + Testdaten-Button
 │       │   ├── SettingsPage.tsx         # Anlage, Standort, Tarife, Hausanschluss
@@ -248,6 +299,8 @@ energiemanager/
 │       │   ├── MetersPage.tsx           # Zaehler (6 Kategorien)
 │       │   ├── EnergyFlowPage.tsx       # SVG-Energieflussdiagramm (11 Spalten)
 │       │   ├── SankeyPage.tsx           # Sankey-Diagramm (Plotly.js)
+│       │   ├── HydraulicSchemaPage.tsx  # Hydraulikschema (React Flow)
+│       │   ├── ElectricalSchemaPage.tsx # Stromschema (React Flow)
 │       │   ├── OptimizerPage.tsx       # Optimierer-Ziele (Radar-Diagramm)
 │       │   └── SystemPage.tsx           # Systemverwaltung
 │       ├── hooks/
@@ -293,6 +346,7 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 | Phase 1 | Fundament (Backend + Web-Frontend + Install-Script) | Abgeschlossen |
 | Phase 1b | Backend-Anbindung (JSONB + API + Alembic) | Abgeschlossen |
 | Phase 1c | Optimierer-UI (Radar-Diagramm, Gewichtungen) | Abgeschlossen |
+| Phase 2a | Simulator + Hydraulik-/Stromschema | Abgeschlossen |
 | Phase 2 | Kernlogik (Regelung, Prognosen, Optimierer v1) | Ausstehend |
 | Phase 3 | Intelligenz (Wetter-API, ML, MILP, Selbstlernen) | Ausstehend |
 | Phase 4 | Mobile App (Flutter) | Ausstehend |
@@ -301,7 +355,7 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 ### Bisherige Arbeiten
 
 **Erledigt (Phase 1):**
-- 12 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, Optimierer, System)
+- 14 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, Hydraulikschema, Stromschema, Optimierer, System)
 - Interaktives Energiefluss-Diagramm mit Drag-to-Connect und Click-to-Delete
 - Bidirektionale Batteriespeicher-Verbindungen (Laden/Entladen)
 - Smart-Meter-Logik (Durchverbindungen ueber Zaehler)
@@ -340,6 +394,18 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - WebSocket-Streaming: Echtzeit-Updates an alle verbundenen Clients
 - LiveDashboard-Komponente: 8 Metrikkarten mit Echtzeit-Werten
 - Fallback-Polling wenn kein WebSocket verfuegbar
+
+**Erledigt (Hydraulik- & Stromschema):**
+- Hydraulikschema: 16 Node-Typen (Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreis, Pumpe, Mischer, Weiche, Zaehler, Verbraucher, Raum)
+- Stromschema: 11 Node-Typen (Trafo, PV+WR, Batterie+WR, Generator, Motor-Last, Wallbox, Verbraucher, LS-Schalter, Stromzaehler, Sammelschiene, Unterverteilung)
+- Drag & Drop aus Komponentenpalette + Verbindungen zwischen Anschluss-Handles
+- Farbcodierte Leitungen: Rot (Waerme VL), Blau (RL), Gelb (Strom), Orange (Gas), Tuerkis (Quelle)
+- Properties-Panel mit Typ-Info, Nennleistung, Drehung, Port-Konfiguration
+- Cross-Schema-Verlinkung: Klickbare Badges, Auto-Focus, COP/Wirkungsgrad-Anzeige
+- Konsistenz-Hinweise bei fehlenden Verbindungen im jeweils anderen Schema
+- Pumpen ↔ Strom-Verbraucher Linking mit Inline-kW-Editor
+- Auto-Pump-Erzeugung beim Heizkreis-Drop
+- Minimap + Legende + Store-basierte Seed-Initialisierung
 
 **Naechste Schritte:**
 - Phase 2: Prognosen, Optimierer-Kernlogik, Regelung
