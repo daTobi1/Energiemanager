@@ -11,6 +11,8 @@ import CircuitBreakerNode from './nodes/CircuitBreakerNode'
 import ElecMeterNode from './nodes/ElecMeterNode'
 import ElecBusNode from './nodes/ElecBusNode'
 import SubDistributionNode from './nodes/SubDistributionNode'
+import SunSourceNode from './nodes/SunSourceNode'
+import WindTurbineNode from './nodes/WindTurbineNode'
 
 export const elecNodeTypes = {
   transformer: withRotation(TransformerNode),
@@ -24,4 +26,6 @@ export const elecNodeTypes = {
   elec_meter: withRotation(ElecMeterNode),
   elec_bus: withRotation(ElecBusNode),
   sub_distribution: withRotation(SubDistributionNode),
+  sun_source: withRotation(SunSourceNode),
+  wind_turbine: withRotation(WindTurbineNode),
 } as const

@@ -26,6 +26,8 @@ const typeLabels: Record<string, string> = {
   elec_meter: 'Stromzähler',
   elec_bus: 'Sammelschiene',
   sub_distribution: 'Unterverteilung',
+  sun_source: 'Sonne',
+  wind_turbine: 'Windrad',
 }
 
 const typeRoutes: Record<string, string> = {

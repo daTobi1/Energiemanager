@@ -30,6 +30,10 @@ const typeLabels: Record<string, string> = {
   room: 'Raum',
   consumer: 'Verbraucher',
   meter: 'Zähler',
+  solar_thermal: 'Solarthermie',
+  ground_source: 'Erdsonde / Erdkollektor',
+  air_source: 'Luft (Umgebung)',
+  well_source: 'Brunnen / Grundwasser',
 }
 
 const typeRoutes: Record<string, string> = {

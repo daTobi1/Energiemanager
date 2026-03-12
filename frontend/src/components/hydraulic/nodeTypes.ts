@@ -12,6 +12,10 @@ import CircuitNode from './nodes/CircuitNode'
 import ConsumerNode from './nodes/ConsumerNode'
 import MeterNode from './nodes/MeterNode'
 import RoomNode from './nodes/RoomNode'
+import SolarThermalNode from './nodes/SolarThermalNode'
+import GroundSourceNode from './nodes/GroundSourceNode'
+import AirSourceNode from './nodes/AirSourceNode'
+import WellSourceNode from './nodes/WellSourceNode'
 
 export const nodeTypes = {
   boiler: withRotation(BoilerNode),
@@ -27,4 +31,8 @@ export const nodeTypes = {
   consumer: withRotation(ConsumerNode),
   meter: withRotation(MeterNode),
   room: withRotation(RoomNode),
+  solar_thermal: withRotation(SolarThermalNode),
+  ground_source: withRotation(GroundSourceNode),
+  air_source: withRotation(AirSourceNode),
+  well_source: withRotation(WellSourceNode),
 } as const

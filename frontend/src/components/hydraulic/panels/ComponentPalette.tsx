@@ -1,5 +1,5 @@
 import { memo, type DragEvent } from 'react'
-import { Flame, Thermometer, Snowflake, Zap, Plug, Home, Waypoints, Gauge, ArrowLeftRight } from 'lucide-react'
+import { Flame, Thermometer, Snowflake, Zap, Plug, Home, Waypoints, Gauge, ArrowLeftRight, Sun, Mountain, Wind, Droplets } from 'lucide-react'
 
 interface PaletteItem {
   type: string
@@ -10,6 +10,11 @@ interface PaletteItem {
 }
 
 const items: PaletteItem[] = [
+  // Natürliche Quellen
+  { type: 'solar_thermal', label: 'Solarthermie', icon: Sun, color: '#f59e0b', group: 'Quellen' },
+  { type: 'ground_source', label: 'Erdsonde', icon: Mountain, color: '#16a34a', group: 'Quellen' },
+  { type: 'air_source', label: 'Luft (Umgebung)', icon: Wind, color: '#60a5fa', group: 'Quellen' },
+  { type: 'well_source', label: 'Brunnen/Grundw.', icon: Droplets, color: '#3b82f6', group: 'Quellen' },
   // Erzeuger
   { type: 'heat_pump', label: 'Wärmepumpe', icon: Thermometer, color: '#dc2626', group: 'Erzeuger' },
   { type: 'boiler', label: 'Kessel', icon: Flame, color: '#dc2626', group: 'Erzeuger' },

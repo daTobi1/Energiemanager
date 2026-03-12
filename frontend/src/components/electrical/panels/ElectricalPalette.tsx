@@ -1,5 +1,5 @@
 import { memo, type DragEvent } from 'react'
-import { Zap, Sun, Battery, Gauge, Shield, Plug, LayoutGrid, CircleDot, Cable } from 'lucide-react'
+import { Zap, Sun, Battery, Gauge, Shield, Plug, LayoutGrid, CircleDot, Cable, Wind } from 'lucide-react'
 
 interface PaletteItem {
   type: string
@@ -10,6 +10,9 @@ interface PaletteItem {
 }
 
 const items: PaletteItem[] = [
+  // Natürliche Quellen
+  { type: 'sun_source', label: 'Sonne', icon: Sun, color: '#f59e0b', group: 'Quellen' },
+  { type: 'wind_turbine', label: 'Windrad', icon: Wind, color: '#22c55e', group: 'Quellen' },
   // Netzeinspeisung
   { type: 'transformer', label: 'Trafo / Hausanschluss', icon: Zap, color: '#6366f1', group: 'Netzeinspeisung' },
   // Erzeugung

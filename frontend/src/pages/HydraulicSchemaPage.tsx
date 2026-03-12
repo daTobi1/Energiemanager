@@ -367,12 +367,20 @@ export default function HydraulicSchemaPage() {
       }
       addMeter(m)
       setNodes((nds) => [...nds, { id: `meter-${id}`, type: 'meter', position, data: { label: m.name, entityId: id, meterType: m.type } }])
-    } else if (['hydraulic_separator', 'pump', 'mixer'].includes(type)) {
+    } else if (['hydraulic_separator', 'pump', 'mixer', 'solar_thermal', 'ground_source', 'air_source', 'well_source'].includes(type)) {
       // Reine Schema-Elemente (kein Store-Eintrag nötig)
       const nodeId = `schema-${uuid()}`
       let nodeData: Record<string, unknown> = {}
       if (type === 'hydraulic_separator') {
         nodeData = { label: 'Hydr. Weiche', portsLeft: 1, portsRight: 3 }
+      } else if (type === 'solar_thermal') {
+        nodeData = { label: 'Solarthermie' }
+      } else if (type === 'ground_source') {
+        nodeData = { label: 'Erdsonde' }
+      } else if (type === 'air_source') {
+        nodeData = { label: 'Luft (Umgebung)' }
+      } else if (type === 'well_source') {
+        nodeData = { label: 'Brunnen' }
       } else {
         nodeData = { label: type === 'pump' ? 'Pumpe' : '3W-Mischer' }
       }
@@ -442,6 +450,10 @@ export default function HydraulicSchemaPage() {
     if (['room'].includes(t)) return '#8b949e'
     if (['consumer'].includes(t)) return '#16a34a'
     if (['meter'].includes(t)) return '#0891b2'
+    if (t === 'solar_thermal') return '#f59e0b'
+    if (t === 'ground_source') return '#16a34a'
+    if (t === 'air_source') return '#60a5fa'
+    if (t === 'well_source') return '#3b82f6'
     return '#30363d'
   }, [])
 
