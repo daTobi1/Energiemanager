@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, Section } from '../components/ui/FormField'
 import {
-  Building2, MapPin, Thermometer, Banknote, Zap, Cloud,
+  Building2, MapPin, Thermometer, Banknote, Cloud,
   CheckCircle2, Search, Loader2, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import type { SystemSettings, TariffType } from '../types'
@@ -241,18 +241,6 @@ export default function SettingsPage() {
               <button onClick={() => update('timeOfUsePeriods', [...settings.timeOfUsePeriods, { name: '', startHour: 6, endHour: 22, priceCtPerKwh: 30, days: ['mon', 'tue', 'wed', 'thu', 'fri'] }])} className="btn-secondary text-sm">+ Zeitfenster</button>
             </div>
           )}
-        </Section>
-
-        <Section title="Hausanschluss" icon={<Zap className="w-4 h-4 text-indigo-400" />} defaultOpen={true}>
-          <div className="grid grid-cols-3 gap-4">
-            <InputField label="Max. Anschlussleistung" value={settings.gridMaxPowerKw} onChange={(v) => update('gridMaxPowerKw', Number(v))} type="number" unit="kW" info="Maximale Leistung des Hausanschlusses laut Anschlussvertrag." />
-            <InputField label="Nennspannung" value={settings.gridVoltageV} onChange={(v) => update('gridVoltageV', Number(v))} type="number" unit="V" />
-            <InputField label="Einspeisebegrenzung" value={settings.feedInLimitPercent} onChange={(v) => update('feedInLimitPercent', Number(v))} type="number" unit="%" hint="z.B. 70%-Regel" min={0} max={100} info="Maximale Einspeiseleistung in Prozent der installierten PV-Leistung (70%-Regelung nach EEG, seit 2023 auf 0% reduziert für neue Anlagen)." />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <InputField label="Netzbetreiber" value={settings.gridOperator} onChange={(v) => update('gridOperator', v)} placeholder="z.B. E.ON, Stadtwerke..." />
-            <InputField label="Zählpunkt-ID (MeLo)" value={settings.meterPointId} onChange={(v) => update('meterPointId', v)} placeholder="DE000..." hint="Marktlokations-ID" info="Die Marktlokations-ID (MaLo) identifiziert den Hausanschlusspunkt eindeutig im deutschen Stromnetz." />
-          </div>
         </Section>
 
         <Section title="Wetter-API" icon={<Cloud className="w-4 h-4 text-sky-400" />} defaultOpen={true}>

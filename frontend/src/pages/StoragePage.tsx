@@ -123,7 +123,7 @@ function createDefaultThermal(type: 'heat' | 'cold'): ThermalStorage {
 }
 
 export default function StoragePage() {
-  const { storages, generators, consumers, meters, addStorage, updateStorage, removeStorage } = useEnergyStore()
+  const { storages, generators, consumers, meters, circuits, addStorage, updateStorage, removeStorage, updateCircuit } = useEnergyStore()
   const [editing, setEditing] = useState<Storage | null>(null)
   const [showForm, setShowForm] = useState(false)
   const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
@@ -195,12 +195,27 @@ export default function StoragePage() {
     setShowForm(false); setEditing(null)
   }
   const update = (key: string, value: unknown) => {
-    if (editing) setEditing({ ...editing, [key]: value } as Storage)
+    if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } as Storage : prev)
   }
 
   const generatorOptions = generators.map((g) => ({ value: g.id, label: g.name || 'Unbenannt' }))
   const consumerOptions = consumers.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
   const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
+  const circuitOptions = circuits.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
+
+  // Welche Kreise haben diesen Speicher in supplyStorageIds?
+  const connectedCircuitIds = circuits.filter((c) => editing && c.supplyStorageIds.includes(editing.id)).map((c) => c.id)
+
+  const toggleCircuitConnection = (circuitId: string) => {
+    if (!editing) return
+    const circ = circuits.find((c) => c.id === circuitId)
+    if (!circ) return
+    const has = circ.supplyStorageIds.includes(editing.id)
+    const ids = has
+      ? circ.supplyStorageIds.filter((id) => id !== editing.id)
+      : [...circ.supplyStorageIds, editing.id]
+    updateCircuit(circuitId, { ...circ, supplyStorageIds: ids })
+  }
 
   if (showForm && editing) {
     const isBattery = editing.type === 'battery'
@@ -498,6 +513,39 @@ export default function StoragePage() {
                     </button>
                   )}
                 </div>
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="label">Verbundene Heiz-/Kältekreise</label>
+              <p className="text-xs text-dark-faded mb-1">Welche Kreise werden aus diesem Speicher gespeist?</p>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {circuitOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => toggleCircuitConnection(opt.value)}
+                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                      connectedCircuitIds.includes(opt.value)
+                        ? 'bg-red-600/20 border-red-500/40 text-red-400'
+                        : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                {circuitOptions.length === 0 && (
+                  <button
+                    onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'supplyStorageIds', assignMode: 'append', draft: editing })}
+                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-red-500/50 hover:text-red-400 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span className="text-sm">Heiz-/Kältekreis jetzt anlegen</span>
+                  </button>
+                )}
+                {circuitOptions.length > 0 && (
+                  <button onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'supplyStorageIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-red-500/50 hover:bg-red-500/5 text-dark-faded hover:text-red-400 transition-colors">
+                    <Plus className="w-3 h-3" /> Neuen Kreis anlegen
+                  </button>
+                )}
               </div>
             </div>
           </Section>

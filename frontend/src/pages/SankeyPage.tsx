@@ -21,12 +21,14 @@ export default function SankeyPage() {
 
     // Quellen (Links)
     // 0: Hausanschluss — Netzbezug über Hausanschluss-Zähler
-    labels.push('Hausanschluss')
+    const gridGen = generators.find((g) => g.type === 'grid')
+    labels.push(gridGen?.name || 'Hausanschluss')
     colors.push('#3b82f6')
 
-    // Erzeuger
+    // Erzeuger (ohne Grid — der ist schon als Hausanschluss-Node oben)
+    const nonGridGens = generators.filter((g) => g.type !== 'grid')
     const genStartIdx = labels.length
-    generators.forEach((g) => {
+    nonGridGens.forEach((g) => {
       switch (g.type) {
         case 'pv':
           labels.push(g.name || 'PV-Anlage')
@@ -97,7 +99,7 @@ export default function SankeyPage() {
     let totalHeatGen = 0
     let totalColdGen = 0
 
-    generators.forEach((g, i) => {
+    nonGridGens.forEach((g, i) => {
       const gIdx = genStartIdx + i
       switch (g.type) {
         case 'pv': {

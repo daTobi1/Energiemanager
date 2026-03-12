@@ -6,11 +6,11 @@ import {
   CheckCircle2, AlertCircle, ArrowRight, Database, Trash2,
 } from 'lucide-react'
 import LiveDashboard from '../components/LiveDashboard'
-import type { GeneratorType } from '../types'
+import type { GeneratorType, GridGenerator } from '../types'
 import { createBavariaSeedData } from '../data/seedBavaria'
 
 const typeLabels: Record<GeneratorType, string> = {
-  pv: 'PV', chp: 'BHKW', heat_pump: 'WP', boiler: 'Kessel', chiller: 'Kälte',
+  pv: 'PV', chp: 'BHKW', heat_pump: 'WP', boiler: 'Kessel', chiller: 'Kälte', grid: 'Netz',
 }
 
 export default function DashboardPage() {
@@ -19,6 +19,7 @@ export default function DashboardPage() {
 
   const configComplete = generators.length > 0 && meters.length > 0 && consumers.length > 0
   const hasHausanschlussZaehler = meters.some((m) => m.assignedToType === 'grid')
+  const gridGen = generators.find((g) => g.type === 'grid')
 
   const sections = [
     {
@@ -69,6 +70,7 @@ export default function DashboardPage() {
     { label: 'Gebäudedaten & Standort eingeben', done: !!settings.buildingName, to: '/settings' },
     { label: 'Stromtarif konfigurieren', done: settings.gridConsumptionCtPerKwh > 0, to: '/settings' },
     { label: 'Wetter-API einrichten', done: !!settings.weatherApiKey || settings.weatherProvider === 'brightsky', to: '/settings' },
+    { label: 'Hausanschluss konfigurieren', done: !!gridGen, to: '/generators' },
     { label: 'Mindestens einen Erzeuger anlegen', done: generators.length > 0, to: '/generators' },
     { label: 'Speicher konfigurieren', done: storages.length > 0, to: '/storage' },
     { label: 'Heizkreise konfigurieren', done: circuits.length > 0, to: '/circuits' },
@@ -195,7 +197,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-dark-faded">Hausanschluss</span>
-                <span className="text-dark-muted">{settings.gridMaxPowerKw} kW</span>
+                <span className="text-dark-muted">{gridGen ? (gridGen as GridGenerator).gridMaxPowerKw : '–'} kW</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-dark-faded">Konfiguration</span>

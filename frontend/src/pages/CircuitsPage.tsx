@@ -178,7 +178,7 @@ export default function CircuitsPage() {
     setShowForm(false); setEditing(null)
   }
   const update = <K extends keyof HeatingCoolingCircuit>(key: K, value: HeatingCoolingCircuit[K]) => {
-    if (editing) setEditing({ ...editing, [key]: value })
+    if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
   }
 
   const thermalStorageOptions = storages.filter((s) => s.type === 'heat' || s.type === 'cold').map((s) => ({ value: s.id, label: s.name || 'Unbenannt' }))
@@ -239,7 +239,7 @@ export default function CircuitsPage() {
                 updates.flowTemperatureC = 16; updates.returnTemperatureC = 20
                 updates.heatingCurve = { steepness: 0.4, parallelShift: editing.heatingCurve.parallelShift }
               }
-              setEditing({ ...editing, ...updates })
+              setEditing((prev) => prev ? { ...prev, ...updates } : prev)
             }} options={distributionOptions} info="Art der Wärme-/Kälteabgabe im Raum. Temperaturen und Heizkurve werden automatisch vorbelegt." />
           </Section>
 

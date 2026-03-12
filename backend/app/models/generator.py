@@ -12,6 +12,7 @@ class GeneratorType(str, enum.Enum):
     CHP = "chp"  # BHKW
     BOILER = "boiler"
     CHILLER = "chiller"
+    GRID = "grid"
 
 
 class EnergyForm(str, enum.Enum):

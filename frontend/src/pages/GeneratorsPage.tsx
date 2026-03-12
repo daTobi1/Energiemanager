@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus, Edit2, Sun, Flame, Thermometer, Snowflake, X, Copy, ArrowLeft } from 'lucide-react'
+import { Plus, Edit2, Sun, Flame, Thermometer, Snowflake, Zap, X, Copy, ArrowLeft } from 'lucide-react'
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
@@ -8,13 +8,14 @@ import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type {
   Generator, GeneratorType, PvGenerator, ChpGenerator,
-  HeatPumpGenerator, BoilerGenerator, ChillerGenerator,
+  HeatPumpGenerator, BoilerGenerator, ChillerGenerator, GridGenerator,
   EnergyPort, PortEnergy,
 } from '../types'
 import { createDefaultCommunication } from '../types'
 import { PortEditor, mkPort } from '../components/ui/PortEditor'
 
 const typeOptions = [
+  { value: 'grid', label: 'Hausanschluss (Netzanschluss)' },
   { value: 'pv', label: 'PV-Anlage (Photovoltaik)' },
   { value: 'chp', label: 'BHKW (Kraft-Wärme-Kopplung)' },
   { value: 'heat_pump', label: 'Wärmepumpe' },
@@ -38,6 +39,7 @@ const heatPumpTypeOptions = [
 ]
 
 const typeIcons: Record<GeneratorType, typeof Sun> = {
+  grid: Zap,
   pv: Sun,
   chp: Flame,
   heat_pump: Thermometer,
@@ -46,6 +48,7 @@ const typeIcons: Record<GeneratorType, typeof Sun> = {
 }
 
 const typeColors: Record<GeneratorType, string> = {
+  grid: 'bg-blue-500/15 text-blue-400',
   pv: 'bg-amber-500/15 text-amber-400',
   chp: 'bg-orange-500/15 text-orange-400',
   heat_pump: 'bg-red-500/15 text-red-400',
@@ -54,6 +57,7 @@ const typeColors: Record<GeneratorType, string> = {
 }
 
 const typeLabels: Record<GeneratorType, string> = {
+  grid: 'Hausanschluss',
   pv: 'PV-Anlage',
   chp: 'BHKW',
   heat_pump: 'Wärmepumpe',
@@ -62,11 +66,12 @@ const typeLabels: Record<GeneratorType, string> = {
 }
 
 const genNodeColors: Record<GeneratorType, string> = {
-  pv: '#fef3c7', chp: '#ffedd5', heat_pump: '#fee2e2', boiler: '#fee2e2', chiller: '#dbeafe',
+  grid: '#dbeafe', pv: '#fef3c7', chp: '#ffedd5', heat_pump: '#fee2e2', boiler: '#fee2e2', chiller: '#dbeafe',
 }
 
 function createDefaultPorts(type: GeneratorType, coolingCapable = false): EnergyPort[] {
   switch (type) {
+    case 'grid':      return [mkPort('input', 'electricity', 'Netzbezug'), mkPort('output', 'electricity', 'Einspeisung')]
     case 'pv':        return [mkPort('output', 'electricity', 'Strom')]
     case 'chp':       return [mkPort('input', 'gas', 'Erdgas'), mkPort('output', 'electricity', 'Strom'), mkPort('output', 'heat', 'Heizwärme')]
     case 'heat_pump': {
@@ -92,8 +97,16 @@ function createDefaultGenerator(type: GeneratorType): Generator {
     communication: createDefaultCommunication(),
     assignedMeterIds: [],
     ports: createDefaultPorts(type),
+    connectedGeneratorIds: [],
   }
   switch (type) {
+    case 'grid':
+      return {
+        ...base, type: 'grid', energyForm: 'electricity',
+        gridMaxPowerKw: 30, gridPhases: 3, gridVoltageV: 400,
+        feedInLimitPercent: 100, feedInLimitKw: 0,
+        gridOperator: '', meterPointId: '',
+      }
     case 'pv':
       return {
         ...base, type: 'pv', energyForm: 'electricity',
@@ -149,6 +162,7 @@ function createDefaultGenerator(type: GeneratorType): Generator {
 
 function getGeneratorSummary(g: Generator): string {
   switch (g.type) {
+    case 'grid': return `${g.gridMaxPowerKw} kW, ${g.gridVoltageV}V${g.gridOperator ? `, ${g.gridOperator}` : ''}`
     case 'pv': return `${g.peakPowerKwp} kWp, ${g.numberOfModules} Module, ${g.azimuthDeg}° / ${g.tiltDeg}°`
     case 'chp': return `${g.electricalPowerKw} kW(el) / ${g.thermalPowerKw} kW(th)`
     case 'heat_pump': return `${g.heatingPowerKw} kW, COP ${g.copRated}, ${heatPumpTypeOptions.find(o => o.value === g.heatPumpType)?.label}`
@@ -158,7 +172,7 @@ function getGeneratorSummary(g: Generator): string {
 }
 
 export default function GeneratorsPage() {
-  const { generators, meters, addGenerator, updateGenerator, removeGenerator } = useEnergyStore()
+  const { generators, meters, storages, circuits, addGenerator, updateGenerator, removeGenerator, updateStorage, updateCircuit } = useEnergyStore()
   const [editing, setEditing] = useState<Generator | null>(null)
   const [showForm, setShowForm] = useState(false)
   const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
@@ -173,7 +187,10 @@ export default function GeneratorsPage() {
     setShowForm(true)
   }
 
+  const hasGrid = generators.some((g) => g.type === 'grid')
+
   const duplicate = (g: Generator) => {
+    if (g.type === 'grid') return // Nur ein Hausanschluss erlaubt
     const copy = { ...g, id: uuid(), name: g.name + ' (Kopie)' }
     addGenerator(copy as Generator)
   }
@@ -248,10 +265,52 @@ export default function GeneratorsPage() {
 
   const updateField = <K extends keyof Generator>(key: K, value: Generator[K]) => {
     if (!editing) return
-    setEditing({ ...editing, [key]: value } as Generator)
+    setEditing((prev) => prev ? { ...prev, [key]: value } as Generator : prev)
   }
 
   const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || 'ohne Nr.'})` }))
+  const storageOptions = storages.map((s) => ({ value: s.id, label: s.name || 'Unbenannt' }))
+  const circuitOptions = circuits.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
+  // Andere Erzeuger (ohne sich selbst und ohne Grid) als Quell-Verbindungsoptionen
+  const otherGenOptions = generators.filter((g) => editing && g.id !== editing.id && g.type !== 'grid').map((g) => ({ value: g.id, label: g.name || g.type }))
+
+  // Welche Speicher haben diesen Erzeuger in connectedGeneratorIds?
+  const connectedStorageIds = storages.filter((s) => editing && s.connectedGeneratorIds.includes(editing.id)).map((s) => s.id)
+  // Welche Kreise haben diesen Erzeuger in generatorIds?
+  const connectedCircuitIds = circuits.filter((c) => editing && c.generatorIds.includes(editing.id)).map((c) => c.id)
+  // Welche Erzeuger versorgen diesen Erzeuger? (connectedGeneratorIds auf diesem Erzeuger)
+  const sourceGenIds: string[] = editing?.connectedGeneratorIds || []
+
+  const toggleSourceGenConnection = (sourceGenId: string) => {
+    if (!editing) return
+    const has = (editing.connectedGeneratorIds || []).includes(sourceGenId)
+    const ids = has
+      ? (editing.connectedGeneratorIds || []).filter((id) => id !== sourceGenId)
+      : [...(editing.connectedGeneratorIds || []), sourceGenId]
+    updateField('connectedGeneratorIds' as keyof Generator, ids as never)
+  }
+
+  const toggleStorageConnection = (storageId: string) => {
+    if (!editing) return
+    const stor = storages.find((s) => s.id === storageId)
+    if (!stor) return
+    const has = stor.connectedGeneratorIds.includes(editing.id)
+    const ids = has
+      ? stor.connectedGeneratorIds.filter((id) => id !== editing.id)
+      : [...stor.connectedGeneratorIds, editing.id]
+    updateStorage(storageId, { ...stor, connectedGeneratorIds: ids })
+  }
+
+  const toggleCircuitConnection = (circuitId: string) => {
+    if (!editing) return
+    const circ = circuits.find((c) => c.id === circuitId)
+    if (!circ) return
+    const has = circ.generatorIds.includes(editing.id)
+    const ids = has
+      ? circ.generatorIds.filter((id) => id !== editing.id)
+      : [...circ.generatorIds, editing.id]
+    updateCircuit(circuitId, { ...circ, generatorIds: ids })
+  }
 
   if (showForm && editing) {
     return (
@@ -287,7 +346,7 @@ export default function GeneratorsPage() {
                   const newGen = createDefaultGenerator(v as GeneratorType)
                   setEditing({ ...newGen, id: editing.id, name: editing.name, notes: editing.notes })
                 }}
-                options={typeOptions}
+                options={typeOptions.filter(({ value }) => !(value === 'grid' && hasGrid && editing.type !== 'grid'))}
               />
               <InputField label="Name / Bezeichnung" value={editing.name} onChange={(v) => updateField('name', v)} placeholder="z.B. PV Süddach" />
             </div>
@@ -323,6 +382,21 @@ export default function GeneratorsPage() {
               )}
             </div>
           </Section>
+
+          {/* Hausanschluss-spezifische Felder */}
+          {editing.type === 'grid' && (
+            <Section title="Hausanschluss-Daten" defaultOpen={true} badge="Netzanschluss">
+              <div className="grid grid-cols-3 gap-4">
+                <InputField label="Max. Anschlussleistung" value={(editing as GridGenerator).gridMaxPowerKw} onChange={(v) => updateField('gridMaxPowerKw' as keyof Generator, Number(v))} type="number" unit="kW" info="Maximale Leistung des Hausanschlusses laut Anschlussvertrag." />
+                <InputField label="Nennspannung" value={(editing as GridGenerator).gridVoltageV} onChange={(v) => updateField('gridVoltageV' as keyof Generator, Number(v))} type="number" unit="V" />
+                <InputField label="Einspeisebegrenzung" value={(editing as GridGenerator).feedInLimitPercent} onChange={(v) => updateField('feedInLimitPercent' as keyof Generator, Number(v))} type="number" unit="%" hint="z.B. 70%-Regel" min={0} max={100} info="Maximale Einspeiseleistung in Prozent der installierten PV-Leistung." />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <InputField label="Netzbetreiber" value={(editing as GridGenerator).gridOperator} onChange={(v) => updateField('gridOperator' as keyof Generator, v)} placeholder="z.B. E.ON, Stadtwerke..." />
+                <InputField label="Zählpunkt-ID (MeLo)" value={(editing as GridGenerator).meterPointId} onChange={(v) => updateField('meterPointId' as keyof Generator, v)} placeholder="DE000..." hint="Marktlokations-ID" info="Die Marktlokations-ID (MaLo) identifiziert den Hausanschlusspunkt eindeutig im deutschen Stromnetz." />
+              </div>
+            </Section>
+          )}
 
           {/* PV-spezifische Felder */}
           {editing.type === 'pv' && (
@@ -530,6 +604,99 @@ export default function GeneratorsPage() {
             nodeColor={genNodeColors[editing.type]}
           />
 
+          {/* Zuordnungen */}
+          <Section title="Zuordnungen" defaultOpen={true}>
+            <div className="space-y-4">
+              <div>
+                <label className="label">Verbundene Speicher</label>
+                <p className="text-xs text-dark-faded mb-1">Welche Speicher werden von diesem Erzeuger geladen?</p>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {storageOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => toggleStorageConnection(opt.value)}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                        connectedStorageIds.includes(opt.value)
+                          ? 'bg-purple-600/20 border-purple-500/40 text-purple-400'
+                          : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  {storageOptions.length === 0 && (
+                    <button
+                      onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-purple-500/50 hover:text-purple-400 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Speicher jetzt anlegen</span>
+                    </button>
+                  )}
+                  {storageOptions.length > 0 && (
+                    <button onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-purple-500/50 hover:bg-purple-500/5 text-dark-faded hover:text-purple-400 transition-colors">
+                      <Plus className="w-3 h-3" /> Neuen Speicher anlegen
+                    </button>
+                  )}
+                </div>
+              </div>
+              {editing.type !== 'grid' && otherGenOptions.length > 0 && (
+              <div>
+                <label className="label">Quell-Erzeuger</label>
+                <p className="text-xs text-dark-faded mb-1">Welche Erzeuger versorgen diesen Erzeuger mit Energie? (z.B. PV liefert Strom an Wärmepumpe)</p>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {otherGenOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => toggleSourceGenConnection(opt.value)}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                        sourceGenIds.includes(opt.value)
+                          ? 'bg-amber-600/20 border-amber-500/40 text-amber-400'
+                          : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              )}
+              <div>
+                <label className="label">Verbundene Heiz-/Kältekreise</label>
+                <p className="text-xs text-dark-faded mb-1">In welche Kreise speist dieser Erzeuger direkt ein (ohne Speicher dazwischen)?</p>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  {circuitOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => toggleCircuitConnection(opt.value)}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                        connectedCircuitIds.includes(opt.value)
+                          ? 'bg-red-600/20 border-red-500/40 text-red-400'
+                          : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                  {circuitOptions.length === 0 && (
+                    <button
+                      onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'generatorIds', assignMode: 'append', draft: editing })}
+                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-red-500/50 hover:text-red-400 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span className="text-sm">Heiz-/Kältekreis jetzt anlegen</span>
+                    </button>
+                  )}
+                  {circuitOptions.length > 0 && (
+                    <button onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'generatorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-red-500/50 hover:bg-red-500/5 text-dark-faded hover:text-red-400 transition-colors">
+                      <Plus className="w-3 h-3" /> Neuen Kreis anlegen
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Section>
+
           {/* Kommunikation */}
           <CommunicationForm
             config={editing.communication}
@@ -562,20 +729,20 @@ export default function GeneratorsPage() {
       </div>
 
       {/* Typ-Auswahl zum Hinzufügen */}
-      <div className="grid grid-cols-5 gap-3 mb-8">
-        {typeOptions.map(({ value, label }) => {
+      <div className="grid grid-cols-3 gap-3 mb-8">
+        {typeOptions.filter(({ value }) => !(value === 'grid' && hasGrid)).map(({ value, label }) => {
           const Icon = typeIcons[value as GeneratorType]
           return (
             <button
               key={value}
               onClick={() => startAdd(value as GeneratorType)}
-              className="card hover:border-emerald-500/50 hover:shadow-md transition-all flex flex-col items-center gap-2 py-4 cursor-pointer"
+              className="card hover:border-emerald-500/50 hover:shadow-md transition-all flex items-center gap-3 py-3 px-4 cursor-pointer"
             >
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${typeColors[value as GeneratorType]}`}>
-                <Icon className="w-5 h-5" />
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${typeColors[value as GeneratorType]}`}>
+                <Icon className="w-4 h-4" />
               </div>
-              <span className="text-sm font-medium text-center">{label}</span>
-              <Plus className="w-4 h-4 text-dark-faded" />
+              <span className="text-sm font-medium">{label}</span>
+              <Plus className="w-4 h-4 text-dark-faded ml-auto" />
             </button>
           )
         })}

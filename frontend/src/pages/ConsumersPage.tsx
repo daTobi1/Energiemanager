@@ -207,7 +207,7 @@ export default function ConsumersPage() {
     setShowForm(false); setEditing(null)
   }
   const update = <K extends keyof Consumer>(key: K, value: Consumer[K]) => {
-    if (editing) setEditing({ ...editing, [key]: value })
+    if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
   }
 
   const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
@@ -317,22 +317,25 @@ export default function ConsumersPage() {
                 />
                 Netz (Hausanschluss)
               </label>
-              {storages.filter((s) => s.type === 'battery').map((s) => (
-                <label key={s.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={(editing.connectedSourceIds || []).includes(s.id)}
-                    onChange={(e) => {
-                      const ids = e.target.checked
-                        ? [...(editing.connectedSourceIds || []), s.id]
-                        : (editing.connectedSourceIds || []).filter((id) => id !== s.id)
-                      update('connectedSourceIds', ids)
-                    }}
-                    className="w-4 h-4 text-emerald-600 rounded"
-                  />
-                  {s.name || 'Batteriespeicher'}
-                </label>
-              ))}
+              {storages.map((s) => {
+                const storLabel = s.type === 'battery' ? 'Batteriespeicher' : s.type === 'heat' ? 'Wärmespeicher' : 'Kältespeicher'
+                return (
+                  <label key={s.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={(editing.connectedSourceIds || []).includes(s.id)}
+                      onChange={(e) => {
+                        const ids = e.target.checked
+                          ? [...(editing.connectedSourceIds || []), s.id]
+                          : (editing.connectedSourceIds || []).filter((id) => id !== s.id)
+                        update('connectedSourceIds', ids)
+                      }}
+                      className="w-4 h-4 text-emerald-600 rounded"
+                    />
+                    {s.name || storLabel}
+                  </label>
+                )
+              })}
             </div>
           </Section>
 

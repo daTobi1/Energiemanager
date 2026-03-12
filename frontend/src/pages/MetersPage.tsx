@@ -16,6 +16,7 @@ const meterTypeOptions = [
   { value: 'gas', label: 'Gaszähler' },
   { value: 'water', label: 'Wasserzähler' },
   { value: 'cold', label: 'Kältemengenzähler' },
+  { value: 'source', label: 'Quellenzähler' },
 ]
 
 const directionOptions = [
@@ -50,6 +51,7 @@ const typeColors: Record<MeterType, string> = {
   gas: 'bg-blue-500/15 text-blue-400',
   water: 'bg-cyan-500/15 text-cyan-400',
   cold: 'bg-indigo-500/15 text-indigo-400',
+  source: 'bg-teal-500/15 text-teal-400',
 }
 
 const typeLabels: Record<MeterType, string> = {
@@ -58,6 +60,7 @@ const typeLabels: Record<MeterType, string> = {
   gas: 'Gas',
   water: 'Wasser',
   cold: 'Kälte',
+  source: 'Quelle',
 }
 
 const categoryLabels: Record<MeterCategory, string> = {
@@ -79,7 +82,7 @@ const directionLabels: Record<MeterDirection, string> = {
 }
 
 function createDefaultMeterPorts(type: MeterType, direction: MeterDirection): EnergyPort[] {
-  const energy = type === 'electricity' ? 'electricity' : type === 'heat' ? 'heat' : type === 'gas' ? 'gas' : type === 'cold' ? 'cold' : 'electricity'
+  const energy = type === 'electricity' ? 'electricity' : type === 'heat' ? 'heat' : type === 'gas' ? 'gas' : type === 'cold' ? 'cold' : type === 'source' ? 'source' : 'electricity'
   const label = typeLabels[type] || 'Energie'
   if (direction === 'bidirectional') return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
   if (direction === 'generation' || direction === 'grid_feed_in') return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
@@ -92,6 +95,7 @@ const meterNodeColors: Record<MeterType, string> = {
   gas: '#fff7ed',
   water: '#eff6ff',
   cold: '#eff6ff',
+  source: '#ecfeff',
 }
 
 function createDefaultMeter(): Meter {
@@ -219,7 +223,7 @@ export default function MetersPage() {
 
   const update = <K extends keyof Meter>(key: K, value: Meter[K]) => {
     if (!editing) return
-    setEditing({ ...editing, [key]: value })
+    setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
   }
 
   // Zuordnungs-Optionen basierend auf Typ

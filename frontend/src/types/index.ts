@@ -57,7 +57,7 @@ export interface CommunicationConfig {
 // Erzeuger (Generators)
 // ============================================================
 
-export type GeneratorType = 'pv' | 'chp' | 'heat_pump' | 'boiler' | 'chiller'
+export type GeneratorType = 'pv' | 'chp' | 'heat_pump' | 'boiler' | 'chiller' | 'grid'
 export type FuelType = 'natural_gas' | 'biogas' | 'lpg' | 'oil' | 'pellet' | 'wood_chips'
 export type HeatPumpType = 'air_water' | 'brine_water' | 'water_water'
 export type EnergyForm = 'electricity' | 'heat' | 'cold' | 'electricity_heat'
@@ -84,6 +84,7 @@ interface GeneratorBase {
   communication: CommunicationConfig
   assignedMeterIds: string[]
   ports: EnergyPort[]
+  connectedGeneratorIds: string[]
 }
 
 export interface PvGenerator extends GeneratorBase {
@@ -180,13 +181,25 @@ export interface ChillerGenerator extends GeneratorBase {
   maxOutdoorTempC: number
 }
 
-export type Generator = PvGenerator | ChpGenerator | HeatPumpGenerator | BoilerGenerator | ChillerGenerator
+export interface GridGenerator extends GeneratorBase {
+  type: 'grid'
+  energyForm: 'electricity'
+  gridMaxPowerKw: number
+  gridPhases: 1 | 3
+  gridVoltageV: number
+  feedInLimitPercent: number
+  feedInLimitKw: number
+  gridOperator: string
+  meterPointId: string
+}
+
+export type Generator = PvGenerator | ChpGenerator | HeatPumpGenerator | BoilerGenerator | ChillerGenerator | GridGenerator
 
 // ============================================================
 // Zähler (Meters)
 // ============================================================
 
-export type MeterType = 'electricity' | 'heat' | 'gas' | 'water' | 'cold'
+export type MeterType = 'electricity' | 'heat' | 'gas' | 'water' | 'cold' | 'source'
 export type MeterDirection = 'consumption' | 'generation' | 'bidirectional' | 'grid_feed_in' | 'grid_consumption'
 export type MeterCategory = 'source' | 'generation' | 'consumption' | 'circuit' | 'group' | 'end' | 'unassigned'
 export type MeterAssignmentType = 'generator' | 'consumer' | 'storage' | 'grid' | 'none'
@@ -485,14 +498,6 @@ export interface SystemSettings {
   oilPriceCtPerLiter: number
   pelletPriceEurPerTon: number
 
-  gridMaxPowerKw: number
-  gridPhases: 3
-  gridVoltageV: number
-  feedInLimitPercent: number
-  feedInLimitKw: number
-  gridOperator: string
-  meterPointId: string
-
   weatherProvider: WeatherProvider
   weatherApiKey: string
 
@@ -659,13 +664,6 @@ export function createDefaultSettings(): SystemSettings {
     gasPriceCtPerKwh: 8,
     oilPriceCtPerLiter: 95,
     pelletPriceEurPerTon: 350,
-    gridMaxPowerKw: 30,
-    gridPhases: 3,
-    gridVoltageV: 400,
-    feedInLimitPercent: 100,
-    feedInLimitKw: 0,
-    gridOperator: '',
-    meterPointId: '',
     weatherProvider: 'openweathermap',
     weatherApiKey: '',
     optimizerWeights: createDefaultOptimizerWeights(),

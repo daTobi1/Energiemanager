@@ -138,7 +138,7 @@ export default function RoomsPage() {
     setShowForm(false); setEditing(null)
   }
   const update = <K extends keyof Room>(key: K, value: Room[K]) => {
-    if (editing) setEditing({ ...editing, [key]: value })
+    if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
   }
 
   const circuitOptions = circuits.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))

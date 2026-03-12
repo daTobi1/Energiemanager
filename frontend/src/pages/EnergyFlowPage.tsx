@@ -1,7 +1,7 @@
 import { useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useEnergyStore } from '../store/useEnergyStore'
-import { Sun, Flame, Thermometer, Snowflake, Battery, Plug, Zap, Home, Waypoints, Gauge, Plus } from 'lucide-react'
+import { Sun, Flame, Thermometer, Snowflake, Battery, Plug, Zap, Home, Waypoints, Gauge, Plus, Undo2, X } from 'lucide-react'
 import type { GeneratorType, StorageType, ConsumerType, CircuitType, MeterType, MeterCategory } from '../types'
 
 interface FlowNode {
@@ -36,6 +36,7 @@ const METER_W = 84
 const METER_H = 30
 
 const genColors: Record<GeneratorType, { bg: string; icon: string }> = {
+  grid: { bg: '#dbeafe', icon: '#3b82f6' },
   pv: { bg: '#fef3c7', icon: '#d97706' },
   chp: { bg: '#ffedd5', icon: '#ea580c' },
   heat_pump: { bg: '#fee2e2', icon: '#dc2626' },
@@ -67,6 +68,7 @@ const meterColors: Record<MeterType, { bg: string; icon: string }> = {
   gas: { bg: '#fff7ed', icon: '#ea580c' },
   water: { bg: '#eff6ff', icon: '#2563eb' },
   cold: { bg: '#eff6ff', icon: '#0891b2' },
+  source: { bg: '#ecfeff', icon: '#0891b2' },
 }
 
 // Energieform-Farben (konsistent im ganzen Diagramm)
@@ -108,6 +110,8 @@ const getDefaultPortDefs = (genType: string, coolingCapable = false): PortLayout
       return { left: [{ energy: 'gas', color: energyColors.gas }], right: [{ energy: 'heat', color: energyColors.heat }] }
     case 'chiller':
       return { left: [{ energy: 'electricity', color: energyColors.electricity }], right: [{ energy: 'cold', color: energyColors.cold }] }
+    case 'grid':
+      return { left: [{ energy: 'electricity', color: energyColors.electricity }], right: [{ energy: 'electricity', color: energyColors.electricity }] }
     default:
       return { left: [], right: [] }
   }
@@ -146,7 +150,7 @@ const getCircPortLayout = (circ: { type: string; ports?: EnergyPort[] }): PortLa
 // Zähler-Ports: konfiguriert oder Default
 const getMeterPortLayout = (meter: { type: string; direction?: string; ports?: EnergyPort[] }): PortLayout => {
   if (meter.ports && meter.ports.length > 0) return portsToLayout(meter.ports)
-  const e = meter.type === 'heat' ? 'heat' : meter.type === 'gas' ? 'gas' : meter.type === 'cold' ? 'cold' : 'electricity'
+  const e = meter.type === 'heat' ? 'heat' : meter.type === 'gas' ? 'gas' : meter.type === 'cold' ? 'cold' : meter.type === 'source' ? 'source' : meter.type === 'water' ? 'water' : 'electricity'
   const c = energyColors[e] || '#888'
   return { left: [{ energy: e, color: c }], right: [{ energy: e, color: c }] }
 }
@@ -182,6 +186,7 @@ const nodePathMap: Record<string, string> = {
   circuit: '/circuits',
   room: '/rooms',
   meter: '/meters',
+  grid: '/generators',
 }
 
 // 11 Spalten: Energiefluss von links nach rechts
@@ -219,9 +224,66 @@ const columnRoutes: Record<string, { path: string; initialValues?: Record<string
 
 export default function EnergyFlowPage() {
   const { generators, storages, consumers, circuits, rooms, meters, settings,
-    updateMeter, updateStorage, updateCircuit, updateRoom, updateConsumer } = useEnergyStore()
+    updateGenerator, updateMeter, updateStorage, updateCircuit, updateRoom, updateConsumer,
+    removeGenerator, removeStorage, removeConsumer, removeCircuit, removeRoom, removeMeter } = useEnergyStore()
   const navigate = useNavigate()
   const svgRef = useRef<SVGSVGElement>(null)
+
+  // --- Undo-System: letzte Verbindungsaktionen rückgängig machen ---
+  const [undoStack, setUndoStack] = useState<Array<() => void>>([])
+  const undoBatch = useRef<Array<() => void>>([])
+
+  // Tracked update wrappers: sammeln Restore-Operationen in undoBatch
+  const tUpdateGenerator = (id: string, next: any) => {
+    const prev = generators.find((g) => g.id === id)
+    if (prev) undoBatch.current.push(() => updateGenerator(id, prev))
+    updateGenerator(id, next)
+  }
+  const tUpdateStorage = (id: string, next: any) => {
+    const prev = storages.find((s) => s.id === id)
+    if (prev) undoBatch.current.push(() => updateStorage(id, prev))
+    updateStorage(id, next)
+  }
+  const tUpdateConsumer = (id: string, next: any) => {
+    const prev = consumers.find((c) => c.id === id)
+    if (prev) undoBatch.current.push(() => updateConsumer(id, prev))
+    updateConsumer(id, next)
+  }
+  const tUpdateCircuit = (id: string, next: any) => {
+    const prev = circuits.find((c) => c.id === id)
+    if (prev) undoBatch.current.push(() => updateCircuit(id, prev))
+    updateCircuit(id, next)
+  }
+  const tUpdateRoom = (id: string, next: any) => {
+    const prev = rooms.find((r) => r.id === id)
+    if (prev) undoBatch.current.push(() => updateRoom(id, prev))
+    updateRoom(id, next)
+  }
+  const tUpdateMeter = (id: string, next: any) => {
+    const prev = meters.find((m) => m.id === id)
+    if (prev) undoBatch.current.push(() => updateMeter(id, prev))
+    updateMeter(id, next)
+  }
+
+  const beginAction = () => { undoBatch.current = [] }
+  const commitAction = () => {
+    if (undoBatch.current.length > 0) {
+      const ops = [...undoBatch.current]
+      setUndoStack((prev) => [...prev.slice(-19), () => ops.forEach((fn) => fn())])
+    }
+    undoBatch.current = []
+  }
+
+  const undo = useCallback(() => {
+    setUndoStack((prev) => {
+      if (prev.length === 0) return prev
+      const next = [...prev]
+      const restore = next.pop()!
+      restore()
+      return next
+    })
+  }, [])
+
   const [showCircuitTypeDialog, setShowCircuitTypeDialog] = useState(false)
   const [openColumnPopup, setOpenColumnPopup] = useState<string | null>(null)
   const [connecting, setConnecting] = useState<{
@@ -240,7 +302,7 @@ export default function EnergyFlowPage() {
   }, [])
 
   const dragging = useRef<{
-    nodeId: string; startMouseY: number; startOffset: number; moved: boolean
+    nodeId: string; startMouseY: number; startOffset: number; baseY: number; moved: boolean
   } | null>(null)
 
   const handleDragStart = (node: FlowNode, e: React.MouseEvent) => {
@@ -248,10 +310,12 @@ export default function EnergyFlowPage() {
     if (node.type === 'grid') return // Hausanschluss nicht verschiebbar
     e.stopPropagation()
     const pt = getSvgPoint(e)
+    const currentOffset = yOffsets[node.id] || 0
     dragging.current = {
       nodeId: node.id,
       startMouseY: pt.y,
-      startOffset: yOffsets[node.id] || 0,
+      startOffset: currentOffset,
+      baseY: node.y - currentOffset,
       moved: false,
     }
   }
@@ -262,7 +326,10 @@ export default function EnergyFlowPage() {
     const dy = pt.y - dragging.current.startMouseY
     if (Math.abs(dy) > 3) dragging.current.moved = true
     if (!dragging.current.moved) return
-    const newOffset = dragging.current.startOffset + dy
+    const rawOffset = dragging.current.startOffset + dy
+    // Nodes dürfen nicht über die Spalten-Überschriften (y=35 Trennlinie) hinaus nach oben
+    const minY = 38
+    const newOffset = Math.max(rawOffset, minY - dragging.current.baseY)
     saveOffsets({ ...yOffsets, [dragging.current.nodeId]: newOffset })
   }
 
@@ -277,6 +344,18 @@ export default function EnergyFlowPage() {
     return () => window.removeEventListener('mouseup', up)
   }, [])
 
+  // Strg+Z / Cmd+Z → Undo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [undo])
+
   const resetPositions = useCallback(() => {
     saveOffsets({})
   }, [saveOffsets])
@@ -284,6 +363,11 @@ export default function EnergyFlowPage() {
   const handleNodeClick = (node: FlowNode) => {
     const path = nodePathMap[node.type]
     if (!path) return
+    if (node.type === 'grid') {
+      const gridGen = generators.find((g) => g.type === 'grid')
+      if (gridGen) navigate(path, { state: { editId: gridGen.id, returnTo: '/energy-flow' } })
+      return
+    }
     const entityId = node.id.substring(node.id.indexOf('-') + 1)
     navigate(path, { state: { editId: entityId, returnTo: '/energy-flow' } })
   }
@@ -352,13 +436,15 @@ export default function EnergyFlowPage() {
     if (meterColumnCategories[colKey]) {
       const meter = meters.find((m) => m.id === item.id)
       if (!meter) return
+      beginAction()
       if (item.assigned) {
         // Abwählen: in "Nicht zugeordnet" verschieben
-        updateMeter(item.id, { ...meter, category: 'unassigned' })
+        tUpdateMeter(item.id, { ...meter, category: 'unassigned' })
       } else {
         // Zähler dieser Spalte zuordnen
-        updateMeter(item.id, { ...meter, category: meterColumnCategories[colKey] })
+        tUpdateMeter(item.id, { ...meter, category: meterColumnCategories[colKey] })
       }
+      commitAction()
     } else {
       // Geräte-Spalten: zur Bearbeitung navigieren
       const path = nodePathMap[item.type]
@@ -391,7 +477,7 @@ export default function EnergyFlowPage() {
 
   const connectTargets: Record<string, string[]> = {
     grid: ['generator', 'storage', 'consumer', 'meter'],
-    generator: ['grid', 'storage', 'circuit', 'meter'],
+    generator: ['grid', 'storage', 'circuit', 'meter', 'generator', 'consumer'],
     storage: ['grid', 'generator', 'circuit', 'consumer', 'meter'],
     circuit: ['room', 'meter'],
     room: ['consumer', 'meter'],
@@ -399,18 +485,62 @@ export default function EnergyFlowPage() {
     meter: ['grid', 'generator', 'storage', 'circuit', 'room', 'consumer'],
   }
 
-  // Bidirektional: prüfe ob A→B ODER B→A eine gültige Verbindung ist
+  // Energieformen eines Nodes ermitteln (alle unterstützten Energietypen)
+  const getNodeEnergies = (node: FlowNode): Set<string> => {
+    const energies = new Set<string>()
+    const entityId = node.id === 'bus' ? '' : node.id.substring(node.id.indexOf('-') + 1)
+    if (node.type === 'grid') {
+      energies.add('electricity')
+      return energies
+    }
+    let layout: PortLayout | undefined
+    if (node.type === 'generator') {
+      const gen = generators.find((g) => g.id === entityId)
+      if (gen) layout = getGenPortLayout(gen as any)
+    } else if (node.type === 'storage') {
+      const stor = storages.find((s) => s.id === entityId)
+      if (stor) layout = getStorPortLayout(stor)
+    } else if (node.type === 'consumer') {
+      const con = consumers.find((c) => c.id === entityId)
+      if (con) layout = getConPortLayout(con)
+    } else if (node.type === 'circuit') {
+      const circ = circuits.find((c) => c.id === entityId)
+      if (circ) layout = getCircPortLayout(circ)
+    } else if (node.type === 'room') {
+      const room = rooms.find((r) => r.id === entityId)
+      if (room) layout = getRoomPortLayout(room as any)
+    } else if (node.type === 'meter') {
+      const meter = meters.find((m) => m.id === entityId)
+      if (meter) layout = getMeterPortLayout(meter)
+    }
+    if (layout) {
+      layout.left.forEach((p) => energies.add(p.energy))
+      layout.right.forEach((p) => energies.add(p.energy))
+    }
+    return energies
+  }
+
+  // Bidirektional: prüfe ob A→B ODER B→A eine gültige Verbindung ist + Energieform-Check
   const isValidTarget = (targetNode: FlowNode): boolean => {
     if (!connecting) return false
     if (connecting.nodeId === targetNode.id) return false
-    return connectTargets[connecting.type]?.includes(targetNode.type)
+    const typeValid = connectTargets[connecting.type]?.includes(targetNode.type)
       || connectTargets[targetNode.type]?.includes(connecting.type)
       || false
+    if (!typeValid) return false
+    // Energieform-Check: nur gleiche Energieformen dürfen verbunden werden
+    if (connecting.energy) {
+      const targetEnergies = getNodeEnergies(targetNode)
+      if (targetEnergies.size > 0 && !targetEnergies.has(connecting.energy)) return false
+    }
+    return true
   }
 
   const finishConnect = (targetNode: FlowNode, e: React.MouseEvent) => {
     e.stopPropagation()
     if (!connecting || !isValidTarget(targetNode)) { setConnecting(null); return }
+
+    beginAction()
 
     const aType = connecting.type
     const aId = connecting.entityId
@@ -430,25 +560,29 @@ export default function EnergyFlowPage() {
       const storId = fromType === 'storage' ? fromId : toId
       const s = storages.find((s) => s.id === storId)
       if (s && !(s.connectedGeneratorIds || []).includes('grid')) {
-        updateStorage(storId, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), 'grid'] } as any)
+        tUpdateStorage(storId, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), 'grid'] } as any)
       }
     // Grid ↔ Consumer (Verbraucher am Hausanschluss)
     } else if ((fromType === 'grid' && toType === 'consumer') || (fromType === 'consumer' && toType === 'grid')) {
       const conId = fromType === 'consumer' ? fromId : toId
       const c = consumers.find((c) => c.id === conId)
       if (c && !(c.connectedSourceIds || []).includes('grid')) {
-        updateConsumer(conId, { ...c, connectedSourceIds: [...(c.connectedSourceIds || []), 'grid'] })
+        tUpdateConsumer(conId, { ...c, connectedSourceIds: [...(c.connectedSourceIds || []), 'grid'] })
       }
-    // Grid ↔ Generator (Erzeuger speist ins Netz)
+    // Grid ↔ Generator (Erzeuger speist ins / bezieht vom Netz)
     } else if ((fromType === 'grid' && toType === 'generator') || (fromType === 'generator' && toType === 'grid')) {
-      // Erzeuger-Netz-Verbindung wird über Zähler modelliert, keine separate Speicherung nötig
+      const genId = fromType === 'generator' ? fromId : toId
+      const gridGen = generators.find((g) => g.type === 'grid')
+      if (gridGen && !(gridGen.connectedGeneratorIds || []).includes(genId)) {
+        tUpdateGenerator(gridGen.id, { ...gridGen, connectedGeneratorIds: [...(gridGen.connectedGeneratorIds || []), genId] })
+      }
     // Generator ↔ Storage
     } else if ((fromType === 'generator' && toType === 'storage') || (fromType === 'storage' && toType === 'generator')) {
       const genId = fromType === 'generator' ? fromId : toId
       const storId = fromType === 'storage' ? fromId : toId
       const s = storages.find((s) => s.id === storId)
       if (s && !(s.connectedGeneratorIds || []).includes(genId)) {
-        updateStorage(storId, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), genId] } as any)
+        tUpdateStorage(storId, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), genId] } as any)
       }
     // Storage ↔ Consumer
     } else if ((fromType === 'storage' && toType === 'consumer') || (fromType === 'consumer' && toType === 'storage')) {
@@ -456,34 +590,46 @@ export default function EnergyFlowPage() {
       const conId = fromType === 'consumer' ? fromId : toId
       const s = storages.find((s) => s.id === storId)
       if (s && !(s.connectedConsumerIds || []).includes(conId)) {
-        updateStorage(storId, { ...s, connectedConsumerIds: [...(s.connectedConsumerIds || []), conId] } as any)
+        tUpdateStorage(storId, { ...s, connectedConsumerIds: [...(s.connectedConsumerIds || []), conId] } as any)
       }
     } else if (fromType === 'generator' && toType === 'circuit') {
       const c = circuits.find((c) => c.id === toId)
       if (c && !c.generatorIds.includes(fromId)) {
-        updateCircuit(toId, { ...c, generatorIds: [...c.generatorIds, fromId] })
+        tUpdateCircuit(toId, { ...c, generatorIds: [...c.generatorIds, fromId] })
       }
     } else if (fromType === 'storage' && toType === 'circuit') {
       const c = circuits.find((c) => c.id === toId)
       if (c && !(c.supplyStorageIds || []).includes(fromId)) {
-        updateCircuit(toId, { ...c, supplyStorageIds: [...(c.supplyStorageIds || []), fromId] })
+        tUpdateCircuit(toId, { ...c, supplyStorageIds: [...(c.supplyStorageIds || []), fromId] })
       }
     } else if (fromType === 'circuit' && toType === 'room') {
       const c = circuits.find((c) => c.id === fromId)
       if (c && !c.roomIds.includes(toId)) {
-        updateCircuit(fromId, { ...c, roomIds: [...c.roomIds, toId] })
+        tUpdateCircuit(fromId, { ...c, roomIds: [...c.roomIds, toId] })
       }
     } else if (fromType === 'room' && toType === 'consumer') {
       const r = rooms.find((r) => r.id === fromId)
       if (r && !r.consumerIds.includes(toId)) {
-        updateRoom(fromId, { ...r, consumerIds: [...r.consumerIds, toId] })
+        tUpdateRoom(fromId, { ...r, consumerIds: [...r.consumerIds, toId] })
+      }
+    // Generator ↔ Generator (z.B. PV→Wärmepumpe Strom, BHKW→Kältemaschine)
+    } else if (fromType === 'generator' && toType === 'generator') {
+      const targetGen = generators.find((g) => g.id === toId)
+      if (targetGen && !(targetGen.connectedGeneratorIds || []).includes(fromId)) {
+        tUpdateGenerator(toId, { ...targetGen, connectedGeneratorIds: [...(targetGen.connectedGeneratorIds || []), fromId] })
+      }
+    // Generator → Consumer (z.B. PV→Wallbox, BHKW→HVAC direkt)
+    } else if (fromType === 'generator' && toType === 'consumer') {
+      const c = consumers.find((c) => c.id === toId)
+      if (c && !(c.connectedSourceIds || []).includes(fromId)) {
+        tUpdateConsumer(toId, { ...c, connectedSourceIds: [...(c.connectedSourceIds || []), fromId] })
       }
     } else if (toType === 'meter' || fromType === 'meter') {
       const meterId = toType === 'meter' ? toId : fromId
       const otherType = toType === 'meter' ? fromType : toType
       const otherId = toType === 'meter' ? fromId : toId
       const m = meters.find((m) => m.id === meterId)
-      if (!m) { setConnecting(null); return }
+      if (!m) { setConnecting(null); commitAction(); return }
 
       // Smart: Wenn der Zähler bereits einem Speicher zugeordnet ist und man grid/generator/consumer verbindet,
       // → Durchverbindung statt Neuzuweisung
@@ -492,44 +638,44 @@ export default function EnergyFlowPage() {
         if (s) {
           if (otherType === 'grid') {
             if (!(s.connectedGeneratorIds || []).includes('grid')) {
-              updateStorage(s.id, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), 'grid'] } as any)
+              tUpdateStorage(s.id, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), 'grid'] } as any)
             }
-            setConnecting(null); return
+            setConnecting(null); commitAction(); return
           } else if (otherType === 'generator') {
             if (!(s.connectedGeneratorIds || []).includes(otherId)) {
-              updateStorage(s.id, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), otherId] } as any)
+              tUpdateStorage(s.id, { ...s, connectedGeneratorIds: [...(s.connectedGeneratorIds || []), otherId] } as any)
             }
-            setConnecting(null); return
+            setConnecting(null); commitAction(); return
           } else if (otherType === 'consumer') {
             if (!(s.connectedConsumerIds || []).includes(otherId)) {
-              updateStorage(s.id, { ...s, connectedConsumerIds: [...(s.connectedConsumerIds || []), otherId] } as any)
+              tUpdateStorage(s.id, { ...s, connectedConsumerIds: [...(s.connectedConsumerIds || []), otherId] } as any)
             }
-            setConnecting(null); return
+            setConnecting(null); commitAction(); return
           }
         }
       }
       // Wenn der Zähler einem Erzeuger zugeordnet ist und man grid verbindet → Durchverbindung (Erzeuger → Zähler → Hausanschluss)
       if (m.assignedToType === 'generator' && m.assignedToId && otherType === 'grid') {
         if (m.parentMeterId !== 'grid') {
-          updateMeter(meterId, { ...m, parentMeterId: 'grid' })
+          tUpdateMeter(meterId, { ...m, parentMeterId: 'grid' })
         }
-        setConnecting(null); return
+        setConnecting(null); commitAction(); return
       }
       // Wenn der Zähler einem Verbraucher zugeordnet ist und man grid verbindet → connectedSourceIds + parentMeterId
       if (m.assignedToType === 'consumer' && m.assignedToId && otherType === 'grid') {
         const c = consumers.find((c) => c.id === m.assignedToId)
         if (c && !(c.connectedSourceIds || []).includes('grid')) {
-          updateConsumer(c.id, { ...c, connectedSourceIds: [...(c.connectedSourceIds || []), 'grid'] })
+          tUpdateConsumer(c.id, { ...c, connectedSourceIds: [...(c.connectedSourceIds || []), 'grid'] })
         }
         if (m.parentMeterId !== 'grid') {
-          updateMeter(meterId, { ...m, parentMeterId: 'grid' })
+          tUpdateMeter(meterId, { ...m, parentMeterId: 'grid' })
         }
-        setConnecting(null); return
+        setConnecting(null); commitAction(); return
       }
 
       // Standard: Zähler dem Gerät zuordnen
       const aType = otherType === 'grid' ? 'grid' : otherType as any
-      updateMeter(meterId, {
+      tUpdateMeter(meterId, {
         ...m,
         assignedToType: aType,
         assignedToId: otherType === 'grid' ? 'grid' : otherId,
@@ -538,10 +684,12 @@ export default function EnergyFlowPage() {
     }
 
     setConnecting(null)
+    commitAction()
   }
 
   const deleteEdge = (edge: FlowEdge) => {
     if (!edge.deletable) return
+    beginAction()
     const parseId = (nid: string) => {
       if (nid === 'bus') return { prefix: 'bus', id: 'grid' }
       const i = nid.indexOf('-')
@@ -554,83 +702,194 @@ export default function EnergyFlowPage() {
     if ((from.prefix === 'bus' && to.prefix === 'stor') || (from.prefix === 'stor' && to.prefix === 'bus')) {
       const storId = from.prefix === 'stor' ? from.id : to.id
       const s = storages.find((s) => s.id === storId)
-      if (s) updateStorage(storId, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== 'grid') } as any)
+      if (s) tUpdateStorage(storId, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== 'grid') } as any)
+    // Grid ↔ Generator (direkte Verbindung ohne Zähler)
+    } else if ((from.prefix === 'bus' && to.prefix === 'gen') || (from.prefix === 'gen' && to.prefix === 'bus')) {
+      const genId = from.prefix === 'gen' ? from.id : to.id
+      const gridGen = generators.find((g) => g.type === 'grid')
+      if (gridGen) tUpdateGenerator(gridGen.id, { ...gridGen, connectedGeneratorIds: (gridGen.connectedGeneratorIds || []).filter((id: string) => id !== genId) })
     // Grid ↔ Consumer
     } else if ((from.prefix === 'bus' && to.prefix === 'con') || (from.prefix === 'con' && to.prefix === 'bus')) {
       const conId = from.prefix === 'con' ? from.id : to.id
       const c = consumers.find((c) => c.id === conId)
-      if (c) updateConsumer(conId, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== 'grid') })
+      if (c) tUpdateConsumer(conId, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== 'grid') })
     } else if (from.prefix === 'gen' && to.prefix === 'stor') {
       const s = storages.find((s) => s.id === to.id)
-      if (s) updateStorage(to.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== from.id) } as any)
+      if (s) tUpdateStorage(to.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== from.id) } as any)
     } else if (from.prefix === 'stor' && to.prefix === 'gen') {
       const s = storages.find((s) => s.id === from.id)
-      if (s) updateStorage(from.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== to.id) } as any)
+      if (s) tUpdateStorage(from.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== to.id) } as any)
     } else if (from.prefix === 'stor' && to.prefix === 'con') {
       const s = storages.find((s) => s.id === from.id)
-      if (s) updateStorage(from.id, { ...s, connectedConsumerIds: (s.connectedConsumerIds || []).filter((id) => id !== to.id) } as any)
+      if (s) tUpdateStorage(from.id, { ...s, connectedConsumerIds: (s.connectedConsumerIds || []).filter((id) => id !== to.id) } as any)
     } else if (from.prefix === 'con' && to.prefix === 'stor') {
       const s = storages.find((s) => s.id === to.id)
-      if (s) updateStorage(to.id, { ...s, connectedConsumerIds: (s.connectedConsumerIds || []).filter((id) => id !== from.id) } as any)
+      if (s) tUpdateStorage(to.id, { ...s, connectedConsumerIds: (s.connectedConsumerIds || []).filter((id) => id !== from.id) } as any)
     } else if (from.prefix === 'gen' && to.prefix === 'circ') {
       const c = circuits.find((c) => c.id === to.id)
-      if (c) updateCircuit(to.id, { ...c, generatorIds: c.generatorIds.filter((id) => id !== from.id) })
+      if (c) tUpdateCircuit(to.id, { ...c, generatorIds: c.generatorIds.filter((id) => id !== from.id) })
     } else if (from.prefix === 'stor' && to.prefix === 'circ') {
       const c = circuits.find((c) => c.id === to.id)
-      if (c) updateCircuit(to.id, { ...c, supplyStorageIds: (c.supplyStorageIds || []).filter((id) => id !== from.id) })
+      if (c) tUpdateCircuit(to.id, { ...c, supplyStorageIds: (c.supplyStorageIds || []).filter((id) => id !== from.id) })
     } else if (from.prefix === 'circ' && to.prefix === 'room') {
       const c = circuits.find((c) => c.id === from.id)
-      if (c) updateCircuit(from.id, { ...c, roomIds: c.roomIds.filter((id) => id !== to.id) })
+      if (c) tUpdateCircuit(from.id, { ...c, roomIds: c.roomIds.filter((id) => id !== to.id) })
     } else if (from.prefix === 'room' && to.prefix === 'con') {
       const r = rooms.find((r) => r.id === from.id)
-      if (r) updateRoom(from.id, { ...r, consumerIds: r.consumerIds.filter((id) => id !== to.id) })
+      if (r) tUpdateRoom(from.id, { ...r, consumerIds: r.consumerIds.filter((id) => id !== to.id) })
+    // Generator ↔ Generator
+    } else if (from.prefix === 'gen' && to.prefix === 'gen') {
+      const targetGen = generators.find((g) => g.id === to.id)
+      if (targetGen) tUpdateGenerator(to.id, { ...targetGen, connectedGeneratorIds: (targetGen.connectedGeneratorIds || []).filter((id) => id !== from.id) })
+    // Generator → Consumer
+    } else if (from.prefix === 'gen' && to.prefix === 'con') {
+      const c = consumers.find((c) => c.id === to.id)
+      if (c) tUpdateConsumer(to.id, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== from.id) })
+    } else if (from.prefix === 'con' && to.prefix === 'gen') {
+      const c = consumers.find((c) => c.id === from.id)
+      if (c) tUpdateConsumer(from.id, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== to.id) })
     } else if (to.prefix === 'meter' || from.prefix === 'meter') {
       const meterId = to.prefix === 'meter' ? to.id : from.id
       const other = to.prefix === 'meter' ? from : to
       const m = meters.find((m) => m.id === meterId)
-      if (!m) return
+      if (!m) { commitAction(); return }
 
       // Smart: Wenn Zähler einem Speicher zugeordnet ist, Durchverbindung löschen statt Zähler-Zuweisung
       if (m.assignedToType === 'storage' && m.assignedToId) {
         const s = storages.find((s) => s.id === m.assignedToId)
         if (s) {
           if (other.prefix === 'bus') {
-            updateStorage(s.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== 'grid') } as any)
-            return
+            tUpdateStorage(s.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== 'grid') } as any)
+            commitAction(); return
           } else if (other.prefix === 'gen') {
-            updateStorage(s.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== other.id) } as any)
-            return
+            tUpdateStorage(s.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== other.id) } as any)
+            commitAction(); return
           } else if (other.prefix === 'con') {
-            updateStorage(s.id, { ...s, connectedConsumerIds: (s.connectedConsumerIds || []).filter((id) => id !== other.id) } as any)
-            return
+            tUpdateStorage(s.id, { ...s, connectedConsumerIds: (s.connectedConsumerIds || []).filter((id) => id !== other.id) } as any)
+            commitAction(); return
+          } else if (other.prefix === 'stor') {
+            // Zähler vom Speicher lösen — Zuweisung aufheben
+            tUpdateMeter(meterId, { ...m, assignedToType: 'none', assignedToId: '' })
+            commitAction(); return
           }
         }
       }
       // Wenn Zähler einem Erzeuger zugeordnet ist und grid-Kante gelöscht wird → nur parentMeterId löschen
       if (m.assignedToType === 'generator' && m.assignedToId && other.prefix === 'bus') {
-        updateMeter(meterId, { ...m, parentMeterId: '' })
-        return
+        tUpdateMeter(meterId, { ...m, parentMeterId: '' })
+        commitAction(); return
       }
       // Wenn Zähler einem Verbraucher zugeordnet ist und grid-Kante gelöscht wird
       if (m.assignedToType === 'consumer' && m.assignedToId && other.prefix === 'bus') {
         const c = consumers.find((c) => c.id === m.assignedToId)
         if (c) {
-          updateConsumer(c.id, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== 'grid') })
+          tUpdateConsumer(c.id, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== 'grid') })
         }
-        updateMeter(meterId, { ...m, parentMeterId: '' })
-        return
+        tUpdateMeter(meterId, { ...m, parentMeterId: '' })
+        commitAction(); return
       }
 
       // Standard: Zähler-Zuweisung löschen (parentMeterId zurücksetzen bei Grid-Verbindung)
-      updateMeter(meterId, { ...m, assignedToType: 'none', assignedToId: '', ...(other.prefix === 'bus' ? { parentMeterId: '' } : {}) })
+      tUpdateMeter(meterId, { ...m, assignedToType: 'none', assignedToId: '', ...(other.prefix === 'bus' ? { parentMeterId: '' } : {}) })
+    }
+    commitAction()
+  }
+
+  // --- Node löschen (Entität + Referenzen aufräumen) ---
+  const deleteNode = (node: FlowNode) => {
+    const entityId = node.id.indexOf('-') >= 0 ? node.id.substring(node.id.indexOf('-') + 1) : ''
+    if (!entityId) return
+
+    switch (node.type) {
+      case 'generator': {
+        // Referenzen in Speichern, Kreisen, Zählern und Grid-Generator entfernen
+        storages.forEach((s) => {
+          if ((s.connectedGeneratorIds || []).includes(entityId)) {
+            updateStorage(s.id, { ...s, connectedGeneratorIds: (s.connectedGeneratorIds || []).filter((id) => id !== entityId) } as any)
+          }
+        })
+        circuits.forEach((c) => {
+          if (c.generatorIds.includes(entityId)) {
+            updateCircuit(c.id, { ...c, generatorIds: c.generatorIds.filter((id) => id !== entityId) })
+          }
+        })
+        meters.forEach((m) => {
+          if (m.assignedToType === 'generator' && m.assignedToId === entityId) {
+            updateMeter(m.id, { ...m, assignedToType: 'none', assignedToId: '' })
+          }
+        })
+        // Aus allen anderen Generatoren connectedGeneratorIds entfernen (inkl. Grid)
+        generators.forEach((g) => {
+          if (g.id !== entityId && (g.connectedGeneratorIds || []).includes(entityId)) {
+            updateGenerator(g.id, { ...g, connectedGeneratorIds: (g.connectedGeneratorIds || []).filter((id) => id !== entityId) })
+          }
+        })
+        // Aus Consumer connectedSourceIds entfernen
+        consumers.forEach((c) => {
+          if ((c.connectedSourceIds || []).includes(entityId)) {
+            updateConsumer(c.id, { ...c, connectedSourceIds: (c.connectedSourceIds || []).filter((id) => id !== entityId) })
+          }
+        })
+        removeGenerator(entityId)
+        break
+      }
+      case 'storage': {
+        meters.forEach((m) => {
+          if (m.assignedToType === 'storage' && m.assignedToId === entityId) {
+            updateMeter(m.id, { ...m, assignedToType: 'none', assignedToId: '' })
+          }
+        })
+        removeStorage(entityId)
+        break
+      }
+      case 'consumer': {
+        // Referenzen in Speichern, Räumen und Zählern entfernen
+        storages.forEach((s) => {
+          if ((s.connectedConsumerIds || []).includes(entityId)) {
+            updateStorage(s.id, { ...s, connectedConsumerIds: (s.connectedConsumerIds || []).filter((id) => id !== entityId) } as any)
+          }
+        })
+        rooms.forEach((r) => {
+          if ((r.consumerIds || []).includes(entityId)) {
+            updateRoom(r.id, { ...r, consumerIds: r.consumerIds.filter((id) => id !== entityId) })
+          }
+        })
+        meters.forEach((m) => {
+          if (m.assignedToType === 'consumer' && m.assignedToId === entityId) {
+            updateMeter(m.id, { ...m, assignedToType: 'none', assignedToId: '' })
+          }
+        })
+        removeConsumer(entityId)
+        break
+      }
+      case 'circuit': {
+        removeCircuit(entityId)
+        break
+      }
+      case 'room': {
+        // Referenzen in Kreisen entfernen
+        circuits.forEach((c) => {
+          if (c.roomIds.includes(entityId)) {
+            updateCircuit(c.id, { ...c, roomIds: c.roomIds.filter((id) => id !== entityId) })
+          }
+        })
+        removeRoom(entityId)
+        break
+      }
+      case 'meter': {
+        removeMeter(entityId)
+        break
+      }
     }
   }
+
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const { nodes, edges, roomGroups, genPortMap, storPortMap, conPortMap, circPortMap, roomPortMap, meterPortMap } = useMemo(() => {
     const nodes: FlowNode[] = []
     const edges: FlowEdge[] = []
 
-    const rowH = 52
+    const rowH = 104
     const startY = 50
 
     // Y-Tracker pro Spalte
@@ -643,21 +902,23 @@ export default function EnergyFlowPage() {
     // Y reservieren ohne zu incrementen
     const peekY = (col: string) => colNext[col] ?? startY
 
+    const minNodeY = startY - 2
     const mkNode = (id: string, label: string, type: FlowNode['type'], subType: string, x: number, y: number, color: string, iconColor: string, h = NODE_H): FlowNode =>
-      ({ id, label, type, subType, x, y: y + (yOffsets[id] || 0), color, iconColor, w: NODE_W, h })
+      ({ id, label, type, subType, x, y: Math.max(y + (yOffsets[id] || 0), minNodeY), color, iconColor, w: NODE_W, h })
     const mkMeter = (id: string, label: string, subType: string, x: number, y: number, color: string, iconColor: string): FlowNode =>
-      ({ id, label, type: 'meter', subType, x, y: y + (yOffsets[id] || 0), color, iconColor, w: METER_W, h: METER_H })
+      ({ id, label, type: 'meter', subType, x, y: Math.max(y + (yOffsets[id] || 0), minNodeY), color, iconColor, w: METER_W, h: METER_H })
 
     // ============================
     // 1) ERZEUGER-SPALTE (col 2)
     // ============================
     // Hausanschluss als Erzeuger behandelt (Spalte 2)
+    const gridGen = generators.find((g) => g.type === 'grid')
     const busY = getY('gen')
-    nodes.push(mkNode('bus', 'Hausanschluss', 'grid', 'grid', cx.gen, busY, '#dbeafe', '#3b82f6'))
+    nodes.push(mkNode('bus', gridGen?.name || 'Hausanschluss', 'grid', 'grid', cx.gen, busY, '#dbeafe', '#3b82f6'))
 
     const genYMap: Record<string, number> = {}
     const genPortMap: Record<string, PortLayout> = {} // Port-Layout pro Generator-ID
-    generators.forEach((g) => {
+    generators.filter((g) => g.type !== 'grid').forEach((g) => {
       const c = genColors[g.type]
       const y = getY('gen')
       genYMap[g.id] = y
@@ -773,7 +1034,7 @@ export default function EnergyFlowPage() {
     const claimMeterY = (colKey: string, desiredY: number): number => {
       if (!meterColUsedY[colKey]) meterColUsedY[colKey] = []
       const used = meterColUsedY[colKey]
-      let y = desiredY
+      let y = Math.max(desiredY, startY)
       while (used.some((uy) => Math.abs(uy - y) < rowH)) {
         y += rowH
       }
@@ -831,7 +1092,7 @@ export default function EnergyFlowPage() {
         const gen = generators.find((g) => g.id === m.assignedToId)
         if (gen) {
           // Quellenzähler → linker Port des Erzeugers (Eingang)
-          const leftEnergy = m.type === 'gas' ? 'gas' : m.type === 'heat' ? 'source' : 'electricity'
+          const leftEnergy = m.type === 'gas' ? 'gas' : (m.type === 'heat' || m.type === 'source') ? 'source' : 'electricity'
           const toY = portY(gen.id, leftEnergy, 'left')
           const edgeColor = energyColors[leftEnergy] || mc.icon
           edges.push({ from: `meter-${m.id}`, to: `gen-${gen.id}`, color: edgeColor, deletable: true, animated: true, toY })
@@ -847,13 +1108,69 @@ export default function EnergyFlowPage() {
         const gen = generators.find((g) => g.id === m.assignedToId)
         if (!gen) return
         // Zählertyp bestimmt den Energie-Port (Stromzähler → Strom-Port, Wärmezähler → Wärme-Port)
-        const meterEnergy = m.type === 'electricity' ? 'electricity' : m.type === 'heat' ? 'heat' : m.type === 'cold' ? 'cold' : m.type === 'gas' ? 'gas' : 'electricity'
+        const meterEnergy = m.type === 'electricity' ? 'electricity' : m.type === 'heat' ? 'heat' : m.type === 'cold' ? 'cold' : m.type === 'gas' ? 'gas' : m.type === 'source' ? 'source' : 'electricity'
         const edgeColor = energyColors[meterEnergy] || genColors[gen.type].icon
         const fromY = portY(gen.id, meterEnergy, 'right')
         edges.push({ from: `gen-${gen.id}`, to: `meter-${m.id}`, color: edgeColor, animated: true, deletable: true, fromY })
       } else if (m.assignedToType === 'grid') {
         edges.push({ from: 'bus', to: `meter-${m.id}`, color: energyColors.electricity, animated: true, deletable: true })
       }
+    })
+
+    // (b2) Erzeuger → Hausanschluss direkt (über gridGen.connectedGeneratorIds)
+    const gridConnGens: string[] = gridGen?.connectedGeneratorIds || []
+    // Welche Generatoren sind bereits über Zähler mit dem Grid verbunden? (um Doppelkanten zu vermeiden)
+    const genHasMeterToGrid = new Set<string>()
+    meters.forEach((m) => {
+      if (m.parentMeterId === 'grid' && m.assignedToType === 'generator' && m.assignedToId) {
+        genHasMeterToGrid.add(m.assignedToId)
+      }
+      if (m.category === 'source' && m.assignedToType === 'generator' && m.assignedToId) {
+        // Quellenzähler zählen NICHT als grid-Verbindung (sie zeigen den Eingang, nicht Ausgang)
+      }
+    })
+    gridConnGens.forEach((gid) => {
+      if (gid === 'grid') return // skip self
+      const gen = generators.find((g) => g.id === gid)
+      if (!gen || gen.type === 'grid') return
+      // Nur direkte Kante zeichnen wenn kein Erzeugerzähler mit parentMeterId='grid' den Weg abbildet
+      if (genHasMeterToGrid.has(gid)) return
+      const ee = gen.energyForm === 'electricity' ? energyColors.electricity : energyColors.heat
+      const fromY = portY(gid, 'electricity', 'right')
+      edges.push({ from: `gen-${gid}`, to: 'bus', color: ee, deletable: true, animated: true, fromY })
+    })
+
+    // (b3) Erzeuger → Erzeuger direkt (z.B. PV→Wärmepumpe Strom, BHKW→Kältemaschine)
+    generators.filter((g) => g.type !== 'grid').forEach((g) => {
+      (g.connectedGeneratorIds || []).forEach((sourceGenId) => {
+        if (sourceGenId === 'grid') return
+        const sourceGen = generators.find((sg) => sg.id === sourceGenId)
+        if (!sourceGen || sourceGen.type === 'grid') return
+        // Passende Energieform finden (Ausgang Quelle ↔ Eingang Ziel)
+        const sLayout = genPortMap[sourceGenId]
+        const tLayout = genPortMap[g.id]
+        let edgeEnergy = 'electricity'
+        if (sLayout && tLayout) {
+          for (const sp of sLayout.right) {
+            if (tLayout.left.some((tp) => tp.energy === sp.energy)) { edgeEnergy = sp.energy; break }
+          }
+        }
+        const fromY = portY(sourceGenId, edgeEnergy, 'right')
+        const toY = portY(g.id, edgeEnergy, 'left')
+        edges.push({ from: `gen-${sourceGenId}`, to: `gen-${g.id}`, color: energyColors[edgeEnergy] || '#888', deletable: true, animated: true, fromY, toY })
+      })
+    })
+
+    // (b4) Erzeuger → Verbraucher direkt (über connectedSourceIds mit Gen-IDs)
+    consumers.forEach((c) => {
+      (c.connectedSourceIds || []).forEach((sourceId) => {
+        if (sourceId === 'grid') return // grid→consumer in (g0)
+        const gen = generators.find((g) => g.id === sourceId)
+        if (!gen || gen.type === 'grid') return
+        const energy = gen.energyForm === 'electricity' || gen.energyForm === 'electricity_heat' ? 'electricity' : gen.energyForm === 'heat' ? 'heat' : gen.energyForm === 'cold' ? 'cold' : 'electricity'
+        const fromY = portY(gen.id, energy, 'right')
+        edges.push({ from: `gen-${gen.id}`, to: `con-${c.id}`, color: energyColors[energy] || '#888', deletable: true, animated: true, fromY })
+      })
     })
 
     // (c) Erzeuger → Speicher (alle Speichertypen)
@@ -885,7 +1202,7 @@ export default function EnergyFlowPage() {
 
       if (storMeter) {
         const mc = meterColors[storMeter.type]
-        edges.push({ from: `meter-${storMeter.id}`, to: `stor-${s.id}`, color: mc.icon, deletable: true, animated: true, bidirectional: isBat })
+        edges.push({ from: `meter-${storMeter.id}`, to: `stor-${s.id}`, color: mc.icon, deletable: false, animated: true, bidirectional: isBat })
       }
 
       // Speicher → Verbraucher (bidirektional bei Batterie)
@@ -1038,11 +1355,18 @@ export default function EnergyFlowPage() {
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500" /> Verbraucher</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-500" /> Hausanschluss</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-cyan-600" /> Zähler</span>
-            {Object.keys(yOffsets).length > 0 && (
-              <button onClick={resetPositions} className="ml-auto text-dark-faded hover:text-dark-text transition-colors">
-                Positionen zurücksetzen
-              </button>
-            )}
+            <span className="ml-auto flex items-center gap-3">
+              {undoStack.length > 0 && (
+                <button onClick={undo} className="flex items-center gap-1 text-dark-faded hover:text-dark-text transition-colors" title="Letzte Aktion rückgängig (Strg+Z)">
+                  <Undo2 className="w-3.5 h-3.5" /> Rückgängig
+                </button>
+              )}
+              {Object.keys(yOffsets).length > 0 && (
+                <button onClick={resetPositions} className="text-dark-faded hover:text-dark-text transition-colors">
+                  Positionen zurücksetzen
+                </button>
+              )}
+            </span>
           </div>
 
           <svg ref={svgRef} width={svgWidth} height={svgHeight} className="mx-auto"
@@ -1111,10 +1435,11 @@ export default function EnergyFlowPage() {
               const pathReverse = `M${x2},${y2} C${midX},${y2} ${midX},${y1} ${x1},${y1}`
 
               return (
-                <g key={i}>
+                <g key={i} className={edge.deletable && !connecting ? 'edge-deletable' : ''}>
                   <path d={path} fill="none" stroke={edge.color}
                     strokeWidth={edge.bidirectional ? 2 : 1.5} strokeOpacity={0.25}
                     strokeDasharray={edge.dashed ? '5 3' : undefined}
+                    className="edge-line-bg"
                     />
                   {edge.animated && (
                     <path d={path} fill="none" stroke={edge.color}
@@ -1125,7 +1450,8 @@ export default function EnergyFlowPage() {
                       strokeWidth={2} strokeOpacity={0.6} className="energy-flow-line-reverse" />
                   )}
                   {edge.deletable && !connecting && (
-                    <path d={path} fill="none" stroke="transparent" strokeWidth={14}
+                    <path d={path} fill="none" stroke="transparent" strokeWidth={18}
+                      pointerEvents="stroke"
                       style={{ cursor: 'pointer' }}
                       onClick={(e) => { e.stopPropagation(); deleteEdge(edge) }}>
                       <title>Verbindung löschen</title>
@@ -1221,6 +1547,39 @@ export default function EnergyFlowPage() {
                       )
                     })
                   })()}
+                  {/* Lösch-Button (oben rechts, nur bei Hover, nicht bei Bus/Grid) */}
+                  {clickable && !connecting && node.id !== 'bus' && (
+                    <g className="flow-node-delete" onClick={(e) => {
+                      e.stopPropagation()
+                      setConfirmDelete(confirmDelete === node.id ? null : node.id)
+                    }}>
+                      <circle cx={node.x + node.w / 2 - 1} cy={node.y + 1} r={7}
+                        fill="#1c1c1c" stroke="#ef4444" strokeWidth={1} strokeOpacity={0.8} />
+                      <line x1={node.x + node.w / 2 - 4} y1={node.y - 2} x2={node.x + node.w / 2 + 2} y2={node.y + 4}
+                        stroke="#ef4444" strokeWidth={1.5} strokeLinecap="round" />
+                      <line x1={node.x + node.w / 2 + 2} y1={node.y - 2} x2={node.x + node.w / 2 - 4} y2={node.y + 4}
+                        stroke="#ef4444" strokeWidth={1.5} strokeLinecap="round" />
+                    </g>
+                  )}
+                  {/* Bestätigungsdialog */}
+                  {confirmDelete === node.id && (
+                    <g>
+                      <rect x={node.x - 45} y={node.y - 30} width={90} height={24} rx={4}
+                        fill="#1c1c1c" stroke="#ef4444" strokeWidth={1} />
+                      <foreignObject x={node.x - 45} y={node.y - 30} width={90} height={24}>
+                        <div className="flex items-center justify-center gap-1 h-full" style={{ pointerEvents: 'auto' }}>
+                          <button onClick={(e) => { e.stopPropagation(); deleteNode(node); setConfirmDelete(null) }}
+                            className="text-[9px] font-bold text-red-400 hover:text-red-300 px-1.5 py-0.5 rounded hover:bg-red-500/20">
+                            Löschen
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(null) }}
+                            className="text-[9px] text-dark-faded hover:text-dark-text px-1 py-0.5 rounded hover:bg-dark-hover">
+                            Nein
+                          </button>
+                        </div>
+                      </foreignObject>
+                    </g>
+                  )}
                 </g>
               )
             })}

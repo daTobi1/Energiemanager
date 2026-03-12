@@ -67,3 +67,20 @@
   stroke-dasharray: 10 10;
   animation: flow 1s linear infinite reverse;
 }
+.flow-node-delete {
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.flow-node-clickable:hover .flow-node-delete {
+  opacity: 1;
+}
+.edge-deletable:hover .edge-line-bg {
+  stroke-opacity: 0.6 !important;
+  stroke-width: 4 !important;
+}
+.edge-deletable:hover .energy-flow-line,
+.edge-deletable:hover .energy-flow-line-reverse {
+  stroke-opacity: 0.9 !important;
+  stroke-width: 3 !important;
+}
