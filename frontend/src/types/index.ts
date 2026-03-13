@@ -859,6 +859,33 @@ export interface ControllerHistoryEntry {
 }
 
 // ============================================================
+// Scheduler
+// ============================================================
+
+export interface SchedulerStatus {
+  running: boolean
+  intervals: {
+    optimization_s: number
+    lambda_sync_s: number
+    ml_retrain_s: number
+  }
+  controller_mode: ControllerMode
+  stats: {
+    optimization_runs: number
+    optimization_errors: number
+    lambda_syncs: number
+    ml_retrains: number
+    last_optimization_at: string | null
+    last_optimization_duration_ms: number
+    last_schedule_hours: number
+    last_schedule_solver: string
+    last_schedule_strategy: string
+    last_error: string | null
+    last_error_at: string | null
+  }
+}
+
+// ============================================================
 // Lambda Wärmepumpe (Modbus TCP)
 // ============================================================
 

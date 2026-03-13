@@ -5,10 +5,11 @@ import {
   RefreshCw, AlertTriangle, WifiOff, Info, Monitor,
   Database, Server, CheckCircle2, XCircle, Radio,
   Play, Square, RotateCw, Thermometer, Unplug, Plug,
+  CalendarClock, Zap,
 } from 'lucide-react'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { api } from '../api/client'
-import type { LambdaHPStatus } from '../types'
+import type { LambdaHPStatus, SchedulerStatus } from '../types'
 
 export default function SystemPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -70,6 +71,51 @@ export default function SystemPage() {
       await fetchDaqStatus()
     } catch (e) { console.warn(e) }
     setDaqLoading(false)
+  }
+
+  // Scheduler Status
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null)
+  const [schedulerLoading, setSchedulerLoading] = useState(false)
+  const [schedulerInterval, setSchedulerInterval] = useState(900)
+
+  const fetchSchedulerStatus = async () => {
+    try {
+      const status = await api.scheduler.status()
+      setSchedulerStatus(status)
+    } catch {
+      setSchedulerStatus(null)
+    }
+  }
+
+  useEffect(() => {
+    if (apiConnected) fetchSchedulerStatus()
+  }, [apiConnected])
+
+  const handleSchedulerStart = async () => {
+    setSchedulerLoading(true)
+    try {
+      await api.scheduler.start(schedulerInterval, true)
+      await fetchSchedulerStatus()
+    } catch (e) { console.warn(e) }
+    setSchedulerLoading(false)
+  }
+
+  const handleSchedulerStop = async () => {
+    setSchedulerLoading(true)
+    try {
+      await api.scheduler.stop()
+      await fetchSchedulerStatus()
+    } catch (e) { console.warn(e) }
+    setSchedulerLoading(false)
+  }
+
+  const handleSchedulerTrigger = async () => {
+    setSchedulerLoading(true)
+    try {
+      await api.scheduler.trigger()
+      await fetchSchedulerStatus()
+    } catch (e) { console.warn(e) }
+    setSchedulerLoading(false)
   }
 
   // Lambda HP Status
@@ -266,6 +312,127 @@ export default function SystemPage() {
                   Keine Entities mit aktivierter Kommunikation gefunden. Aktiviere die Kommunikation
                   bei mindestens einem Erzeuger, Zähler oder Speicher (Kommunikation → Aktiviert = An,
                   IP-Adresse und Port setzen).
+                </p>
+              </div>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Scheduler (Automatische Optimierung)" icon={<CalendarClock className="w-4 h-4 text-violet-400" />} defaultOpen={true}>
+          <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-dark-faded uppercase tracking-wider">Autonomer Betrieb</p>
+              <span className="flex items-center gap-2 text-sm">
+                {schedulerStatus?.running ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse shadow-sm shadow-violet-400/50" />
+                    <span className="text-violet-400">Aktiv</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-dark-faded" />
+                    <span className="text-dark-faded">Gestoppt</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <p className="text-xs text-dark-faded mb-3">
+              Erstellt periodisch neue Fahrpläne (Optimierer → Controller → Lambda Bridge)
+              und trainiert ML-Modelle automatisch nach.
+            </p>
+
+            {schedulerStatus && (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-dark-faded">Controller-Modus</span>
+                  <span className={schedulerStatus.controller_mode === 'auto' ? 'text-emerald-400' : schedulerStatus.controller_mode === 'manual' ? 'text-amber-400' : 'text-dark-faded'}>
+                    {schedulerStatus.controller_mode}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-dark-faded">Optimierungs-Intervall</span>
+                  <span className="text-dark-text">{Math.round(schedulerStatus.intervals.optimization_s / 60)} min</span>
+                </div>
+                {schedulerStatus.stats.last_optimization_at && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-dark-faded">Letzte Optimierung</span>
+                      <span className="text-dark-text text-xs font-mono">
+                        {new Date(schedulerStatus.stats.last_optimization_at).toLocaleTimeString('de-DE')}
+                        {' '}({schedulerStatus.stats.last_optimization_duration_ms.toFixed(0)}ms)
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-dark-faded">Fahrplan</span>
+                      <span className="text-dark-text text-xs">
+                        {schedulerStatus.stats.last_schedule_hours}h — {schedulerStatus.stats.last_schedule_strategy}
+                        <span className="text-dark-faded ml-1">({schedulerStatus.stats.last_schedule_solver})</span>
+                      </span>
+                    </div>
+                  </>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-dark-faded">Statistik</span>
+                  <span className="text-dark-text text-xs">
+                    {schedulerStatus.stats.optimization_runs} Läufe
+                    {schedulerStatus.stats.optimization_errors > 0 && (
+                      <span className="text-red-400 ml-1">({schedulerStatus.stats.optimization_errors} Fehler)</span>
+                    )}
+                    {schedulerStatus.stats.lambda_syncs > 0 && (
+                      <span className="text-dark-faded ml-1">· {schedulerStatus.stats.lambda_syncs} Lambda-Syncs</span>
+                    )}
+                  </span>
+                </div>
+                {schedulerStatus.stats.last_error && (
+                  <div className="p-2 bg-red-500/10 rounded border border-red-500/20 text-xs text-red-400">
+                    {schedulerStatus.stats.last_error}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {schedulerStatus?.running ? (
+              <>
+                <button onClick={handleSchedulerStop} disabled={schedulerLoading || !apiConnected} className="btn-secondary flex items-center gap-2 text-sm text-red-400 hover:text-red-300">
+                  <Square className="w-4 h-4" /> Stoppen
+                </button>
+                <button onClick={handleSchedulerTrigger} disabled={schedulerLoading || !apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
+                  <Zap className="w-4 h-4" /> Jetzt optimieren
+                </button>
+              </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button onClick={handleSchedulerStart} disabled={schedulerLoading || !apiConnected} className="btn-primary flex items-center gap-2 text-sm">
+                  <Play className="w-4 h-4" /> {schedulerLoading ? 'Starte...' : 'Starten'}
+                </button>
+                <select
+                  value={schedulerInterval}
+                  onChange={(e) => setSchedulerInterval(Number(e.target.value))}
+                  className="px-2 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-text text-sm focus:border-violet-500/50 focus:outline-none"
+                >
+                  <option value={60}>1 min</option>
+                  <option value={300}>5 min</option>
+                  <option value={900}>15 min</option>
+                  <option value={1800}>30 min</option>
+                  <option value={3600}>60 min</option>
+                </select>
+              </div>
+            )}
+            <button onClick={fetchSchedulerStatus} disabled={!apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
+              <RefreshCw className="w-4 h-4" /> Status
+            </button>
+          </div>
+
+          {!schedulerStatus?.running && (
+            <div className="p-3 bg-violet-500/10 rounded-lg border border-violet-500/20">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-violet-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-violet-300">
+                  Der Scheduler startet den Controller im Auto-Modus: Prognosen werden erstellt,
+                  der MILP-Optimierer berechnet den optimalen Fahrplan und die Stellgrößen werden
+                  automatisch an Simulator bzw. Lambda-Wärmepumpe gesendet.
                 </p>
               </div>
             </div>

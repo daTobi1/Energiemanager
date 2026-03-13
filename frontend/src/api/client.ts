@@ -12,6 +12,7 @@ import type {
   TrendDefinition,
   WeatherCurrent, WeatherForecast, PvForecastResponse, PvAccuracyResponse, LoadForecastResponse, ThermalForecastResponse, OptimizationSchedule,
   ControllerStatus, ControllerHistoryEntry,
+  SchedulerStatus,
   MLStatusResponse, MLModelDetail,
   LambdaHPStatus, LambdaHPModules,
 } from '../types'
@@ -176,6 +177,15 @@ export const api = {
     pvSurplus: (watts: number) =>
       request<{ success: boolean }>(`/lambda-hp/pv-surplus?watts=${watts}`, { method: 'POST' }),
     modules: () => request<LambdaHPModules>('/lambda-hp/modules'),
+  },
+
+  scheduler: {
+    status: () => request<SchedulerStatus>('/scheduler/status'),
+    start: (optimizationInterval = 900, autoMode = true) =>
+      request<{ status: string }>(`/scheduler/start?optimization_interval=${optimizationInterval}&auto_mode=${autoMode}`, { method: 'POST' }),
+    stop: () => request<{ status: string }>('/scheduler/stop', { method: 'POST' }),
+    trigger: (hours = 24, solver: 'auto' | 'milp' | 'heuristic' = 'auto') =>
+      request<OptimizationSchedule>(`/scheduler/trigger?hours=${hours}&solver=${solver}`, { method: 'POST' }),
   },
 
   controller: {

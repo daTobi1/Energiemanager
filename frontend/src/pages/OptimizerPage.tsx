@@ -5,9 +5,10 @@ import {
   Target, Leaf, Coins, Thermometer, Sun, Zap,
   RotateCcw, Info, CalendarClock, Loader2, Battery, TrendingDown,
   Settings2, ShieldAlert, Play, Hand, Power, Gauge,
+  Pause, Flame, Droplets,
 } from 'lucide-react'
 import { api } from '../api/client'
-import type { OptimizerWeights, OptimizationSchedule, ControllerStatus, ControllerHistoryEntry } from '../types'
+import type { OptimizerWeights, OptimizationSchedule, ControllerStatus, ControllerHistoryEntry, SchedulerStatus } from '../types'
 import { createDefaultOptimizerWeights } from '../types'
 
 let Plotly: typeof import('plotly.js-dist-min') | null = null
@@ -291,10 +292,23 @@ export default function OptimizerPage() {
   const scheduleChartRef = useRef<HTMLDivElement>(null)
   const socChartRef = useRef<HTMLDivElement>(null)
 
+  const thermalChartRef = useRef<HTMLDivElement>(null)
+
+  // Scheduler state
+  const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null)
+
+  const fetchSchedulerStatus = useCallback(async () => {
+    try {
+      setSchedulerStatus(await api.scheduler.status())
+    } catch { /* backend may not be running */ }
+  }, [])
+
   // Controller state
   const [ctrlStatus, setCtrlStatus] = useState<ControllerStatus | null>(null)
   const [ctrlHistory, setCtrlHistory] = useState<ControllerHistoryEntry[]>([])
   const deviationChartRef = useRef<HTMLDivElement>(null)
+  const [overrideKey, setOverrideKey] = useState('battery_kw')
+  const [overrideValue, setOverrideValue] = useState(0)
 
   const setWeight = (key: keyof OptimizerWeights, value: number) => {
     updateSettings({
@@ -324,7 +338,7 @@ export default function OptimizerPage() {
     return () => clearTimeout(timer)
   }, [weights.economy, weights.co2Reduction, weights.comfort, weights.selfConsumption, weights.gridFriendly])
 
-  // Controller polling
+  // Controller + scheduler polling
   const fetchController = useCallback(async () => {
     try {
       const [status, hist] = await Promise.all([
@@ -338,13 +352,50 @@ export default function OptimizerPage() {
 
   useEffect(() => {
     fetchController()
-    const iv = setInterval(fetchController, 5000)
+    fetchSchedulerStatus()
+    const iv = setInterval(() => {
+      fetchController()
+      fetchSchedulerStatus()
+    }, 5000)
     return () => clearInterval(iv)
-  }, [fetchController])
+  }, [fetchController, fetchSchedulerStatus])
+
+  // Auto-refresh schedule when scheduler is running (every 60s)
+  useEffect(() => {
+    if (!schedulerStatus?.running) return
+    const iv = setInterval(fetchSchedule, 60_000)
+    return () => clearInterval(iv)
+  }, [schedulerStatus?.running, fetchSchedule])
 
   const handleModeChange = async (mode: string) => {
     try {
       await api.controller.setMode(mode)
+      fetchController()
+    } catch { /* ignore */ }
+  }
+
+  const handleOverrideSubmit = async () => {
+    try {
+      await api.controller.setOverride(overrideKey, overrideValue)
+      fetchController()
+    } catch { /* ignore */ }
+  }
+
+  const handleClearOverrides = async () => {
+    try {
+      await api.controller.clearOverrides()
+      fetchController()
+    } catch { /* ignore */ }
+  }
+
+  const handleSchedulerToggle = async () => {
+    try {
+      if (schedulerStatus?.running) {
+        await api.scheduler.stop()
+      } else {
+        await api.scheduler.start(900, true)
+      }
+      await fetchSchedulerStatus()
       fetchController()
     } catch { /* ignore */ }
   }
@@ -400,6 +451,44 @@ export default function OptimizerPage() {
         Plotly!.newPlot(scheduleChartRef.current, traces, layout, { responsive: true, displayModeBar: false })
       }
 
+      // Thermal chart
+      if (thermalChartRef.current) {
+        const thermalTraces: any[] = [
+          {
+            type: 'scatter', x: times, y: schedule.hourly.map(h => h.storage_temp_c),
+            mode: 'lines', name: 'Speicher °C', line: { color: '#ef4444', width: 2 },
+            fill: 'tozeroy', fillcolor: 'rgba(239, 68, 68, 0.06)',
+          },
+          {
+            type: 'scatter', x: times, y: schedule.hourly.map(h => h.heating_demand_kw),
+            mode: 'lines', name: 'Heizbed. kW', line: { color: '#f97316', width: 1.5 },
+            yaxis: 'y2',
+          },
+          {
+            type: 'scatter', x: times, y: schedule.hourly.map(h => h.hp_thermal_kw),
+            mode: 'lines', name: 'WP therm. kW', line: { color: '#22c55e', width: 2 },
+            yaxis: 'y2',
+          },
+          {
+            type: 'scatter', x: times, y: schedule.hourly.map(h => h.boiler_kw),
+            mode: 'lines', name: 'Kessel kW', line: { color: '#eab308', width: 1.5, dash: 'dot' },
+            yaxis: 'y2',
+          },
+        ]
+        const thermalLayout: Record<string, any> = {
+          font: { size: 12, family: 'system-ui, sans-serif', color: '#b1bac4' },
+          paper_bgcolor: '#0d1117', plot_bgcolor: '#161b22',
+          margin: { t: 10, l: 50, r: 50, b: 40 }, height: 250,
+          legend: { orientation: 'h', y: -0.2, x: 0.5, xanchor: 'center', font: { size: 11 } },
+          hovermode: 'x unified',
+          hoverlabel: { bgcolor: '#1c2128', bordercolor: '#30363d', font: { size: 12, color: '#e6edf3' } },
+          xaxis: { type: 'date', gridcolor: '#21262d', linecolor: '#30363d', tickfont: { size: 10 } },
+          yaxis: { title: '°C', gridcolor: '#21262d', linecolor: '#30363d', titlefont: { color: '#ef4444' } },
+          yaxis2: { title: 'kW', overlaying: 'y', side: 'right', gridcolor: '#21262d', titlefont: { color: '#22c55e' } },
+        }
+        Plotly!.newPlot(thermalChartRef.current, thermalTraces, thermalLayout, { responsive: true, displayModeBar: false })
+      }
+
       // SOC + Cost chart
       if (socChartRef.current) {
         const traces: any[] = [
@@ -435,6 +524,7 @@ export default function OptimizerPage() {
     return () => {
       cancelled = true
       if (scheduleChartRef.current && Plotly) try { Plotly.purge(scheduleChartRef.current) } catch {}
+      if (thermalChartRef.current && Plotly) try { Plotly.purge(thermalChartRef.current) } catch {}
       if (socChartRef.current && Plotly) try { Plotly.purge(socChartRef.current) } catch {}
     }
   }, [schedule])
@@ -497,12 +587,43 @@ export default function OptimizerPage() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Target className="w-7 h-7 text-emerald-400" />
-        <div>
-          <h1 className="text-2xl font-bold text-dark-text">Optimierer</h1>
-          <p className="text-sm text-dark-faded">Zielvorgaben f&uuml;r die Energieoptimierung</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Target className="w-7 h-7 text-emerald-400" />
+          <div>
+            <h1 className="text-2xl font-bold text-dark-text">Optimierer</h1>
+            <p className="text-sm text-dark-faded">Zielvorgaben f&uuml;r die Energieoptimierung</p>
+          </div>
         </div>
+
+        {/* Scheduler Status Bar */}
+        <button
+          onClick={handleSchedulerToggle}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+            schedulerStatus?.running
+              ? 'border-violet-500/50 bg-violet-500/10 hover:bg-violet-500/20'
+              : 'border-dark-border bg-dark-hover hover:border-dark-faded'
+          }`}
+        >
+          {schedulerStatus?.running ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+              <span className="text-violet-400 font-medium">Scheduler aktiv</span>
+              {schedulerStatus.stats.last_optimization_at && (
+                <span className="text-dark-faded text-xs">
+                  · {new Date(schedulerStatus.stats.last_optimization_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
+              <Pause className="w-3.5 h-3.5 text-dark-faded" />
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-dark-faded" />
+              <span className="text-dark-faded">Scheduler starten</span>
+              <Play className="w-3.5 h-3.5 text-dark-faded" />
+            </>
+          )}
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -693,6 +814,15 @@ export default function OptimizerPage() {
           <div ref={socChartRef} style={{ minHeight: 250 }} />
         </div>
 
+        {/* Thermal Chart */}
+        <div className="card p-4">
+          <h3 className="text-sm font-medium text-dark-text mb-2 flex items-center gap-2">
+            <Flame className="w-4 h-4 text-orange-400" />
+            Thermischer Fahrplan
+          </h3>
+          <div ref={thermalChartRef} style={{ minHeight: 250 }} />
+        </div>
+
         {/* Hourly Strategy Table */}
         {schedule?.hourly && schedule.hourly.length > 0 && (
           <div className="card p-4">
@@ -706,21 +836,31 @@ export default function OptimizerPage() {
                     <th className="text-right px-2">Last</th>
                     <th className="text-right px-2">Batterie</th>
                     <th className="text-right px-2">SOC</th>
+                    <th className="text-right px-2">WP</th>
+                    <th className="text-right px-2">Speicher</th>
                     <th className="text-right px-2">Netz</th>
                     <th className="text-right px-2">Kosten</th>
                     <th className="text-left px-2">Strategie</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {schedule.hourly.map((h) => (
-                    <tr key={h.time} className="border-b border-dark-border/30 hover:bg-dark-hover/50">
-                      <td className="py-1.5 px-2 text-dark-muted tabular-nums">{h.time.slice(11, 16)}</td>
+                  {schedule.hourly.map((h) => {
+                    const nowHour = new Date().toISOString().slice(0, 13)
+                    const isCurrentHour = h.time.slice(0, 13) === nowHour
+                    return (
+                    <tr key={h.time} className={`border-b border-dark-border/30 ${isCurrentHour ? 'bg-emerald-500/10 border-emerald-500/30' : 'hover:bg-dark-hover/50'}`}>
+                      <td className={`py-1.5 px-2 tabular-nums ${isCurrentHour ? 'text-emerald-400 font-bold' : 'text-dark-muted'}`}>
+                        {isCurrentHour && <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1 animate-pulse" />}
+                        {h.time.slice(11, 16)}
+                      </td>
                       <td className="text-right px-2 text-yellow-400 tabular-nums">{h.pv_forecast_kw.toFixed(1)}</td>
                       <td className="text-right px-2 text-red-400 tabular-nums">{h.load_forecast_kw.toFixed(1)}</td>
                       <td className={`text-right px-2 tabular-nums ${h.battery_setpoint_kw >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                         {h.battery_setpoint_kw > 0 ? '+' : ''}{h.battery_setpoint_kw.toFixed(1)}
                       </td>
                       <td className="text-right px-2 text-emerald-400 tabular-nums">{h.battery_soc_pct.toFixed(0)}%</td>
+                      <td className="text-right px-2 text-orange-400 tabular-nums">{h.hp_thermal_kw.toFixed(1)}</td>
+                      <td className="text-right px-2 text-red-400 tabular-nums">{h.storage_temp_c.toFixed(0)}°</td>
                       <td className={`text-right px-2 tabular-nums ${h.grid_kw > 0 ? 'text-blue-400' : 'text-cyan-400'}`}>
                         {h.grid_kw > 0 ? '+' : ''}{h.grid_kw.toFixed(1)}
                       </td>
@@ -729,7 +869,8 @@ export default function OptimizerPage() {
                       </td>
                       <td className="px-2 text-dark-faded truncate max-w-[200px]">{h.strategy}</td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -840,6 +981,57 @@ export default function OptimizerPage() {
               </span>
               <p className="text-xs text-dark-faded truncate">{ctrlStatus.active_setpoints.strategy}</p>
             </div>
+          </div>
+        )}
+
+        {/* Manual Override Controls */}
+        {ctrlStatus?.mode === 'manual' && (
+          <div className="card p-4">
+            <h3 className="text-sm font-medium text-dark-text mb-3 flex items-center gap-2">
+              <Hand className="w-4 h-4 text-amber-400" />
+              Manuelle Stellgrößen
+            </h3>
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="text-xs text-dark-faded mb-1 block">Parameter</label>
+                <select
+                  value={overrideKey}
+                  onChange={(e) => setOverrideKey(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-dark-hover border border-dark-border text-dark-text text-sm focus:border-amber-500/50 focus:outline-none"
+                >
+                  <option value="battery_kw">Batterie (kW, +laden/-entladen)</option>
+                  <option value="hp_modulation_pct">WP Modulation (%)</option>
+                  <option value="boiler_kw">Kessel (kW)</option>
+                  <option value="wallbox_kw">Wallbox (kW)</option>
+                  <option value="flow_temp_c">Vorlauftemperatur (°C)</option>
+                </select>
+              </div>
+              <div className="w-28">
+                <label className="text-xs text-dark-faded mb-1 block">Wert</label>
+                <input
+                  type="number"
+                  step="0.5"
+                  value={overrideValue}
+                  onChange={(e) => setOverrideValue(Number(e.target.value))}
+                  className="w-full px-3 py-1.5 rounded-lg bg-dark-hover border border-dark-border text-dark-text text-sm font-mono focus:border-amber-500/50 focus:outline-none"
+                />
+              </div>
+              <button onClick={handleOverrideSubmit} className="btn-primary text-sm px-4 py-1.5">
+                Setzen
+              </button>
+              <button onClick={handleClearOverrides} className="btn-secondary text-sm px-3 py-1.5 text-red-400 hover:text-red-300">
+                Reset
+              </button>
+            </div>
+            {ctrlStatus.manual_overrides && Object.keys(ctrlStatus.manual_overrides).length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Object.entries(ctrlStatus.manual_overrides).map(([k, v]) => (
+                  <span key={k} className="px-2 py-1 bg-amber-500/10 border border-amber-500/30 rounded text-xs text-amber-400">
+                    {k} = {v}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
