@@ -1,11 +1,13 @@
 """
-Wetter- und PV-Prognose-Endpoints.
+Wetter- und Prognose-Endpoints.
 
-GET /weather/current       — Aktuelle Wetterdaten
-GET /weather/forecast      — Stundenvorhersage (bis 7 Tage)
-GET /weather/pv-forecast   — PV-Ertragsprognose
-GET /weather/pv-accuracy   — Prognose vs. Ist-Vergleich
-POST /weather/refresh      — Cache invalidieren + neu laden
+GET /weather/current           — Aktuelle Wetterdaten
+GET /weather/forecast          — Stundenvorhersage (bis 7 Tage)
+GET /weather/pv-forecast       — PV-Ertragsprognose
+GET /weather/load-forecast     — Last-Prognose
+GET /weather/thermal-forecast  — Thermische Prognose (Heizlast, WP, Speicher)
+GET /weather/pv-accuracy       — Prognose vs. Ist-Vergleich
+POST /weather/refresh          — Cache invalidieren + neu laden
 """
 
 from fastapi import APIRouter, Depends, Query
@@ -17,6 +19,7 @@ from app.models.config import SystemSettingsConfig
 from app.models.weather import WeatherCache
 from app.services.load_forecast import load_forecast_service
 from app.services.pv_forecast import pv_forecast_service
+from app.services.thermal_forecast import thermal_forecast_service
 from app.services.weather import weather_service
 
 router = APIRouter()
@@ -108,6 +111,12 @@ async def get_pv_forecast(hours: int = Query(72, ge=1, le=168)):
 async def get_load_forecast(hours: int = Query(72, ge=1, le=168)):
     """Last-Prognose basierend auf Profil + Wetter + historischen Mustern."""
     return await load_forecast_service.get_forecast(hours)
+
+
+@router.get("/thermal-forecast")
+async def get_thermal_forecast(hours: int = Query(72, ge=1, le=168)):
+    """Thermische Prognose: Heizlast, WP-Betrieb, Speichertemperatur."""
+    return await thermal_forecast_service.get_forecast(hours)
 
 
 @router.get("/pv-accuracy")

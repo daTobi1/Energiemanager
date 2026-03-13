@@ -694,6 +694,41 @@ export interface LoadForecastResponse {
   daily_summary: Record<string, number>
 }
 
+export interface ThermalForecastHourly {
+  time: string
+  outdoor_temp_c: number
+  heating_demand_kw: number
+  hot_water_kw: number
+  total_thermal_demand_kw: number
+  hp_thermal_kw: number
+  hp_electric_kw: number
+  hp_cop: number
+  boiler_kw: number
+  storage_temp_c: number
+  flow_temp_c: number
+}
+
+export interface ThermalForecastResponse {
+  generated_at: string
+  building: {
+    heated_area_m2: number
+    insulation_standard: string
+    u_value_w_m2k: number
+    heating_threshold_c: number
+    indoor_target_c: number
+  }
+  heat_pump: { total_thermal_kw: number; cop_rated: number; count: number }
+  boiler: { total_kw: number; count: number }
+  storage: { volume_liters: number; target_temp_c: number; capacity_kwh_per_k: number }
+  hourly: ThermalForecastHourly[]
+  daily_summary: Record<string, {
+    heating_kwh: number
+    hp_electric_kwh: number
+    boiler_kwh: number
+    hot_water_kwh: number
+  }>
+}
+
 export interface PvAccuracyResponse {
   mae: number
   rmse: number

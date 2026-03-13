@@ -213,9 +213,11 @@ export default function TrendsPage() {
       .catch(() => {})
   }, [])
 
-  // Forecast overlays: PV + Load
+  // Forecast overlays: PV + Load + Thermal
   const hasPvSeries = selectedDef.series.some(s => s.source === 'pv' && s.metric === 'power_kw')
   const hasLoadSeries = selectedDef.series.some(s => s.source === 'load' && s.metric === 'power_kw')
+  const hasHpHeatSeries = selectedDef.series.some(s => s.source === 'heat_pump' && s.metric === 'heat_kw')
+  const hasStorageTempSeries = selectedDef.series.some(s => s.source === 'heat_storage' && s.metric === 'temperature_c')
   useEffect(() => {
     const overlays: ForecastOverlay[] = []
     const promises: Promise<void>[] = []
@@ -248,6 +250,30 @@ export default function TrendsPage() {
         }).catch(() => {})
       )
     }
+    if (hasHpHeatSeries || hasStorageTempSeries) {
+      promises.push(
+        api.weather.thermalForecast(72).then(fc => {
+          if (fc?.hourly?.length) {
+            if (hasHpHeatSeries) {
+              overlays.push({
+                timestamps: fc.hourly.map(h => h.time),
+                values: fc.hourly.map(h => h.hp_thermal_kw),
+                label: 'WP-Prognose',
+                color: '#4ade80',
+              })
+            }
+            if (hasStorageTempSeries) {
+              overlays.push({
+                timestamps: fc.hourly.map(h => h.time),
+                values: fc.hourly.map(h => h.storage_temp_c),
+                label: 'Speicher-Prognose',
+                color: '#c084fc',
+              })
+            }
+          }
+        }).catch(() => {})
+      )
+    }
 
     if (promises.length === 0) {
       setPvForecastOverlay(undefined)
@@ -257,7 +283,7 @@ export default function TrendsPage() {
     Promise.all(promises).then(() => {
       setPvForecastOverlay(overlays.length > 0 ? overlays : undefined)
     })
-  }, [hasPvSeries, hasLoadSeries])
+  }, [hasPvSeries, hasLoadSeries, hasHpHeatSeries, hasStorageTempSeries])
 
   // Fetch data when sources, range or interval change
   useEffect(() => {

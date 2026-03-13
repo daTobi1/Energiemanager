@@ -5,7 +5,7 @@ import {
   CloudLightning, CloudFog, Camera,
 } from 'lucide-react'
 import { api } from '../api/client'
-import type { WeatherCurrent, WeatherForecast, PvForecastResponse, LoadForecastResponse } from '../types'
+import type { WeatherCurrent, WeatherForecast, PvForecastResponse, LoadForecastResponse, ThermalForecastResponse } from '../types'
 
 let Plotly: typeof import('plotly.js-dist-min') | null = null
 
@@ -43,6 +43,7 @@ export default function WeatherPage() {
   const [forecast, setForecast] = useState<WeatherForecast | null>(null)
   const [pvForecast, setPvForecast] = useState<PvForecastResponse | null>(null)
   const [loadForecast, setLoadForecast] = useState<LoadForecastResponse | null>(null)
+  const [thermalForecast, setThermalForecast] = useState<ThermalForecastResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -50,22 +51,26 @@ export default function WeatherPage() {
   const weatherChartRef = useRef<HTMLDivElement>(null)
   const pvChartRef = useRef<HTMLDivElement>(null)
   const loadChartRef = useRef<HTMLDivElement>(null)
+  const thermalChartRef = useRef<HTMLDivElement>(null)
+  const storageTempChartRef = useRef<HTMLDivElement>(null)
   const [chartsRendered, setChartsRendered] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      const [cur, fc, pv, load] = await Promise.all([
+      const [cur, fc, pv, load, thermal] = await Promise.all([
         api.weather.current().catch(() => null),
         api.weather.forecast(72).catch(() => null),
         api.weather.pvForecast(72).catch(() => null),
         api.weather.loadForecast(72).catch(() => null),
+        api.weather.thermalForecast(72).catch(() => null),
       ])
       setCurrent(cur)
       setForecast(fc as WeatherForecast | null)
       setPvForecast(pv)
       setLoadForecast(load)
+      setThermalForecast(thermal)
     } catch (e: any) {
       setError(e.message || 'Fehler beim Laden')
     } finally {
@@ -225,6 +230,112 @@ export default function WeatherPage() {
         })
       }
 
+      // Thermal Forecast charts
+      if (thermalChartRef.current && thermalForecast?.hourly?.length) {
+        const thTimes = thermalForecast.hourly.map(d => d.time)
+        const traces: any[] = [
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.heating_demand_kw),
+            mode: 'lines', name: 'Heizlast kW',
+            line: { color: '#ef4444', width: 2 },
+            fill: 'tozeroy', fillcolor: 'rgba(239, 68, 68, 0.1)',
+            hovertemplate: '<b>Heizlast</b>: %{y:.2f} kW<extra></extra>',
+          },
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.hp_thermal_kw),
+            mode: 'lines', name: 'WP thermisch kW',
+            line: { color: '#22c55e', width: 2 },
+            hovertemplate: '<b>WP</b>: %{y:.2f} kW<extra></extra>',
+          },
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.boiler_kw),
+            mode: 'lines', name: 'Kessel kW',
+            line: { color: '#f97316', width: 1.5 },
+            hovertemplate: '<b>Kessel</b>: %{y:.2f} kW<extra></extra>',
+          },
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.hot_water_kw),
+            mode: 'lines', name: 'Warmwasser kW',
+            line: { color: '#3b82f6', width: 1, dash: 'dot' },
+            hovertemplate: '<b>WW</b>: %{y:.2f} kW<extra></extra>',
+          },
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.hp_cop),
+            mode: 'lines', name: 'COP',
+            line: { color: '#8b5cf6', width: 1.5, dash: 'dash' }, yaxis: 'y2',
+            hovertemplate: '<b>COP</b>: %{y:.1f}<extra></extra>',
+          },
+        ]
+        const layout: Record<string, any> = {
+          font: { size: 12, family: 'system-ui, sans-serif', color: '#b1bac4' },
+          paper_bgcolor: '#0d1117', plot_bgcolor: '#161b22',
+          margin: { t: 10, l: 55, r: 55, b: 40 }, height: 350,
+          legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 } },
+          hovermode: 'x unified',
+          hoverlabel: { bgcolor: '#1c2128', bordercolor: '#30363d', font: { size: 12, color: '#e6edf3' } },
+          xaxis: { type: 'date', gridcolor: '#21262d', linecolor: '#30363d', tickfont: { size: 10 } },
+          yaxis: {
+            title: 'kW', gridcolor: '#21262d', linecolor: '#30363d', zeroline: false,
+            rangemode: 'tozero', titlefont: { color: '#ef4444' },
+          },
+          yaxis2: {
+            title: 'COP', overlaying: 'y', side: 'right',
+            gridcolor: '#21262d', linecolor: '#30363d', zeroline: false,
+            titlefont: { color: '#8b5cf6' }, range: [0, 8],
+          },
+        }
+        Plotly!.newPlot(thermalChartRef.current, traces, layout, {
+          responsive: true, displayModeBar: false,
+        })
+      }
+
+      // Storage Temperature chart
+      if (storageTempChartRef.current && thermalForecast?.hourly?.length) {
+        const thTimes = thermalForecast.hourly.map(d => d.time)
+        const traces: any[] = [
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.storage_temp_c),
+            mode: 'lines', name: 'Speicher °C',
+            line: { color: '#f97316', width: 2.5 },
+            fill: 'tozeroy', fillcolor: 'rgba(249, 115, 22, 0.08)',
+            hovertemplate: '<b>Speicher</b>: %{y:.1f} °C<extra></extra>',
+          },
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.flow_temp_c),
+            mode: 'lines', name: 'Vorlauf °C',
+            line: { color: '#ef4444', width: 1.5, dash: 'dash' },
+            hovertemplate: '<b>Vorlauf</b>: %{y:.1f} °C<extra></extra>',
+          },
+          {
+            type: 'scatter', x: thTimes, y: thermalForecast.hourly.map(d => d.outdoor_temp_c),
+            mode: 'lines', name: 'Außen °C',
+            line: { color: '#06b6d4', width: 1.5 }, yaxis: 'y2',
+            hovertemplate: '<b>Außen</b>: %{y:.1f} °C<extra></extra>',
+          },
+        ]
+        const layout: Record<string, any> = {
+          font: { size: 12, family: 'system-ui, sans-serif', color: '#b1bac4' },
+          paper_bgcolor: '#0d1117', plot_bgcolor: '#161b22',
+          margin: { t: 10, l: 55, r: 55, b: 40 }, height: 300,
+          legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 } },
+          hovermode: 'x unified',
+          hoverlabel: { bgcolor: '#1c2128', bordercolor: '#30363d', font: { size: 12, color: '#e6edf3' } },
+          xaxis: { type: 'date', gridcolor: '#21262d', linecolor: '#30363d', tickfont: { size: 10 } },
+          yaxis: {
+            title: '°C', gridcolor: '#21262d', linecolor: '#30363d', zeroline: false,
+            titlefont: { color: '#f97316' },
+          },
+          yaxis2: {
+            title: 'Außen °C', overlaying: 'y', side: 'right',
+            gridcolor: '#21262d', linecolor: '#30363d', zeroline: false,
+            titlefont: { color: '#06b6d4' },
+          },
+        }
+        Plotly!.newPlot(storageTempChartRef.current, traces, layout, {
+          responsive: true, displayModeBar: false,
+        })
+      }
+
       setChartsRendered(true)
     }
 
@@ -234,9 +345,11 @@ export default function WeatherPage() {
       if (weatherChartRef.current && Plotly) try { Plotly.purge(weatherChartRef.current) } catch {}
       if (pvChartRef.current && Plotly) try { Plotly.purge(pvChartRef.current) } catch {}
       if (loadChartRef.current && Plotly) try { Plotly.purge(loadChartRef.current) } catch {}
+      if (thermalChartRef.current && Plotly) try { Plotly.purge(thermalChartRef.current) } catch {}
+      if (storageTempChartRef.current && Plotly) try { Plotly.purge(storageTempChartRef.current) } catch {}
       setChartsRendered(false)
     }
-  }, [forecast, pvForecast, loadForecast])
+  }, [forecast, pvForecast, loadForecast, thermalForecast])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -448,6 +561,67 @@ export default function WeatherPage() {
         )}
       </div>
 
+      {/* Thermal Forecast */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Thermometer className="w-5 h-5 text-red-400" />
+            <h3 className="text-sm font-medium text-dark-text">Thermische Prognose</h3>
+            {thermalForecast?.heat_pump && (
+              <span className="text-xs text-dark-faded">
+                WP {thermalForecast.heat_pump.total_thermal_kw} kW
+                {thermalForecast.boiler.total_kw > 0 && ` + Kessel ${thermalForecast.boiler.total_kw} kW`}
+              </span>
+            )}
+          </div>
+          {chartsRendered && (
+            <button
+              onClick={() => handleExportPng(thermalChartRef, 'thermische_prognose')}
+              className="p-1.5 rounded bg-dark-hover/80 text-dark-faded hover:text-dark-text border border-dark-border/50 transition-colors"
+              title="Als PNG speichern"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <div ref={thermalChartRef} style={{ minHeight: 350 }} />
+        {!thermalForecast?.hourly?.length && !loading && (
+          <div className="flex items-center justify-center h-[350px] text-dark-faded text-sm">
+            Keine Wärmepumpe konfiguriert.
+          </div>
+        )}
+      </div>
+
+      {/* Storage Temperature */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Thermometer className="w-5 h-5 text-orange-400" />
+            <h3 className="text-sm font-medium text-dark-text">Speicher- & Vorlauftemperatur</h3>
+            {thermalForecast?.storage && thermalForecast.storage.volume_liters > 0 && (
+              <span className="text-xs text-dark-faded">
+                {thermalForecast.storage.volume_liters} L Puffer
+              </span>
+            )}
+          </div>
+          {chartsRendered && (
+            <button
+              onClick={() => handleExportPng(storageTempChartRef, 'speichertemperatur')}
+              className="p-1.5 rounded bg-dark-hover/80 text-dark-faded hover:text-dark-text border border-dark-border/50 transition-colors"
+              title="Als PNG speichern"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <div ref={storageTempChartRef} style={{ minHeight: 300 }} />
+        {!thermalForecast?.hourly?.length && !loading && (
+          <div className="flex items-center justify-center h-[300px] text-dark-faded text-sm">
+            Keine thermischen Daten verfügbar.
+          </div>
+        )}
+      </div>
+
       {/* Daily Energy Summary */}
       {dailySummary.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -459,17 +633,26 @@ export default function WeatherPage() {
                   <span className="text-xs text-dark-faded">{dayLabels[i] || day}</span>
                   <span className="text-xs text-dark-faded">{day}</span>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 flex-wrap">
                   <div className="flex items-baseline gap-1">
                     <Sun className="w-4 h-4 text-yellow-400" />
                     <span className="text-xl font-bold text-yellow-400">{kwh}</span>
-                    <span className="text-xs text-dark-faded">kWh</span>
+                    <span className="text-xs text-dark-faded">kWh PV</span>
                   </div>
                   {loadKwh != null && (
                     <div className="flex items-baseline gap-1">
                       <Zap className="w-4 h-4 text-blue-400" />
                       <span className="text-xl font-bold text-blue-400">{loadKwh}</span>
-                      <span className="text-xs text-dark-faded">kWh</span>
+                      <span className="text-xs text-dark-faded">kWh Last</span>
+                    </div>
+                  )}
+                  {thermalForecast?.daily_summary?.[day] && (
+                    <div className="flex items-baseline gap-1">
+                      <Thermometer className="w-4 h-4 text-red-400" />
+                      <span className="text-xl font-bold text-red-400">
+                        {thermalForecast.daily_summary[day].heating_kwh}
+                      </span>
+                      <span className="text-xs text-dark-faded">kWh Heiz</span>
                     </div>
                   )}
                 </div>
