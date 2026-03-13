@@ -4,8 +4,7 @@ import { Plus, Edit2, Plug, X, Copy, Home, Factory, Lightbulb, Wind, Car, Drople
 
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
-import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
-import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { ConsumerForm } from '../components/forms/ConsumerForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type { Consumer, ConsumerType, LoadProfile, EnergyPort } from '../types'
 import { createDefaultCommunication } from '../types'
@@ -179,9 +178,6 @@ export default function ConsumersPage() {
     if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
     setShowForm(false); setEditing(null)
   }
-  const update = <K extends keyof Consumer>(key: K, value: Consumer[K]) => {
-    if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
-  }
 
   if (showForm && editing) {
     return (
@@ -205,48 +201,7 @@ export default function ConsumersPage() {
         )}
 
         <div className="space-y-4">
-          <Section title="Grunddaten" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <SelectField label="Typ" value={editing.type} onChange={(v) => { const c = createDefaultConsumer(v as ConsumerType); setEditing({ ...c, id: editing.id, name: editing.name, connectedSourceIds: editing.connectedSourceIds, assignedMeterIds: editing.assignedMeterIds, ports: createDefaultConsumerPorts(v as ConsumerType) }) }} options={consumerTypeOptions} />
-              <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Haushalt EG, Wallbox Carport" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <InputField label="Nennleistung" value={editing.nominalPowerKw} onChange={(v) => update('nominalPowerKw', Number(v))} type="number" unit="kW" step="0.1" />
-              <InputField label="Jahresverbrauch" value={editing.annualConsumptionKwh} onChange={(v) => update('annualConsumptionKwh', Number(v))} type="number" unit="kWh" hint="Geschätzter Jahresverbrauch" />
-              <SelectField label="Lastprofil" value={editing.loadProfile} onChange={(v) => update('loadProfile', v as LoadProfile)} options={loadProfileOptions} hint="Standardlastprofil BDEW" />
-            </div>
-          </Section>
-
-          <Section title="Lastmanagement" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <CheckboxField label="Steuerbar" checked={editing.controllable} onChange={(v) => update('controllable', v)} hint="Leistung kann vom System geregelt werden" />
-              <CheckboxField label="Abschaltbar (Lastabwurf)" checked={editing.sheddable} onChange={(v) => update('sheddable', v)} hint="Kann bei Engpässen abgeschaltet werden" />
-            </div>
-            <InputField label="Priorität" value={editing.priority} onChange={(v) => update('priority', Number(v))} type="number" min={1} max={10} hint="1 = höchste Priorität (zuletzt abschalten), 10 = niedrigste" />
-          </Section>
-
-          {/* Wallbox-spezifische Felder */}
-          {editing.type === 'wallbox' && (
-            <Section title="Wallbox / Ladestation" defaultOpen={true} badge="Wallbox">
-              <div className="grid grid-cols-3 gap-4">
-                <InputField label="Max. Ladeleistung" value={editing.wallboxMaxPowerKw} onChange={(v) => update('wallboxMaxPowerKw', Number(v))} type="number" unit="kW" step="0.1" />
-                <SelectField label="Phasen" value={String(editing.wallboxPhases)} onChange={(v) => update('wallboxPhases', Number(v) as 1 | 3)} options={[{ value: '1', label: '1-phasig (3.7 kW)' }, { value: '3', label: '3-phasig (11/22 kW)' }]} />
-                <InputField label="Min. Ladestrom" value={editing.wallboxMinCurrentA} onChange={(v) => update('wallboxMinCurrentA', Number(v))} type="number" unit="A" hint="Min. 6A nach Norm" min={6} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <InputField label="Fahrzeug-Batterie" value={editing.vehicleBatteryKwh} onChange={(v) => update('vehicleBatteryKwh', Number(v))} type="number" unit="kWh" hint="Kapazität des E-Fahrzeugs" />
-                <InputField label="Fahrzeug-Verbrauch" value={editing.vehicleConsumptionPer100km} onChange={(v) => update('vehicleConsumptionPer100km', Number(v))} type="number" unit="kWh/100km" step="0.1" />
-              </div>
-              <CheckboxField label="OCPP-fähig" checked={editing.ocppEnabled} onChange={(v) => update('ocppEnabled', v)} hint="Open Charge Point Protocol für intelligentes Laden" />
-            </Section>
-          )}
-
-          <CommunicationForm config={editing.communication} onChange={(c) => update('communication', c)} />
-
-          <Section title="Notizen" defaultOpen={false}>
-            <TextareaField label="Bemerkungen" value={editing.notes} onChange={(v) => update('notes', v)} />
-          </Section>
-
+          <ConsumerForm entity={editing} onChange={setEditing} />
           <div className="flex gap-3 pt-4 border-t">
             <button onClick={save} className="btn-primary" disabled={!editing.name}>Speichern</button>
             <button onClick={cancel} className="btn-secondary">Abbrechen</button>

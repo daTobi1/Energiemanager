@@ -3,8 +3,7 @@ import { v4 as uuid } from 'uuid'
 import { Plus, Edit2, Sun, Mountain, Wind, Droplets, X, Copy, ArrowLeft } from 'lucide-react'
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
-import { InputField, SelectField, TextareaField, Section } from '../components/ui/FormField'
-import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { SourceForm } from '../components/forms/SourceForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type { Source, SourceType } from '../types'
 import { createDefaultSource } from '../types'
@@ -16,11 +15,6 @@ const typeOptions = [
   { value: 'well_source', label: 'Brunnen / Grundwasser' },
 ]
 
-const probeTypeOptions = [
-  { value: 'single_u', label: 'Einfach-U' },
-  { value: 'double_u', label: 'Doppel-U' },
-  { value: 'coaxial', label: 'Koaxial' },
-]
 
 const typeIcons: Record<SourceType, typeof Sun> = {
   solar_thermal: Sun,
@@ -138,10 +132,6 @@ export default function SourcesPage() {
     setEditing(null)
   }
 
-  const update = <K extends keyof Source>(key: K, value: Source[K]) => {
-    if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
-  }
-
   if (showForm && editing) {
     return (
       <div className="p-6 max-w-4xl mx-auto">
@@ -164,86 +154,7 @@ export default function SourcesPage() {
         )}
 
         <div className="space-y-4">
-          {/* Allgemein */}
-          <Section title="Allgemein" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Solarthermie Dach Süd, Erdsonde Garten" />
-              <SelectField label="Typ" value={editing.type} onChange={(v) => {
-                const newType = v as SourceType
-                const fresh = createDefaultSource(newType)
-                setEditing({
-                  ...fresh,
-                  id: editing.id,
-                  name: editing.name,
-                  location: editing.location,
-                  notes: editing.notes,
-                  assignedMeterIds: editing.assignedMeterIds,
-                  assignedSensorIds: editing.assignedSensorIds,
-                  communication: editing.communication,
-                })
-              }} options={typeOptions} />
-            </div>
-            <InputField label="Standort" value={editing.location} onChange={(v) => update('location', v)} placeholder="z.B. Dach Süd, Garten Nord, Keller" />
-          </Section>
-
-          {/* Solarthermie */}
-          {editing.type === 'solar_thermal' && (
-            <Section title="Solarthermie" defaultOpen={true} badge="Solarthermie">
-              <div className="grid grid-cols-2 gap-4">
-                <InputField label="Kollektorfläche" value={editing.collectorAreaM2} onChange={(v) => update('collectorAreaM2', Number(v))} type="number" unit="m²" step="0.1" />
-                <InputField label="Anzahl Kollektoren" value={editing.collectorCount} onChange={(v) => update('collectorCount', Number(v))} type="number" min={1} />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <InputField label="Azimut" value={editing.azimuthDeg} onChange={(v) => update('azimuthDeg', Number(v))} type="number" unit="°" hint="0°=Nord, 90°=Ost, 180°=Süd, 270°=West" />
-                <InputField label="Neigung" value={editing.tiltDeg} onChange={(v) => update('tiltDeg', Number(v))} type="number" unit="°" hint="0°=horizontal, 90°=vertikal" />
-                <InputField label="Optischer Wirkungsgrad" value={editing.opticalEfficiency} onChange={(v) => update('opticalEfficiency', Number(v))} type="number" step="0.01" min={0} max={1} hint="Eta-0, z.B. 0.80" />
-              </div>
-            </Section>
-          )}
-
-          {/* Erdsonde / Erdkollektor */}
-          {editing.type === 'ground_source' && (
-            <Section title="Erdsonde / Erdkollektor" defaultOpen={true} badge="Erdsonde">
-              <div className="grid grid-cols-2 gap-4">
-                <InputField label="Bohrtiefe" value={editing.boreholeDepthM} onChange={(v) => update('boreholeDepthM', Number(v))} type="number" unit="m" />
-                <InputField label="Anzahl Sonden" value={editing.boreholeCount} onChange={(v) => update('boreholeCount', Number(v))} type="number" min={1} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <SelectField label="Sondentyp" value={editing.probeType} onChange={(v) => update('probeType', v as 'single_u' | 'double_u' | 'coaxial')} options={probeTypeOptions} />
-                <InputField label="Wärmeleitfähigkeit Boden" value={editing.soilThermalConductivity} onChange={(v) => update('soilThermalConductivity', Number(v))} type="number" unit="W/(m·K)" step="0.1" hint="Typisch: 1.5–3.0" />
-              </div>
-            </Section>
-          )}
-
-          {/* Außenluft — minimal, nur Standort */}
-          {editing.type === 'air_source' && (
-            <Section title="Außenluft" defaultOpen={true} badge="Luft">
-              <p className="text-sm text-dark-faded">
-                Außenluft als Energiequelle benötigt keine weiteren technischen Parameter.
-                Der Standort und die zugeordneten Sensoren (z.B. Außentemperatur) sind ausreichend.
-              </p>
-            </Section>
-          )}
-
-          {/* Brunnen / Grundwasser */}
-          {editing.type === 'well_source' && (
-            <Section title="Brunnen / Grundwasser" defaultOpen={true} badge="Brunnen">
-              <div className="grid grid-cols-3 gap-4">
-                <InputField label="Förderleistung" value={editing.flowRateM3PerH} onChange={(v) => update('flowRateM3PerH', Number(v))} type="number" unit="m³/h" step="0.1" />
-                <InputField label="Wassertemperatur" value={editing.temperatureC} onChange={(v) => update('temperatureC', Number(v))} type="number" unit="°C" step="0.5" hint="Durchschnittliche Brunnenwassertemperatur" />
-                <InputField label="Brunnentiefe" value={editing.wellDepthM} onChange={(v) => update('wellDepthM', Number(v))} type="number" unit="m" />
-              </div>
-            </Section>
-          )}
-
-          {/* Kommunikation */}
-          <CommunicationForm config={editing.communication} onChange={(c) => update('communication', c)} />
-
-          {/* Notizen */}
-          <Section title="Notizen" defaultOpen={false}>
-            <TextareaField label="Bemerkungen" value={editing.notes} onChange={(v) => update('notes', v)} />
-          </Section>
-
+          <SourceForm entity={editing} onChange={setEditing} />
           <div className="flex gap-3 pt-4 border-t">
             <button onClick={save} className="btn-primary" disabled={!editing.name}>Speichern</button>
             <button onClick={cancel} className="btn-secondary">Abbrechen</button>

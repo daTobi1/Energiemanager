@@ -1,6 +1,6 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, ExternalLink, Trash2, RotateCw, RotateCcw, Plus, Minus, Zap, Link, Unlink } from 'lucide-react'
+import { X, Edit2, Trash2, RotateCw, RotateCcw, Plus, Minus, Zap, Link, Unlink } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import { useEnergyStore } from '../../../store/useEnergyStore'
 import { isDualSchemaHydraulicNode } from '../../shared/crossSchemaUtils'
@@ -8,6 +8,7 @@ import type { HeatPumpGenerator, ChpGenerator, ChillerGenerator, Consumer } from
 import { createDefaultCommunication } from '../../../types'
 import { v4 as uuid } from 'uuid'
 import { hydraulicPortConfigs } from '../../shared/portStepperConfigs'
+import { EntityEditDrawer } from '../../ui/EntityEditDrawer'
 
 interface Props {
   node: Node | null
@@ -93,6 +94,7 @@ export default memo(function PropertiesPanel({ node, onClose, onDelete, onRotate
   const addConsumer = useEnergyStore((s) => s.addConsumer)
   const updateConsumer = useEnergyStore((s) => s.updateConsumer)
   const removeConsumer = useEnergyStore((s) => s.removeConsumer)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   if (!node) return null
 
@@ -107,7 +109,7 @@ export default memo(function PropertiesPanel({ node, onClose, onDelete, onRotate
 
   const handleEdit = () => {
     if (route && entityId) {
-      navigate(route, { state: { editId: entityId, returnTo: '/hydraulic-schema' } })
+      setDrawerOpen(true)
     }
   }
 
@@ -408,25 +410,26 @@ export default memo(function PropertiesPanel({ node, onClose, onDelete, onRotate
         {route && entityId && (
           <button onClick={handleEdit}
             className="w-full flex items-center justify-center gap-2 btn-primary text-sm py-2">
-            <ExternalLink className="w-4 h-4" />
+            <Edit2 className="w-4 h-4" />
             Bearbeiten
           </button>
         )}
-        {entityId && (
-          <button onClick={() => onDelete(node.id)}
-            className="w-full flex items-center justify-center gap-2 btn-danger text-sm py-2">
-            <Trash2 className="w-4 h-4" />
-            Entfernen
-          </button>
-        )}
-        {!entityId && (
-          <button onClick={() => onDelete(node.id)}
-            className="w-full flex items-center justify-center gap-2 btn-danger text-sm py-2">
-            <Trash2 className="w-4 h-4" />
-            Entfernen
-          </button>
-        )}
+        <button onClick={() => onDelete(node.id)}
+          className="w-full flex items-center justify-center gap-2 btn-danger text-sm py-2">
+          <Trash2 className="w-4 h-4" />
+          Entfernen
+        </button>
       </div>
+
+      {entityId && (
+        <EntityEditDrawer
+          open={drawerOpen}
+          nodeType={nodeType}
+          entityId={entityId}
+          onClose={() => setDrawerOpen(false)}
+          onSaved={(id, name) => onUpdateData(node.id, { label: name })}
+        />
+      )}
     </div>
   )
 })

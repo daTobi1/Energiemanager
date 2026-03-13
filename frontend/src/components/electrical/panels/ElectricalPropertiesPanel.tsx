@@ -1,11 +1,12 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { X, ExternalLink, Trash2, RotateCw, RotateCcw, Plus, Minus, Flame, Droplets } from 'lucide-react'
+import { X, Edit2, Trash2, RotateCw, RotateCcw, Plus, Minus, Flame, Droplets } from 'lucide-react'
 import type { Node } from '@xyflow/react'
 import { useEnergyStore } from '../../../store/useEnergyStore'
 import { isDualSchemaElectricalNode } from '../../shared/crossSchemaUtils'
 import type { HeatPumpGenerator, ChpGenerator, ChillerGenerator } from '../../../types'
 import { electricalPortConfigs } from '../../shared/portStepperConfigs'
+import { EntityEditDrawer } from '../../ui/EntityEditDrawer'
 
 interface Props {
   node: Node | null
@@ -78,6 +79,7 @@ export default memo(function ElectricalPropertiesPanel({ node, onClose, onDelete
   const generators = useEnergyStore((s) => s.generators)
   const storages = useEnergyStore((s) => s.storages)
   const circuits = useEnergyStore((s) => s.circuits)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   if (!node) return null
 
@@ -92,7 +94,7 @@ export default memo(function ElectricalPropertiesPanel({ node, onClose, onDelete
 
   const handleEdit = () => {
     if (route && entityId) {
-      navigate(route, { state: { editId: entityId, returnTo: '/electrical-schema' } })
+      setDrawerOpen(true)
     }
   }
 
@@ -312,7 +314,7 @@ export default memo(function ElectricalPropertiesPanel({ node, onClose, onDelete
         {route && entityId && (
           <button onClick={handleEdit}
             className="w-full flex items-center justify-center gap-2 btn-primary text-sm py-2">
-            <ExternalLink className="w-4 h-4" />
+            <Edit2 className="w-4 h-4" />
             Bearbeiten
           </button>
         )}
@@ -322,6 +324,16 @@ export default memo(function ElectricalPropertiesPanel({ node, onClose, onDelete
           Entfernen
         </button>
       </div>
+
+      {entityId && (
+        <EntityEditDrawer
+          open={drawerOpen}
+          nodeType={nodeType}
+          entityId={entityId}
+          onClose={() => setDrawerOpen(false)}
+          onSaved={(id, name) => onUpdateData(node.id, { label: name })}
+        />
+      )}
     </div>
   )
 })

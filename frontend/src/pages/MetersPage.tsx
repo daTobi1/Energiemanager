@@ -3,39 +3,11 @@ import { v4 as uuid } from 'uuid'
 import { Plus, Edit2, Gauge, X, Copy, ArrowLeft } from 'lucide-react'
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
-import { InputField, SelectField, TextareaField, Section } from '../components/ui/FormField'
-import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { MeterForm } from '../components/forms/MeterForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type { Meter, MeterType, MeterDirection, MeterCategory, EnergyPort } from '../types'
 import { createDefaultCommunication } from '../types'
 import { mkPort } from '../components/ui/PortEditor'
-
-const meterTypeOptions = [
-  { value: 'electricity', label: 'Stromzähler' },
-  { value: 'heat', label: 'Wärmemengenzähler' },
-  { value: 'gas', label: 'Gaszähler' },
-  { value: 'water', label: 'Wasserzähler' },
-  { value: 'cold', label: 'Kältemengenzähler' },
-  { value: 'source', label: 'Quellenzähler' },
-]
-
-const directionOptions = [
-  { value: 'consumption', label: 'Verbrauch' },
-  { value: 'generation', label: 'Erzeugung' },
-  { value: 'bidirectional', label: 'Bidirektional (Zweirichtung)' },
-  { value: 'grid_feed_in', label: 'Netzeinspeisung' },
-  { value: 'grid_consumption', label: 'Netzbezug' },
-]
-
-const categoryOptions = [
-  { value: 'source', label: 'Quellenzähler' },
-  { value: 'generation', label: 'Erzeugerzähler' },
-  { value: 'consumption', label: 'Heiz-/Kühlkreiszähler' },
-  { value: 'circuit', label: 'Raumzähler' },
-  { value: 'group', label: 'Verbrauchergruppenzähler' },
-  { value: 'end', label: 'Endzähler' },
-  { value: 'unassigned', label: 'Nicht zugeordnet' },
-]
 
 const typeColors: Record<MeterType, string> = {
   electricity: 'bg-yellow-500/15 text-yellow-400',
@@ -204,11 +176,6 @@ export default function MetersPage() {
     setEditing(null)
   }
 
-  const update = <K extends keyof Meter>(key: K, value: Meter[K]) => {
-    if (!editing) return
-    setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
-  }
-
   const parentMeterOptions = meters
     .filter((m) => m.id !== editing?.id)
     .map((m) => ({ value: m.id, label: m.name || m.meterNumber }))
@@ -243,44 +210,7 @@ export default function MetersPage() {
         )}
 
         <div className="space-y-4">
-          <Section title="Grunddaten" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Hausanschluss-Zähler, PV-Erzeugungszähler" />
-              <InputField label="Zählernummer" value={editing.meterNumber} onChange={(v) => update('meterNumber', v)} placeholder="z.B. 1EMH0012345678" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <SelectField label="Medium" value={editing.type} onChange={(v) => { update('type', v as MeterType); update('ports', createDefaultMeterPorts(v as MeterType, editing.direction)) }} options={meterTypeOptions} />
-              <SelectField label="Messrichtung" value={editing.direction} onChange={(v) => { update('direction', v as MeterDirection); update('ports', createDefaultMeterPorts(editing.type, v as MeterDirection)) }} options={directionOptions} />
-              <SelectField label="Zählerart" value={editing.category} onChange={(v) => update('category', v as MeterCategory)} options={categoryOptions} />
-            </div>
-            {parentMeterOptions.length > 0 && (
-              <div>
-                <SelectField label="Übergeordneter Zähler (optional)" value={editing.parentMeterId} onChange={(v) => update('parentMeterId', v)} options={[{ value: '', label: '— Kein übergeordneter Zähler —' }, ...parentMeterOptions]} hint="Zählerhierarchie für Abrechnungszwecke" />
-              </div>
-            )}
-          </Section>
-
-          {editing.type === 'electricity' && (
-            <Section title="Elektrische Eigenschaften" defaultOpen={true}>
-              <div className="grid grid-cols-3 gap-4">
-                <SelectField label="Phasen" value={String(editing.phases)} onChange={(v) => update('phases', Number(v) as 1 | 3)} options={[{ value: '1', label: '1-phasig' }, { value: '3', label: '3-phasig' }]} />
-                <InputField label="Nennstrom" value={editing.nominalCurrentA} onChange={(v) => update('nominalCurrentA', Number(v))} type="number" unit="A" />
-                <InputField label="Nennspannung" value={editing.nominalVoltageV} onChange={(v) => update('nominalVoltageV', Number(v))} type="number" unit="V" />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <InputField label="Stromwandler-Faktor" value={editing.ctRatio} onChange={(v) => update('ctRatio', Number(v))} type="number" hint="CT Ratio, 1 = Direktmessung" step="0.1" />
-                <InputField label="Spannungswandler-Faktor" value={editing.vtRatio} onChange={(v) => update('vtRatio', Number(v))} type="number" hint="VT Ratio, 1 = Direktmessung" step="0.1" />
-                <InputField label="Impulse pro kWh" value={editing.pulsesPerUnit} onChange={(v) => update('pulsesPerUnit', Number(v))} type="number" hint="S0-Schnittstelle" />
-              </div>
-            </Section>
-          )}
-
-          <CommunicationForm config={editing.communication} onChange={(c) => update('communication', c)} />
-
-          <Section title="Notizen" defaultOpen={false}>
-            <TextareaField label="Bemerkungen" value={editing.notes} onChange={(v) => update('notes', v)} />
-          </Section>
-
+          <MeterForm entity={editing} onChange={setEditing} parentMeterOptions={parentMeterOptions} />
           <div className="flex gap-3 pt-4 border-t">
             <button onClick={save} className="btn-primary" disabled={!editing.name}>Speichern</button>
             <button onClick={cancel} className="btn-secondary">Abbrechen</button>
