@@ -859,6 +859,30 @@ export interface ControllerHistoryEntry {
 }
 
 // ============================================================
+// Lambda Wärmepumpe (Modbus TCP)
+// ============================================================
+
+export interface LambdaHPModules {
+  heat_pumps: number
+  boilers: number
+  buffers: number
+  solar_modules: number
+  heating_circuits: number
+}
+
+export interface LambdaHPStatus {
+  connected: boolean
+  running: boolean
+  host?: string
+  port?: number
+  modules?: LambdaHPModules
+  operating_state?: string
+  error?: number | null
+  auto_pv_surplus?: boolean
+  current_pv_surplus_w?: number
+}
+
+// ============================================================
 // Defaults
 // ============================================================
 

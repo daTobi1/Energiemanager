@@ -4,10 +4,11 @@ import {
   Clock, Wifi, Bluetooth, Download, Power, RotateCcw,
   RefreshCw, AlertTriangle, WifiOff, Info, Monitor,
   Database, Server, CheckCircle2, XCircle, Radio,
-  Play, Square, RotateCw,
+  Play, Square, RotateCw, Thermometer, Unplug, Plug,
 } from 'lucide-react'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { api } from '../api/client'
+import type { LambdaHPStatus } from '../types'
 
 export default function SystemPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -69,6 +70,55 @@ export default function SystemPage() {
       await fetchDaqStatus()
     } catch (e) { console.warn(e) }
     setDaqLoading(false)
+  }
+
+  // Lambda HP Status
+  const [lambdaStatus, setLambdaStatus] = useState<LambdaHPStatus | null>(null)
+  const [lambdaHost, setLambdaHost] = useState('')
+  const [lambdaPort, setLambdaPort] = useState(502)
+  const [lambdaLoading, setLambdaLoading] = useState(false)
+  const [lambdaValues, setLambdaValues] = useState<Record<string, number> | null>(null)
+
+  const fetchLambdaStatus = async () => {
+    try {
+      const status = await api.lambdaHp.status()
+      setLambdaStatus(status)
+    } catch {
+      setLambdaStatus(null)
+    }
+  }
+
+  useEffect(() => {
+    if (apiConnected) fetchLambdaStatus()
+  }, [apiConnected])
+
+  const handleLambdaConnect = async () => {
+    if (!lambdaHost) return
+    setLambdaLoading(true)
+    try {
+      const result = await api.lambdaHp.connect(lambdaHost, lambdaPort)
+      if (result.success) {
+        await fetchLambdaStatus()
+      }
+    } catch (e) { console.warn(e) }
+    setLambdaLoading(false)
+  }
+
+  const handleLambdaDisconnect = async () => {
+    setLambdaLoading(true)
+    try {
+      await api.lambdaHp.disconnect()
+      setLambdaStatus(null)
+      setLambdaValues(null)
+    } catch (e) { console.warn(e) }
+    setLambdaLoading(false)
+  }
+
+  const handleLambdaReadValues = async () => {
+    try {
+      const result = await api.lambdaHp.values()
+      setLambdaValues(result.values)
+    } catch (e) { console.warn(e) }
   }
 
   return (
@@ -218,6 +268,128 @@ export default function SystemPage() {
                   IP-Adresse und Port setzen).
                 </p>
               </div>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Lambda Wärmepumpe" icon={<Thermometer className="w-4 h-4 text-orange-400" />} defaultOpen={true}>
+          <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-dark-faded uppercase tracking-wider">Modbus TCP Verbindung</p>
+              <span className="flex items-center gap-2 text-sm">
+                {lambdaStatus?.connected ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
+                    <span className="text-emerald-400">Verbunden</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-dark-faded" />
+                    <span className="text-dark-faded">Getrennt</span>
+                  </>
+                )}
+              </span>
+            </div>
+
+            {lambdaStatus?.connected ? (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-dark-faded">Adresse</span>
+                  <span className="text-dark-text font-mono text-xs">{lambdaStatus.host}:{lambdaStatus.port}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-dark-faded">Betriebszustand</span>
+                  <span className="text-dark-text">{lambdaStatus.operating_state || '—'}</span>
+                </div>
+                {lambdaStatus.error !== null && lambdaStatus.error !== undefined && lambdaStatus.error !== 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-dark-faded">Fehler</span>
+                    <span className="text-red-400">#{lambdaStatus.error}</span>
+                  </div>
+                )}
+                {lambdaStatus.modules && (
+                  <div className="flex justify-between">
+                    <span className="text-dark-faded">Module</span>
+                    <span className="text-dark-text text-xs">
+                      {lambdaStatus.modules.heat_pumps} WP, {lambdaStatus.modules.boilers} Boiler, {lambdaStatus.modules.buffers} Puffer, {lambdaStatus.modules.heating_circuits} HK
+                      {lambdaStatus.modules.solar_modules > 0 && `, ${lambdaStatus.modules.solar_modules} Solar`}
+                    </span>
+                  </div>
+                )}
+                {lambdaStatus.auto_pv_surplus && (
+                  <div className="flex justify-between">
+                    <span className="text-dark-faded">PV-Überschuss</span>
+                    <span className="text-emerald-400">{lambdaStatus.current_pv_surplus_w} W (Auto)</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-dark-faded">
+                  Lambda Eureka EU-L Wärmepumpen (EU08L–EU20L) über Modbus TCP.
+                  IP-Adresse des WP-Displays eingeben.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={lambdaHost}
+                    onChange={(e) => setLambdaHost(e.target.value)}
+                    placeholder="192.168.1.50"
+                    className="flex-1 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-text text-sm font-mono placeholder:text-dark-border focus:border-orange-500/50 focus:outline-none"
+                  />
+                  <input
+                    type="number"
+                    value={lambdaPort}
+                    onChange={(e) => setLambdaPort(Number(e.target.value))}
+                    className="w-20 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-text text-sm font-mono focus:border-orange-500/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {lambdaStatus?.connected ? (
+              <>
+                <button onClick={handleLambdaDisconnect} disabled={lambdaLoading || !apiConnected} className="btn-secondary flex items-center gap-2 text-sm text-red-400 hover:text-red-300">
+                  <Unplug className="w-4 h-4" /> Trennen
+                </button>
+                <button onClick={handleLambdaReadValues} disabled={!apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
+                  <RefreshCw className="w-4 h-4" /> Werte lesen
+                </button>
+                <button onClick={fetchLambdaStatus} disabled={!apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
+                  <RefreshCw className="w-4 h-4" /> Status
+                </button>
+              </>
+            ) : (
+              <button onClick={handleLambdaConnect} disabled={lambdaLoading || !apiConnected || !lambdaHost} className="btn-primary flex items-center gap-2 text-sm">
+                <Plug className="w-4 h-4" /> {lambdaLoading ? 'Verbinde...' : 'Verbinden'}
+              </button>
+            )}
+          </div>
+
+          {/* Aktuelle Werte */}
+          {lambdaValues && Object.keys(lambdaValues).length > 0 && (
+            <div className="border border-dark-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-dark-hover text-dark-faded text-xs uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left">Datenpunkt</th>
+                    <th className="px-3 py-2 text-right">Wert</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(lambdaValues)
+                    .filter(([, v]) => typeof v === 'number')
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([key, value]) => (
+                      <tr key={key} className="border-t border-dark-border">
+                        <td className="px-3 py-1.5 font-mono text-xs text-dark-muted">{key}</td>
+                        <td className="px-3 py-1.5 text-right font-mono text-xs">{typeof value === 'number' ? value.toFixed(2) : String(value)}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Section>

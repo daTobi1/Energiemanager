@@ -13,6 +13,7 @@ import type {
   WeatherCurrent, WeatherForecast, PvForecastResponse, PvAccuracyResponse, LoadForecastResponse, ThermalForecastResponse, OptimizationSchedule,
   ControllerStatus, ControllerHistoryEntry,
   MLStatusResponse, MLModelDetail,
+  LambdaHPStatus, LambdaHPModules,
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
@@ -159,6 +160,22 @@ export const api = {
       request<Record<string, unknown>>(type ? `/ml/train/${type}` : '/ml/train', { method: 'POST' }),
     deleteModel: (type: string) =>
       request<{ status: string }>(`/ml/models/${type}`, { method: 'DELETE' }),
+  },
+
+  lambdaHp: {
+    status: () => request<LambdaHPStatus>('/lambda-hp/status'),
+    connect: (host: string, port = 502, slaveId = 1) =>
+      request<{ success: boolean; modules?: LambdaHPModules; error?: string }>(
+        `/lambda-hp/connect?host=${encodeURIComponent(host)}&port=${port}&slave_id=${slaveId}`,
+        { method: 'POST' },
+      ),
+    disconnect: () => request<{ status: string }>('/lambda-hp/disconnect', { method: 'POST' }),
+    values: () => request<{ values: Record<string, number>; timestamp: string }>('/lambda-hp/values'),
+    write: (key: string, value: number) =>
+      request<{ success: boolean }>(`/lambda-hp/write?key=${encodeURIComponent(key)}&value=${value}`, { method: 'POST' }),
+    pvSurplus: (watts: number) =>
+      request<{ success: boolean }>(`/lambda-hp/pv-surplus?watts=${watts}`, { method: 'POST' }),
+    modules: () => request<LambdaHPModules>('/lambda-hp/modules'),
   },
 
   controller: {
