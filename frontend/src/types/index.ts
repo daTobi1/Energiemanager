@@ -782,6 +782,8 @@ export interface OptimizationSchedule {
   weights: OptimizerWeights
   strategy: string
   strategy_description: string
+  solver?: 'milp' | 'heuristic'
+  solve_time_ms?: number
   summary: ScheduleSummary
   hourly: ScheduleHourly[]
 }

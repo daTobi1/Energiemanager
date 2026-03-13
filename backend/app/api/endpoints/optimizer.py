@@ -12,6 +12,9 @@ router = APIRouter()
 
 
 @router.get("/schedule")
-async def get_optimization_schedule(hours: int = Query(24, ge=1, le=72)):
-    """Erstellt optimierten Einsatzfahrplan fuer die naechsten Stunden."""
-    return await energy_optimizer.create_schedule(hours)
+async def get_optimization_schedule(
+    hours: int = Query(24, ge=1, le=72),
+    solver: str = Query("auto", pattern="^(auto|milp|heuristic)$"),
+):
+    """Erstellt optimierten Einsatzfahrplan. solver: auto|milp|heuristic."""
+    return await energy_optimizer.create_schedule(hours, solver=solver)

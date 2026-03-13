@@ -597,9 +597,21 @@ export default function OptimizerPage() {
             <CalendarClock className="w-5 h-5 text-emerald-400" />
             <h2 className="text-lg font-bold text-dark-text">Einsatzfahrplan (24h)</h2>
             {schedule && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                {schedule.strategy}
-              </span>
+              <>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  {schedule.strategy}
+                </span>
+                {schedule.solver && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                    schedule.solver === 'milp'
+                      ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                      : 'bg-dark-hover text-dark-faded border-dark-border'
+                  }`}>
+                    {schedule.solver === 'milp' ? 'MILP' : 'Heuristik'}
+                    {schedule.solve_time_ms ? ` (${schedule.solve_time_ms.toFixed(0)}ms)` : ''}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <button onClick={fetchSchedule} disabled={scheduleLoading} className="btn-primary flex items-center gap-2 text-sm">

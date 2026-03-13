@@ -216,13 +216,230 @@ class EnergyOptimizer:
         )
         return total / total_weight
 
-    async def create_schedule(self, hours: int = 24) -> dict:
+    async def create_schedule(self, hours: int = 24, solver: str = "auto") -> dict:
         """
         Erstellt optimierten Fahrplan.
 
+        solver: "auto" (MILP bevorzugt), "milp" (nur MILP), "heuristic" (nur Heuristik)
         Returns: OptimizationSchedule als dict.
         """
         config = await self._load_config()
+
+        if solver in ("auto", "milp"):
+            try:
+                result = await self._create_schedule_milp(config, hours)
+                if result is not None:
+                    return result
+            except Exception as e:
+                logger.warning("MILP-Solver fehlgeschlagen, Fallback auf Heuristik: %s", e)
+            if solver == "milp":
+                return {"error": "MILP-Solver nicht verfuegbar", "solver": "milp"}
+
+        return await self._create_schedule_heuristic(config, hours)
+
+    async def _create_schedule_milp(self, config: dict, hours: int) -> dict | None:
+        """MILP-basierte Optimierung mit PuLP/CBC."""
+        from app.services.optimizer_milp import MilpParams, solve_milp
+
+        settings = config["settings"]
+        weights = settings.get("optimizerWeights", {
+            "co2Reduction": 50, "economy": 80, "comfort": 70,
+            "selfConsumption": 60, "gridFriendly": 30,
+        })
+
+        # Tarif-Parameter
+        grid_price_ct = settings.get("gridConsumptionCtPerKwh", 30)
+        feed_in_ct = settings.get("gridFeedInCtPerKwh", 8.2)
+        gas_price_ct = settings.get("gasPriceCtPerKwh", 8)
+
+        # Batterie-Parameter
+        batteries = [s for s in config["storages"] if s.get("type") == "battery"]
+        bat_capacity = sum(s.get("capacityKwh", 0) for s in batteries)
+        bat_max_ch = sum(s.get("maxChargePowerKw", s.get("capacityKwh", 10) * 0.5) for s in batteries)
+        bat_max_dis = sum(s.get("maxDischargePowerKw", s.get("capacityKwh", 10) * 0.5) for s in batteries)
+        bat_min_soc = max(s.get("minSocPercent", 10) for s in batteries) if batteries else 10
+        bat_max_soc = min(s.get("maxSocPercent", 95) for s in batteries) if batteries else 95
+        bat_eta_ch = batteries[0].get("chargeEfficiency", 0.95) if batteries else 0.95
+        bat_eta_dis = batteries[0].get("dischargeEfficiency", 0.95) if batteries else 0.95
+        bat_soc_init = batteries[0].get("initialSocPercent", 50) if batteries else 50
+
+        # Thermische Parameter
+        heat_storages = [s for s in config["storages"] if s.get("type") in ("heat",)]
+        storage_vol = sum(s.get("volumeLiters", 0) for s in heat_storages)
+        storage_cap = storage_vol * 1.16 / 1000 if storage_vol > 0 else 1.7
+        storage_min = heat_storages[0].get("minTemperatureC", 30) if heat_storages else 30
+        storage_max = heat_storages[0].get("maxTemperatureC", 80) if heat_storages else 80
+        storage_target = heat_storages[0].get("targetTemperatureC", 55) if heat_storages else 55
+        storage_loss = heat_storages[0].get("heatLossCoefficientWPerK", 2.0) if heat_storages else 2.0
+
+        hp_configs = [g for g in config["generators"] if g.get("type") == "heat_pump"]
+        hp_max = sum(g.get("heatingPowerKw", 0) for g in hp_configs)
+        boiler_configs = [g for g in config["generators"] if g.get("type") == "boiler"]
+        boiler_max = sum(g.get("nominalPowerKw", 0) for g in boiler_configs)
+
+        # Prognosen
+        pv_fc = await pv_forecast_service.get_forecast(hours)
+        load_fc = await load_forecast_service.get_forecast(hours)
+        thermal_fc = await thermal_forecast_service.get_forecast(hours)
+
+        now = datetime.now(timezone.utc)
+
+        pv_list = []
+        load_list = []
+        demand_list = []
+        cop_list = []
+        tariff_list = []
+        time_strs = []
+
+        pv_h = {h["time"]: h for h in pv_fc.get("hourly", [])}
+        load_h = {h["time"]: h for h in load_fc.get("hourly", [])}
+        therm_h = {h["time"]: h for h in thermal_fc.get("hourly", [])}
+
+        for h in range(hours):
+            dt = datetime(now.year, now.month, now.day, now.hour, 0, 0, tzinfo=timezone.utc)
+            dt = dt + timedelta(hours=h)
+            ts = dt.strftime("%Y-%m-%dT%H:00")
+            time_strs.append(ts)
+
+            pv_list.append(pv_h.get(ts, {}).get("power_kw", 0))
+            load_list.append(load_h.get(ts, {}).get("power_kw", 0))
+            th = therm_h.get(ts, {})
+            demand_list.append(th.get("heating_demand_kw", 0) + th.get("hot_water_kw", 0))
+            cop_list.append(th.get("hp_cop", 3.5))
+            tariff_list.append(self._get_tariff_ct(settings, dt.hour, dt.weekday()))
+
+        # MILP loesen
+        params = MilpParams(
+            hours=hours,
+            pv_kw=pv_list,
+            load_kw=load_list,
+            thermal_demand_kw=demand_list,
+            cop=cop_list,
+            tariff_ct=tariff_list,
+            feed_in_ct=feed_in_ct,
+            gas_price_ct=gas_price_ct,
+            bat_capacity_kwh=bat_capacity,
+            bat_max_charge_kw=bat_max_ch,
+            bat_max_discharge_kw=bat_max_dis,
+            bat_soc_min_pct=bat_min_soc,
+            bat_soc_max_pct=bat_max_soc,
+            bat_soc_initial_pct=bat_soc_init,
+            bat_eta_charge=bat_eta_ch,
+            bat_eta_discharge=bat_eta_dis,
+            hp_max_thermal_kw=hp_max,
+            boiler_max_kw=boiler_max,
+            storage_capacity_kwh_per_k=storage_cap,
+            storage_temp_min=storage_min,
+            storage_temp_max=storage_max,
+            storage_temp_initial=storage_target,
+            storage_temp_target=storage_target,
+            storage_loss_w_per_k=storage_loss,
+            w_economy=weights.get("economy", 80),
+            w_co2=weights.get("co2Reduction", 50),
+            w_comfort=weights.get("comfort", 70),
+            w_self_consumption=weights.get("selfConsumption", 60),
+            w_grid_friendly=weights.get("gridFriendly", 30),
+        )
+
+        result = solve_milp(params)
+        if result is None:
+            return None
+
+        # Ergebnis in Standard-Format konvertieren
+        result_hourly = []
+        for t in range(hours):
+            bat_net = result.bat_charge_kw[t] - result.bat_discharge_kw[t]
+            grid_net = result.grid_import_kw[t] - result.grid_export_kw[t]
+            hp_therm = result.hp_thermal_kw[t]
+            hp_elec = hp_therm / max(1.5, cop_list[t])
+            boiler_val = result.boiler_kw[t]
+            pv = pv_list[t]
+            load = load_list[t]
+            tariff = tariff_list[t]
+
+            # Kosten
+            cost_ct = 0.0
+            if grid_net > 0:
+                cost_ct = grid_net * tariff / 100.0
+            else:
+                cost_ct = grid_net * feed_in_ct / 100.0
+            cost_ct += boiler_val * gas_price_ct / 100.0
+
+            # CO2
+            co2 = max(0, grid_net) * 0.400 + boiler_val * 0.202
+
+            # Eigenverbrauch
+            self_consumed = min(pv, load + hp_elec + max(0, bat_net))
+            sc_pct = (self_consumed / pv * 100) if pv > 0.01 else 0
+
+            result_hourly.append({
+                "time": time_strs[t],
+                "pv_forecast_kw": round(pv, 2),
+                "load_forecast_kw": round(load, 2),
+                "battery_setpoint_kw": round(bat_net, 2),
+                "battery_soc_pct": round(result.soc_pct[t + 1], 1),
+                "hp_thermal_kw": round(hp_therm, 2),
+                "hp_electric_kw": round(hp_elec, 2),
+                "hp_cop": round(cop_list[t], 2),
+                "boiler_kw": round(boiler_val, 2),
+                "storage_temp_c": round(result.storage_temp_c[t + 1], 1),
+                "heating_demand_kw": round(demand_list[t], 2),
+                "grid_kw": round(grid_net, 2),
+                "cost_ct": round(cost_ct, 2),
+                "co2_kg": round(co2, 4),
+                "self_consumption_pct": round(sc_pct, 1),
+                "tariff_ct": round(tariff, 1),
+                "strategy": "MILP-optimiert",
+            })
+
+        # Zusammenfassung
+        total_cost = sum(h["cost_ct"] for h in result_hourly if h["cost_ct"] > 0)
+        total_revenue = abs(sum(h["cost_ct"] for h in result_hourly if h["cost_ct"] < 0))
+        total_co2 = sum(h["co2_kg"] for h in result_hourly)
+        sc_hours = [h["self_consumption_pct"] for h in result_hourly if h["pv_forecast_kw"] > 0.01]
+        avg_sc = sum(sc_hours) / len(sc_hours) if sc_hours else 0
+        peak_imp = max((h["grid_kw"] for h in result_hourly), default=0)
+        peak_exp = abs(min((h["grid_kw"] for h in result_hourly), default=0))
+        total_pv = sum(h["pv_forecast_kw"] for h in result_hourly)
+        total_imp = sum(h["grid_kw"] for h in result_hourly if h["grid_kw"] > 0)
+        total_exp = abs(sum(h["grid_kw"] for h in result_hourly if h["grid_kw"] < 0))
+        total_ch = sum(h["battery_setpoint_kw"] for h in result_hourly if h["battery_setpoint_kw"] > 0)
+        total_dis = abs(sum(h["battery_setpoint_kw"] for h in result_hourly if h["battery_setpoint_kw"] < 0))
+
+        dominant = max(weights, key=lambda k: weights.get(k, 0))
+        strategy_map = {
+            "economy": "Kostenoptimiert", "co2Reduction": "Klimafreundlich",
+            "comfort": "Komfortorientiert", "selfConsumption": "Eigenverbrauch maximiert",
+            "gridFriendly": "Netzdienlich",
+        }
+
+        return {
+            "generated_at": now.isoformat(),
+            "hours": hours,
+            "weights": weights,
+            "strategy": strategy_map.get(dominant, "Ausgewogen"),
+            "strategy_description": self._describe_strategy(weights),
+            "solver": "milp",
+            "solve_time_ms": result.solve_time_ms,
+            "summary": {
+                "total_cost_ct": round(total_cost, 1),
+                "total_revenue_ct": round(total_revenue, 1),
+                "net_cost_ct": round(total_cost - total_revenue, 1),
+                "total_co2_kg": round(total_co2, 2),
+                "avg_self_consumption_pct": round(avg_sc, 1),
+                "peak_grid_import_kw": round(peak_imp, 2),
+                "peak_grid_export_kw": round(peak_exp, 2),
+                "total_pv_kwh": round(total_pv, 1),
+                "total_grid_import_kwh": round(total_imp, 1),
+                "total_grid_export_kwh": round(total_exp, 1),
+                "total_battery_charged_kwh": round(total_ch, 1),
+                "total_battery_discharged_kwh": round(total_dis, 1),
+            },
+            "hourly": result_hourly,
+        }
+
+    async def _create_schedule_heuristic(self, config: dict, hours: int) -> dict:
+        """Heuristik-basierte Optimierung (Fallback)."""
         settings = config["settings"]
         weights = settings.get("optimizerWeights", {
             "co2Reduction": 50, "economy": 80, "comfort": 70,
@@ -464,6 +681,7 @@ class EnergyOptimizer:
             "weights": weights,
             "strategy": strategy_name,
             "strategy_description": self._describe_strategy(weights),
+            "solver": "heuristic",
             "summary": {
                 "total_cost_ct": round(total_cost, 1),
                 "total_revenue_ct": round(total_revenue, 1),
