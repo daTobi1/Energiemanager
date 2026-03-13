@@ -1,5 +1,5 @@
 import { memo, type DragEvent } from 'react'
-import { Zap, Sun, Battery, Gauge, Shield, Plug, LayoutGrid, CircleDot, Cable, Wind } from 'lucide-react'
+import { Zap, Sun, Battery, Gauge, Shield, Plug, LayoutGrid, CircleDot, Cable, Wind, Dot } from 'lucide-react'
 
 interface PaletteItem {
   type: string
@@ -31,6 +31,8 @@ const items: PaletteItem[] = [
   { type: 'consumer_load', label: 'Verbraucher', icon: Zap, color: '#ef4444', group: 'Verbraucher' },
   // Messtechnik
   { type: 'elec_meter', label: 'Stromzähler', icon: Gauge, color: '#eab308', group: 'Messtechnik' },
+  // Verbindungen
+  { type: 'junction', label: 'Verbindungspunkt', icon: Dot, color: '#8b949e', group: 'Verbindungen' },
 ]
 
 function onDragStart(event: DragEvent, item: PaletteItem) {

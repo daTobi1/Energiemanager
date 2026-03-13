@@ -39,6 +39,7 @@ import type {
 } from '../types'
 import { createDefaultCommunication } from '../types'
 import { isValidConnection as checkHandleCompat } from '../components/shared/portUtils'
+import CrossingArcsOverlay from '../components/shared/CrossingArcsOverlay'
 
 export default function ElectricalSchemaPage() {
   const store = useEnergyStore()
@@ -384,6 +385,9 @@ export default function ElectricalSchemaPage() {
         id: `emeter-${id}`, type: 'elec_meter', position,
         data: { label: m.name, entityId: id, direction: m.direction },
       }])
+    } else if (type === 'junction') {
+      const nodeId = `eschema-${uuid()}`
+      setNodes((nds) => [...nds, { id: nodeId, type: 'junction', position, data: { label: 'Verbindung' } }])
     } else if (['elec_bus', 'sub_distribution', 'circuit_breaker', 'sun_source', 'wind_source'].includes(type)) {
       // Schema-only elements
       const nodeId = `eschema-${uuid()}`
@@ -467,6 +471,7 @@ export default function ElectricalSchemaPage() {
     if (t === 'sun_source') return '#f59e0b'
     if (t === 'wind_source') return '#60a5fa'
     if (t === 'wind_turbine') return '#22c55e'
+    if (t === 'junction') return '#8b949e'
     return '#30363d'
   }, [])
 
@@ -501,6 +506,7 @@ export default function ElectricalSchemaPage() {
           defaultEdgeOptions={{ type: 'electrical', deletable: true }}
           colorMode="dark"
         >
+          <CrossingArcsOverlay />
           <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1} color="#21262d" />
           <Controls showZoom={false} showFitView={false} showInteractive={false} position="top-right" />
           <MiniMap

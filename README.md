@@ -121,6 +121,12 @@ Zwei dedizierte, interaktive Schema-Editoren ersetzen das klassische R&I-Fliesss
 - Speicher: Batterie + Wechselrichter
 - Verteilung: Sammelschiene, Unterverteilung, LS-Schalter, Stromzaehler
 - Verbraucher: Motor-Lasten, Wallboxen, allgemeine Verbraucher
+- Verbindungen: Universeller Verbindungspunkt (T-Stueck / Kreuzung)
+
+**Leitungskreuzungen:**
+- Verbindungspunkte: Sichtbare Connector-Dots wo Leitungen verbunden sind (Junction-Node)
+- Kreuzungsboegen: Automatischer Halbkreis-Bogen wo sich Leitungen kreuzen aber NICHT verbunden sind (Norm-konform)
+- Farbgetreue Darstellung: Boegen und Unterkreuzungen in den jeweiligen Leitungsfarben
 
 **Cross-Schema-Verlinkung:**
 - Klickbare Badges (⚡/🔥) auf Dual-Schema-Komponenten (WP, BHKW, Kaeltemaschine)
@@ -177,12 +183,12 @@ Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angeb
 
 | Erzeuger | Energieform | Steuerbar | Beschreibung |
 |---|---|---|---|
-| PV-Anlage | Strom | Nein (prognostiziert) | Erzeugungsprognose via Wetter-API + ML |
+| PV-Anlage | Strom | Nein (prognostiziert) | Erzeugungsprognose via Wetter-API (Einstrahlung) + ML |
 | Waermepumpe | Waerme + Strom(verbrauch) | Ja | Flexibler Einsatz, COP-Kennlinie, SG Ready |
 | BHKW | Strom + Waerme | Ja | Kraft-Waerme-Kopplung, waerme-/stromgefuehrt |
 | Heizkessel | Waerme | Ja | Spitzenlastabdeckung, Brennwert, Modulation |
 | Kaeltemaschine | Kaelte | Ja | Klimatisierung, Prozesskaelte |
-| Windrad | Strom | Nein (prognostiziert) | Kleinwindkraftanlage, PMSG/Synchron/Asynchron |
+| Windrad | Strom | Nein (prognostiziert) | Kleinwindkraftanlage, Prognose via Wetter-API (Windgeschwindigkeit) + Leistungskurve, PMSG/Synchron/Asynchron |
 
 ### Speichermanagement
 
@@ -290,6 +296,8 @@ energiemanager/
 │       │   │   └── nodeTypes.ts
 │       │   └── shared/                 # Cross-Schema-Utilities
 │       │       ├── CrossSchemaBadge.tsx # Klickbarer Schema-Wechsel-Badge
+│       │       ├── CrossingArcsOverlay.tsx # Kreuzungsbogen-Overlay (Halbkreise)
+│       │       ├── JunctionNode.tsx     # Universeller Verbindungspunkt (T/Kreuzung)
 │       │       ├── crossSchemaUtils.ts # Dual-Schema-Erkennung
 │       │       └── portUtils.ts        # Handle-ID-Parsing
 │       ├── pages/
@@ -400,11 +408,13 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - Fallback-Polling wenn kein WebSocket verfuegbar
 
 **Erledigt (Hydraulik- & Stromschema):**
-- Hydraulikschema: 20 Node-Typen (Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreis, Pumpe, Mischer, Weiche, Zaehler, Verbraucher, Raum + 4 natuerliche Quellen)
-- Stromschema: 14 Node-Typen (Trafo, PV+WR, Batterie+WR, Generator, Windrad, Motor-Last, Wallbox, Verbraucher, LS-Schalter, Stromzaehler, Sammelschiene, UV + 2 natuerliche Quellen)
+- Hydraulikschema: 21 Node-Typen (Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreis, Pumpe, Mischer, Weiche, Zaehler, Verbraucher, Raum, Verbindungspunkt + 4 natuerliche Quellen)
+- Stromschema: 15 Node-Typen (Trafo, PV+WR, Batterie+WR, Generator, Windrad, Motor-Last, Wallbox, Verbraucher, LS-Schalter, Stromzaehler, Sammelschiene, UV, Verbindungspunkt + 2 natuerliche Quellen)
 - Natuerliche Energiequellen: Solarthermie, Erdsonde, Luft, Brunnen (Hydraulik) + Sonne, Wind (Strom)
-- Windrad als vollwertiger Generator-Typ mit technischen Parametern (Rotordurchmesser, Nabenhoehe, Windgeschwindigkeiten)
+- Windrad als vollwertiger Generator-Typ mit technischen Parametern (Rotordurchmesser, Nabenhoehe, Windgeschwindigkeiten), prognostizierbar via Wetter-API (Windgeschwindigkeit + Leistungskurve)
 - Alle Quellen-Nodes mit Mess-Handles fuer Sensor-Anbindung (Pyranometer, Anemometer, Temperaturfuehler)
+- Verbindungspunkte: Universelle Junction-Nodes (T-Stueck/Kreuzung) mit 4 Handles fuer Leitungsverzweigungen
+- Kreuzungsboegen: Automatische Halbkreis-Darstellung bei sich kreuzenden, nicht-verbundenen Leitungen (normgerecht)
 - Drag & Drop aus Komponentenpalette + Verbindungen zwischen Anschluss-Handles
 - Farbcodierte Leitungen: Rot (Waerme VL), Blau (RL), Gelb (Strom), Orange (Gas), Tuerkis (Quelle)
 - Properties-Panel mit Typ-Info, Nennleistung, Drehung, Port-Konfiguration

@@ -19,6 +19,7 @@ const ENERGY_PREFIXES = [
   'flow',
   'meter',
   'circuit',
+  'junction',
 ] as const
 
 export type HandleEnergy = (typeof ENERGY_PREFIXES)[number]
@@ -36,6 +37,10 @@ export function energyFromHandle(id: string): HandleEnergy | null {
 export function resolveEdgeType(srcHandle: string, tgtHandle: string): string {
   const srcE = energyFromHandle(srcHandle)
   const tgtE = energyFromHandle(tgtHandle)
+  // Junction: Typ von der anderen Seite ableiten
+  if (srcE === 'junction' && tgtE && tgtE !== 'junction') return resolveEdgeType(tgtHandle, tgtHandle)
+  if (tgtE === 'junction' && srcE && srcE !== 'junction') return resolveEdgeType(srcHandle, srcHandle)
+
   const both = [srcE, tgtE]
 
   if (both.includes('gas')) return 'gas'
@@ -85,6 +90,9 @@ export function isValidConnection(srcHandle: string, tgtHandle: string): boolean
 
   // meter ist universell verbindbar
   if (srcE === 'meter' || tgtE === 'meter') return true
+
+  // junction ist universell verbindbar (T-Stück, Kreuzung)
+  if (srcE === 'junction' || tgtE === 'junction') return true
 
   return false
 }

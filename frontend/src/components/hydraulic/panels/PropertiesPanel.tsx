@@ -34,6 +34,7 @@ const typeLabels: Record<string, string> = {
   ground_source: 'Erdsonde / Erdkollektor',
   air_source: 'Luft (Umgebung)',
   well_source: 'Brunnen / Grundwasser',
+  junction: 'Verbindungspunkt',
 }
 
 const typeRoutes: Record<string, string> = {

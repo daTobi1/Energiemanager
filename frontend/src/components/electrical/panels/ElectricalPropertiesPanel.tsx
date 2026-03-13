@@ -29,6 +29,7 @@ const typeLabels: Record<string, string> = {
   sun_source: 'Sonne',
   wind_source: 'Wind',
   wind_turbine: 'Windrad',
+  junction: 'Verbindungspunkt',
 }
 
 const typeRoutes: Record<string, string> = {

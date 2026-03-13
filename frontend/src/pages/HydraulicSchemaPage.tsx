@@ -46,6 +46,7 @@ import {
   isColdHandle,
   isValidConnection as checkHandleCompat,
 } from '../components/shared/portUtils'
+import CrossingArcsOverlay from '../components/shared/CrossingArcsOverlay'
 
 export default function HydraulicSchemaPage() {
   const store = useEnergyStore()
@@ -367,6 +368,9 @@ export default function HydraulicSchemaPage() {
       }
       addMeter(m)
       setNodes((nds) => [...nds, { id: `meter-${id}`, type: 'meter', position, data: { label: m.name, entityId: id, meterType: m.type } }])
+    } else if (type === 'junction') {
+      const nodeId = `schema-${uuid()}`
+      setNodes((nds) => [...nds, { id: nodeId, type: 'junction', position, data: { label: 'Verbindung' } }])
     } else if (['hydraulic_separator', 'pump', 'mixer', 'solar_thermal', 'ground_source', 'air_source', 'well_source'].includes(type)) {
       // Reine Schema-Elemente (kein Store-Eintrag nötig)
       const nodeId = `schema-${uuid()}`
@@ -454,6 +458,7 @@ export default function HydraulicSchemaPage() {
     if (t === 'ground_source') return '#16a34a'
     if (t === 'air_source') return '#60a5fa'
     if (t === 'well_source') return '#3b82f6'
+    if (t === 'junction') return '#8b949e'
     return '#30363d'
   }, [])
 
@@ -490,6 +495,7 @@ export default function HydraulicSchemaPage() {
           defaultEdgeOptions={{ type: 'electrical', deletable: true }}
           colorMode="dark"
         >
+          <CrossingArcsOverlay />
           <Background variant={BackgroundVariant.Dots} gap={GRID_SIZE} size={1} color="#21262d" />
           <Controls
             showZoom={false}

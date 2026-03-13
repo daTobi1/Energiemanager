@@ -14,6 +14,7 @@ import SubDistributionNode from './nodes/SubDistributionNode'
 import SunSourceNode from './nodes/SunSourceNode'
 import WindSourceNode from './nodes/WindSourceNode'
 import WindTurbineNode from './nodes/WindTurbineNode'
+import JunctionNode from '../shared/JunctionNode'
 
 export const elecNodeTypes = {
   transformer: withRotation(TransformerNode),
@@ -30,4 +31,5 @@ export const elecNodeTypes = {
   sun_source: withRotation(SunSourceNode),
   wind_source: withRotation(WindSourceNode),
   wind_turbine: withRotation(WindTurbineNode),
+  junction: JunctionNode,
 } as const
