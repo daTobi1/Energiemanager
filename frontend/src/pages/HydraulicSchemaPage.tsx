@@ -47,6 +47,7 @@ import {
   isValidConnection as checkHandleCompat,
 } from '../components/shared/portUtils'
 import CrossingArcsOverlay from '../components/shared/CrossingArcsOverlay'
+import { useAutoJunction } from '../components/shared/useAutoJunction'
 
 export default function HydraulicSchemaPage() {
   const store = useEnergyStore()
@@ -168,8 +169,38 @@ export default function HydraulicSchemaPage() {
     setSelectedNode(null)
   }, [])
 
+  // --- Edge-Typ aus Handle-IDs ableiten ---
+  const createEdgeProps = useCallback(
+    (srcHandle: string, tgtHandle: string, originalEdge?: Edge) => {
+      if (originalEdge) {
+        return { type: originalEdge.type || 'thermal', data: originalEdge.data as Record<string, unknown> | undefined }
+      }
+      const et = resolveEdgeType(srcHandle, tgtHandle)
+      if (et === 'thermal') {
+        return {
+          type: 'thermal',
+          data: {
+            pipeType: (isColdHandle(srcHandle) || isColdHandle(tgtHandle)) ? 'cold' : 'heat',
+            isReturn: isReturnHandle(srcHandle) || isReturnHandle(tgtHandle),
+          },
+        }
+      }
+      return { type: et }
+    },
+    [],
+  )
+
+  // --- Auto-Junction (Linie auf Linie droppen / Junction löschen → reconnect) ---
+  const {
+    onConnectStart: handleConnectStart,
+    markConnectionMade,
+    onConnectEnd: handleConnectEnd,
+    deleteJunction,
+  } = useAutoJunction({ edges, setNodes, setEdges, pushUndo, gridSize: GRID_SIZE, createEdgeProps })
+
   // --- Connection: Neue Edge erstellen ---
   const onConnect = useCallback((params: Connection) => {
+    markConnectionMade()
     pushUndo()
     const src = params.sourceHandle || ''
     const tgt = params.targetHandle || ''
@@ -189,7 +220,7 @@ export default function HydraulicSchemaPage() {
         deletable: true,
       }, eds)
     )
-  }, [setEdges, pushUndo])
+  }, [setEdges, pushUndo, markConnectionMade])
 
   // --- Verbindungs-Validierung ---
   const handleIsValidConnection = useCallback((connection: Connection) => {
@@ -213,9 +244,17 @@ export default function HydraulicSchemaPage() {
 
   // --- Nodes löschen ---
   const handleDeleteNode = useCallback((nodeId: string) => {
-    pushUndo()
     const node = nodes.find((n) => n.id === nodeId)
     if (!node) return
+
+    // Junction: auto-reconnect gegenüberliegender Leitungen
+    if (node.type === 'junction') {
+      deleteJunction(nodeId)
+      setSelectedNode(null)
+      return
+    }
+
+    pushUndo()
     const entityId = (node.data as any).entityId as string | undefined
 
     // Store-Entity entfernen
@@ -240,7 +279,7 @@ export default function HydraulicSchemaPage() {
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
     setSelectedNode(null)
-  }, [nodes, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeCircuit, removeRoom, removeMeter])
+  }, [nodes, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeCircuit, removeRoom, removeMeter, deleteJunction])
 
   // --- Drop from palette ---
   const { screenToFlowPosition, setCenter } = useReactFlow()
@@ -475,6 +514,8 @@ export default function HydraulicSchemaPage() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onConnectStart={handleConnectStart}
+          onConnectEnd={handleConnectEnd}
           onReconnect={onReconnect}
           onEdgesDelete={onEdgesDelete}
           onNodeDragStop={onNodeDragStop}

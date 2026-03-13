@@ -40,6 +40,7 @@ import type {
 import { createDefaultCommunication } from '../types'
 import { isValidConnection as checkHandleCompat } from '../components/shared/portUtils'
 import CrossingArcsOverlay from '../components/shared/CrossingArcsOverlay'
+import { useAutoJunction } from '../components/shared/useAutoJunction'
 
 export default function ElectricalSchemaPage() {
   const store = useEnergyStore()
@@ -157,8 +158,23 @@ export default function ElectricalSchemaPage() {
     setSelectedNode(null)
   }, [])
 
+  // --- Edge-Typ ableiten ---
+  const createEdgeProps = useCallback(
+    (_srcHandle: string, _tgtHandle: string, _originalEdge?: Edge) => ({ type: 'electrical' as const }),
+    [],
+  )
+
+  // --- Auto-Junction ---
+  const {
+    onConnectStart: handleConnectStart,
+    markConnectionMade,
+    onConnectEnd: handleConnectEnd,
+    deleteJunction,
+  } = useAutoJunction({ edges, setNodes, setEdges, pushUndo, gridSize: GRID_SIZE, createEdgeProps })
+
   // --- Connect ---
   const onConnect = useCallback((params: Connection) => {
+    markConnectionMade()
     pushUndo()
     setEdges((eds) =>
       addEdge({
@@ -167,7 +183,7 @@ export default function ElectricalSchemaPage() {
         deletable: true,
       }, eds)
     )
-  }, [setEdges, pushUndo])
+  }, [setEdges, pushUndo, markConnectionMade])
 
   // --- Verbindungs-Validierung ---
   const handleIsValidConnection = useCallback((connection: Connection) => {
@@ -188,9 +204,17 @@ export default function ElectricalSchemaPage() {
 
   // --- Delete node ---
   const handleDeleteNode = useCallback((nodeId: string) => {
-    pushUndo()
     const node = nodes.find((n) => n.id === nodeId)
     if (!node) return
+
+    // Junction: auto-reconnect gegenüberliegender Leitungen
+    if (node.type === 'junction') {
+      deleteJunction(nodeId)
+      setSelectedNode(null)
+      return
+    }
+
+    pushUndo()
     const entityId = (node.data as any).entityId as string | undefined
 
     if (entityId) {
@@ -209,7 +233,7 @@ export default function ElectricalSchemaPage() {
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
     setSelectedNode(null)
-  }, [nodes, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeMeter])
+  }, [nodes, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeMeter, deleteJunction])
 
   // --- Drop from palette ---
   const { screenToFlowPosition, setCenter } = useReactFlow()
@@ -486,6 +510,8 @@ export default function ElectricalSchemaPage() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onConnectStart={handleConnectStart}
+          onConnectEnd={handleConnectEnd}
           onReconnect={onReconnect}
           onEdgesDelete={onEdgesDelete}
           onNodeDragStop={onNodeDragStop}
