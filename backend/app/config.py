@@ -2,9 +2,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # Database
-    database_url: str = "postgresql+asyncpg://energiemanager:secret@localhost:5432/energiemanager"
-    timescale_enabled: bool = True
+    # Database — SQLite als Default für lokale Entwicklung ohne Docker
+    database_url: str = "sqlite+aiosqlite:///./energiemanager.db"
+    timescale_enabled: bool = False
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

@@ -3,10 +3,18 @@ import { InputField, Section } from '../components/ui/FormField'
 import {
   Clock, Wifi, Bluetooth, Download, Power, RotateCcw,
   RefreshCw, AlertTriangle, WifiOff, Info, Monitor,
+  Database, Server, CheckCircle2, XCircle, Radio,
+  Play, Square, RotateCw,
 } from 'lucide-react'
+import { useEnergyStore } from '../store/useEnergyStore'
+import { api } from '../api/client'
 
 export default function SystemPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
+  const apiConnected = useEnergyStore((s) => s.apiConnected)
+  const syncing = useEnergyStore((s) => s.syncing)
+  const syncFromApi = useEnergyStore((s) => s.syncFromApi)
+
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
     return () => clearInterval(timer)
@@ -14,6 +22,54 @@ export default function SystemPage() {
 
   const [confirmRestart, setConfirmRestart] = useState(false)
   const [confirmShutdown, setConfirmShutdown] = useState(false)
+
+  // DAQ Status
+  const [daqStatus, setDaqStatus] = useState<{
+    running: boolean
+    targets: number
+    details: { source: string; entity_type: string; protocol: string; interval_seconds: number; data_points: string[]; errors: number }[]
+  } | null>(null)
+  const [daqLoading, setDaqLoading] = useState(false)
+
+  const fetchDaqStatus = async () => {
+    try {
+      const status = await api.daq.status()
+      setDaqStatus(status)
+    } catch {
+      setDaqStatus(null)
+    }
+  }
+
+  useEffect(() => {
+    if (apiConnected) fetchDaqStatus()
+  }, [apiConnected])
+
+  const handleDaqStart = async () => {
+    setDaqLoading(true)
+    try {
+      await api.daq.start()
+      await fetchDaqStatus()
+    } catch (e) { console.warn(e) }
+    setDaqLoading(false)
+  }
+
+  const handleDaqStop = async () => {
+    setDaqLoading(true)
+    try {
+      await api.daq.stop()
+      await fetchDaqStatus()
+    } catch (e) { console.warn(e) }
+    setDaqLoading(false)
+  }
+
+  const handleDaqReload = async () => {
+    setDaqLoading(true)
+    try {
+      await api.daq.reload()
+      await fetchDaqStatus()
+    } catch (e) { console.warn(e) }
+    setDaqLoading(false)
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -23,6 +79,149 @@ export default function SystemPage() {
       </div>
 
       <div className="space-y-4">
+        <Section title="Backend-Verbindung" icon={<Server className="w-4 h-4 text-emerald-400" />} defaultOpen={true}>
+          <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-dark-faded uppercase tracking-wider">API-Status</p>
+              <span className="flex items-center gap-2 text-sm">
+                {syncing ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-amber-400">Synchronisiere...</span>
+                  </>
+                ) : apiConnected ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span className="text-emerald-400">Verbunden</span>
+                  </>
+                ) : (
+                  <>
+                    <XCircle className="w-4 h-4 text-dark-faded" />
+                    <span className="text-dark-faded">Nicht verbunden</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-dark-faded">Backend-URL</span>
+                <span className="text-dark-text font-mono text-xs">{import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-dark-faded">Datenspeicherung</span>
+                <span className={apiConnected ? 'text-emerald-400' : 'text-amber-400'}>
+                  {apiConnected ? 'PostgreSQL (Backend)' : 'localStorage (Browser)'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button onClick={() => syncFromApi()} className="btn-secondary flex items-center gap-2 text-sm" disabled={syncing}>
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} /> Verbindung prüfen
+            </button>
+            {!apiConnected && (
+              <p className="text-xs text-dark-faded">Frontend arbeitet im Offline-Modus mit localStorage. Starte das Backend um Daten in PostgreSQL zu speichern.</p>
+            )}
+          </div>
+        </Section>
+
+        <Section title="Datenerfassung (DAQ)" icon={<Radio className="w-4 h-4 text-amber-400" />} defaultOpen={true}>
+          <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs text-dark-faded uppercase tracking-wider">Status</p>
+              <span className="flex items-center gap-2 text-sm">
+                {daqStatus?.running ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
+                    <span className="text-emerald-400">Aktiv — {daqStatus.targets} Targets</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-dark-faded" />
+                    <span className="text-dark-faded">Gestoppt</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <p className="text-xs text-dark-faded">
+              Pollt alle Entities mit aktivierter Kommunikation (Modbus TCP, MQTT, HTTP REST)
+              und schreibt Messwerte in die Datenbank. Konfiguration erfolgt pro Entity unter
+              Erzeuger / Zähler / Speicher → Kommunikation.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {daqStatus?.running ? (
+              <>
+                <button onClick={handleDaqStop} disabled={daqLoading || !apiConnected} className="btn-secondary flex items-center gap-2 text-sm text-red-400 hover:text-red-300">
+                  <Square className="w-4 h-4" /> Stoppen
+                </button>
+                <button onClick={handleDaqReload} disabled={daqLoading || !apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
+                  <RotateCw className="w-4 h-4" /> Config neu laden
+                </button>
+              </>
+            ) : (
+              <button onClick={handleDaqStart} disabled={daqLoading || !apiConnected} className="btn-primary flex items-center gap-2 text-sm">
+                <Play className="w-4 h-4" /> Starten
+              </button>
+            )}
+            <button onClick={fetchDaqStatus} disabled={!apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
+              <RefreshCw className="w-4 h-4" /> Status
+            </button>
+          </div>
+
+          {/* Target-Details */}
+          {daqStatus?.details && daqStatus.details.length > 0 && (
+            <div className="border border-dark-border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-dark-hover text-dark-faded text-xs uppercase tracking-wider">
+                    <th className="px-3 py-2 text-left">Quelle</th>
+                    <th className="px-3 py-2 text-left">Typ</th>
+                    <th className="px-3 py-2 text-left">Protokoll</th>
+                    <th className="px-3 py-2 text-right">Intervall</th>
+                    <th className="px-3 py-2 text-left">Datenpunkte</th>
+                    <th className="px-3 py-2 text-right">Fehler</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {daqStatus.details.map((d) => (
+                    <tr key={d.source} className="border-t border-dark-border">
+                      <td className="px-3 py-2 font-mono text-xs">{d.source}</td>
+                      <td className="px-3 py-2 text-dark-faded">{d.entity_type}</td>
+                      <td className="px-3 py-2">
+                        <span className="px-1.5 py-0.5 bg-dark-hover rounded text-xs">{d.protocol}</span>
+                      </td>
+                      <td className="px-3 py-2 text-right">{d.interval_seconds}s</td>
+                      <td className="px-3 py-2 text-dark-faded text-xs">{d.data_points.join(', ')}</td>
+                      <td className="px-3 py-2 text-right">
+                        {d.errors > 0 ? (
+                          <span className="text-red-400">{d.errors}</span>
+                        ) : (
+                          <span className="text-dark-faded">0</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {(!daqStatus?.details || daqStatus.details.length === 0) && !daqStatus?.running && (
+            <div className="p-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-300">
+                  Keine Entities mit aktivierter Kommunikation gefunden. Aktiviere die Kommunikation
+                  bei mindestens einem Erzeuger, Zähler oder Speicher (Kommunikation → Aktiviert = An,
+                  IP-Adresse und Port setzen).
+                </p>
+              </div>
+            </div>
+          )}
+        </Section>
+
         <Section title="Zeit & Datum" icon={<Clock className="w-4 h-4 text-cyan-400" />} defaultOpen={true}>
           <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
             <div className="flex items-center justify-between">

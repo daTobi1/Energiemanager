@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@xyflow/react": "^12.10.1",
     "lucide-react": "^0.469.0",
     "plotly.js-dist-min": "^2.35.0",
     "react": "^19.0.0",

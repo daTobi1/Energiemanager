@@ -48,6 +48,11 @@ export interface CommunicationConfig {
   port: number
   pollingIntervalSeconds: number
   enabled: boolean
+  // Trend-Aufzeichnung
+  trendEnabled: boolean
+  trendMode: 'interval' | 'on_change' | 'both'
+  trendIntervalSeconds: number
+  trendDeadbandPercent: number   // Schwellwert fuer on_change: Aenderung in % vom Messbereich
   modbus?: ModbusConfig
   mqtt?: MqttConfig
   http?: HttpConfig
@@ -57,10 +62,18 @@ export interface CommunicationConfig {
 // Erzeuger (Generators)
 // ============================================================
 
-export type GeneratorType = 'pv' | 'chp' | 'heat_pump' | 'boiler' | 'chiller'
+export type GeneratorType = 'pv' | 'chp' | 'heat_pump' | 'boiler' | 'chiller' | 'grid' | 'wind_turbine'
 export type FuelType = 'natural_gas' | 'biogas' | 'lpg' | 'oil' | 'pellet' | 'wood_chips'
 export type HeatPumpType = 'air_water' | 'brine_water' | 'water_water'
 export type EnergyForm = 'electricity' | 'heat' | 'cold' | 'electricity_heat'
+export type PortEnergy = 'electricity' | 'heat' | 'hot_water' | 'cold' | 'gas' | 'source'
+
+export interface EnergyPort {
+  id: string
+  side: 'left' | 'right' | 'top' | 'bottom'
+  energy: PortEnergy
+  label: string
+}
 
 interface GeneratorBase {
   id: string
@@ -75,6 +88,8 @@ interface GeneratorBase {
   notes: string
   communication: CommunicationConfig
   assignedMeterIds: string[]
+  ports: EnergyPort[]
+  connectedGeneratorIds: string[]
 }
 
 export interface PvGenerator extends GeneratorBase {
@@ -171,13 +186,38 @@ export interface ChillerGenerator extends GeneratorBase {
   maxOutdoorTempC: number
 }
 
-export type Generator = PvGenerator | ChpGenerator | HeatPumpGenerator | BoilerGenerator | ChillerGenerator
+export interface GridGenerator extends GeneratorBase {
+  type: 'grid'
+  energyForm: 'electricity'
+  gridMaxPowerKw: number
+  gridPhases: 1 | 3
+  gridVoltageV: number
+  feedInLimitPercent: number
+  feedInLimitKw: number
+  gridOperator: string
+  meterPointId: string
+}
+
+export interface WindTurbineGenerator extends GeneratorBase {
+  type: 'wind_turbine'
+  energyForm: 'electricity'
+  nominalPowerKw: number
+  rotorDiameterM: number
+  hubHeightM: number
+  cutInWindSpeedMs: number
+  ratedWindSpeedMs: number
+  cutOutWindSpeedMs: number
+  numberOfBlades: number
+  generatorType: 'synchronous' | 'asynchronous' | 'pmsg'
+}
+
+export type Generator = PvGenerator | ChpGenerator | HeatPumpGenerator | BoilerGenerator | ChillerGenerator | GridGenerator | WindTurbineGenerator
 
 // ============================================================
 // Zähler (Meters)
 // ============================================================
 
-export type MeterType = 'electricity' | 'heat' | 'gas' | 'water' | 'cold'
+export type MeterType = 'electricity' | 'heat' | 'gas' | 'water' | 'cold' | 'source'
 export type MeterDirection = 'consumption' | 'generation' | 'bidirectional' | 'grid_feed_in' | 'grid_consumption'
 export type MeterCategory = 'source' | 'generation' | 'consumption' | 'circuit' | 'group' | 'end' | 'unassigned'
 export type MeterAssignmentType = 'generator' | 'consumer' | 'storage' | 'grid' | 'none'
@@ -209,6 +249,7 @@ export interface Meter {
   assignedToId: string
   communication: CommunicationConfig
   registerMappings: MeterRegisterMapping[]
+  ports: EnergyPort[]
   notes: string
 }
 
@@ -244,6 +285,7 @@ export interface Consumer {
   connectedSourceIds: string[]
   assignedMeterIds: string[]
   communication: CommunicationConfig
+  ports: EnergyPort[]
   notes: string
   // Wallbox-spezifisch
   wallboxMaxPowerKw: number
@@ -301,6 +343,7 @@ export interface BatteryStorage {
   connectedConsumerIds: string[]
   communication: CommunicationConfig
   assignedMeterIds: string[]
+  ports: EnergyPort[]
   notes: string
 }
 
@@ -324,6 +367,7 @@ export interface ThermalStorage {
   connectedGeneratorIds: string[]
   connectedConsumerIds: string[]
   assignedMeterIds: string[]
+  ports: EnergyPort[]
   stratificationEnabled: boolean
   numberOfLayers: number
   hasElectricalHeatingElement: boolean
@@ -373,6 +417,7 @@ export interface Room {
   coolingCircuitId: string
   consumerIds: string[]
   meterIds: string[]
+  ports: EnergyPort[]
   notes: string
 }
 
@@ -416,7 +461,77 @@ export interface HeatingCoolingCircuit {
   generatorIds: string[]       // Direkt angeschlossene Erzeuger (wenn kein Speicher dazwischen)
   roomIds: string[]
   meterIds: string[]
+  ports: EnergyPort[]
   notes: string
+}
+
+// ============================================================
+// Quellen (Natural Energy Sources)
+// ============================================================
+
+export type SourceType = 'solar_thermal' | 'ground_source' | 'air_source' | 'well_source'
+
+export interface Source {
+  id: string
+  name: string
+  type: SourceType
+  location: string
+  notes: string
+  assignedMeterIds: string[]
+  assignedSensorIds: string[]
+  communication: CommunicationConfig
+  // Solarthermie
+  collectorAreaM2: number
+  collectorCount: number
+  azimuthDeg: number
+  tiltDeg: number
+  opticalEfficiency: number
+  // Erdsonde / Erdkollektor
+  boreholeDepthM: number
+  boreholeCount: number
+  probeType: 'single_u' | 'double_u' | 'coaxial'
+  soilThermalConductivity: number // W/(m·K)
+  // Brunnen
+  flowRateM3PerH: number
+  temperatureC: number
+  wellDepthM: number
+}
+
+// ============================================================
+// Sensoren (Sensors)
+// ============================================================
+
+export type SensorType =
+  | 'temperature' | 'pressure' | 'flow' | 'level'
+  | 'power' | 'energy' | 'humidity' | 'radiation'
+  | 'wind_speed' | 'wind_direction' | 'outdoor_temp'
+
+export type SensorSignalType =
+  | 'analog_0_10v' | 'analog_4_20ma' | 'pt100' | 'pt1000'
+  | 'ntc' | 'kty' | 'digital' | '1_wire' | 'bus'
+
+export type SensorMeasurement =
+  | 'vorlauf_temp' | 'ruecklauf_temp' | 'aussen_temp' | 'raum_temp'
+  | 'speicher_temp' | 'kollektor_temp' | 'sole_temp' | 'brunnenwasser_temp'
+  | 'druck' | 'differenzdruck' | 'volumenstrom' | 'fuellstand'
+  | 'leistung' | 'energie' | 'luftfeuchtigkeit'
+  | 'globalstrahlung' | 'windgeschwindigkeit' | 'windrichtung'
+  | 'sonstige'
+
+export interface Sensor {
+  id: string
+  name: string
+  sensorType: SensorType
+  measurement: SensorMeasurement
+  unit: string
+  signalType: SensorSignalType
+  rangeMin: number
+  rangeMax: number
+  accuracy: number
+  location: string
+  assignedSourceId: string
+  notes: string
+  communication: CommunicationConfig
 }
 
 // ============================================================
@@ -425,7 +540,7 @@ export interface HeatingCoolingCircuit {
 
 export type InsulationStandard = 'poor' | 'average' | 'good' | 'passive_house'
 export type BuildingType = 'residential' | 'commercial' | 'industrial' | 'mixed'
-export type WeatherProvider = 'openweathermap' | 'brightsky' | 'visual_crossing'
+export type WeatherProvider = 'openmeteo' | 'openweathermap' | 'brightsky' | 'visual_crossing'
 export type TariffType = 'fixed' | 'time_of_use' | 'dynamic'
 
 export interface TimeOfUsePeriod {
@@ -470,16 +585,277 @@ export interface SystemSettings {
   oilPriceCtPerLiter: number
   pelletPriceEurPerTon: number
 
-  gridMaxPowerKw: number
-  gridPhases: 3
-  gridVoltageV: number
-  feedInLimitPercent: number
-  feedInLimitKw: number
-  gridOperator: string
-  meterPointId: string
-
   weatherProvider: WeatherProvider
   weatherApiKey: string
+
+  // Optimierer-Gewichtung (0–100 pro Achse)
+  optimizerWeights: OptimizerWeights
+}
+
+export interface OptimizerWeights {
+  /** CO₂-Einsparung maximieren */
+  co2Reduction: number
+  /** Wirtschaftlichkeit (Kosten minimieren) */
+  economy: number
+  /** Komfort (Temperatur, Warmwasser) */
+  comfort: number
+  /** Eigenverbrauch maximieren */
+  selfConsumption: number
+  /** Netzdienliches Verhalten (Spitzenlastglättung) */
+  gridFriendly: number
+}
+
+// ============================================================
+// Trends
+// ============================================================
+
+export interface TrendSeries {
+  source: string
+  metric: string
+  color: string
+  label?: string
+  yAxisId?: 'left' | 'right'
+}
+
+export type TrendInterval = 'raw' | '1min' | '5min' | '15min' | '1h' | '1d'
+export type TrendPresetRange = '1h' | '6h' | '24h' | '7d' | '30d' | 'custom'
+
+export interface TrendDefinition {
+  id: string
+  name: string
+  series: TrendSeries[]
+  defaultInterval: TrendInterval
+  defaultRange: TrendPresetRange
+  isDefault: boolean
+}
+
+// ============================================================
+// Wetter & PV-Prognose
+// ============================================================
+
+export interface WeatherHourly {
+  time: string
+  temperature_c: number
+  humidity_pct: number
+  wind_speed_ms: number
+  wind_direction_deg: number
+  cloud_cover_pct: number
+  precipitation_mm: number
+  weather_code: number
+  ghi_wm2: number
+  dni_wm2: number
+  dhi_wm2: number
+}
+
+export interface WeatherCurrent {
+  temperature_c: number
+  humidity_pct: number
+  wind_speed_ms: number
+  cloud_cover_pct: number
+  precipitation_mm: number
+  weather_code: number
+  ghi_wm2: number
+  updated_at: string
+}
+
+export interface WeatherForecast {
+  location: { lat: number; lon: number; altitude: number }
+  generated_at: string
+  hourly: WeatherHourly[]
+}
+
+export interface PvForecastHourly {
+  time: string
+  power_kw: number
+  ghi_wm2: number
+  temperature_c: number
+}
+
+export interface PvForecastResponse {
+  generated_at: string
+  total_peak_kwp: number
+  panels: { id: string; name: string; peak_kwp: number; tilt: number; azimuth: number }[]
+  hourly: PvForecastHourly[]
+  daily_summary: Record<string, number>
+  error?: string
+}
+
+export interface LoadForecastHourly {
+  time: string
+  power_kw: number
+  temperature_c: number
+  profile_factor: number
+}
+
+export interface LoadForecastResponse {
+  generated_at: string
+  annual_consumption_kwh: number
+  hourly: LoadForecastHourly[]
+  daily_summary: Record<string, number>
+}
+
+export interface ThermalForecastHourly {
+  time: string
+  outdoor_temp_c: number
+  heating_demand_kw: number
+  hot_water_kw: number
+  total_thermal_demand_kw: number
+  hp_thermal_kw: number
+  hp_electric_kw: number
+  hp_cop: number
+  boiler_kw: number
+  storage_temp_c: number
+  flow_temp_c: number
+}
+
+export interface ThermalForecastResponse {
+  generated_at: string
+  building: {
+    heated_area_m2: number
+    insulation_standard: string
+    u_value_w_m2k: number
+    heating_threshold_c: number
+    indoor_target_c: number
+  }
+  heat_pump: { total_thermal_kw: number; cop_rated: number; count: number }
+  boiler: { total_kw: number; count: number }
+  storage: { volume_liters: number; target_temp_c: number; capacity_kwh_per_k: number }
+  hourly: ThermalForecastHourly[]
+  daily_summary: Record<string, {
+    heating_kwh: number
+    hp_electric_kwh: number
+    boiler_kwh: number
+    hot_water_kwh: number
+  }>
+}
+
+export interface PvAccuracyResponse {
+  mae: number
+  rmse: number
+  mbe: number
+  correlation: number
+  hourly: { time: string; forecast_kw: number; actual_kw: number }[]
+}
+
+// ============================================================
+// Optimizer Schedule
+// ============================================================
+
+export interface ScheduleHourly {
+  time: string
+  pv_forecast_kw: number
+  load_forecast_kw: number
+  battery_setpoint_kw: number
+  battery_soc_pct: number
+  hp_thermal_kw: number
+  hp_electric_kw: number
+  hp_cop: number
+  boiler_kw: number
+  storage_temp_c: number
+  heating_demand_kw: number
+  grid_kw: number
+  cost_ct: number
+  co2_kg: number
+  self_consumption_pct: number
+  tariff_ct: number
+  strategy: string
+}
+
+export interface ScheduleSummary {
+  total_cost_ct: number
+  total_revenue_ct: number
+  net_cost_ct: number
+  total_co2_kg: number
+  avg_self_consumption_pct: number
+  peak_grid_import_kw: number
+  peak_grid_export_kw: number
+  total_pv_kwh: number
+  total_grid_import_kwh: number
+  total_grid_export_kwh: number
+  total_battery_charged_kwh: number
+  total_battery_discharged_kwh: number
+}
+
+export interface OptimizationSchedule {
+  generated_at: string
+  hours: number
+  weights: OptimizerWeights
+  strategy: string
+  strategy_description: string
+  solver?: 'milp' | 'heuristic'
+  solve_time_ms?: number
+  summary: ScheduleSummary
+  hourly: ScheduleHourly[]
+}
+
+// ============================================================
+// ML (Prognose-Korrektur)
+// ============================================================
+
+export interface MLModelInfo {
+  forecast_type: string
+  model_type: string
+  is_trained: boolean
+  trained_at: string | null
+  training_samples: number
+  feature_count: number
+  mae: number
+  rmse: number
+  r2_score: number
+  is_active: boolean
+}
+
+export interface MLStatusResponse {
+  models: MLModelInfo[]
+  loaded_models: string[]
+  model_dir: string
+}
+
+export interface MLModelDetail extends MLModelInfo {
+  version: string
+  model_path: string
+  is_loaded: boolean
+  metadata: { feature_importance?: Record<string, number> }
+}
+
+// ============================================================
+// Controller (Regelung)
+// ============================================================
+
+export type ControllerMode = 'auto' | 'manual' | 'off'
+
+export interface ControllerSetpoints {
+  battery_kw: number
+  hp_modulation_pct: number
+  hp_thermal_kw: number
+  boiler_kw: number
+  flow_temp_c: number
+  wallbox_kw: number
+  source: string
+  strategy: string
+}
+
+export interface ControllerStatus {
+  mode: ControllerMode
+  safety_active: string | null
+  schedule_loaded: boolean
+  schedule_hours: number
+  schedule_strategy: string
+  manual_overrides: Record<string, number>
+  active_setpoints: ControllerSetpoints
+  history_count: number
+  avg_deviation_pct: number
+}
+
+export interface ControllerHistoryEntry {
+  timestamp: string
+  setpoint_battery_kw: number
+  actual_battery_kw: number
+  setpoint_grid_kw: number
+  actual_grid_kw: number
+  setpoint_hp_kw: number
+  actual_hp_kw: number
+  deviation_pct: number
 }
 
 // ============================================================
@@ -493,6 +869,10 @@ export function createDefaultCommunication(): CommunicationConfig {
     port: 502,
     pollingIntervalSeconds: 5,
     enabled: false,
+    trendEnabled: true,
+    trendMode: 'interval',
+    trendIntervalSeconds: 30,
+    trendDeadbandPercent: 1,
   }
 }
 
@@ -560,6 +940,7 @@ export function createDefaultRoom(): Room {
     coolingCircuitId: '',
     consumerIds: [],
     meterIds: [],
+    ports: [],
     notes: '',
   }
 }
@@ -592,6 +973,7 @@ export function createDefaultCircuit(): HeatingCoolingCircuit {
     generatorIds: [],
     roomIds: [],
     meterIds: [],
+    ports: [],
     notes: '',
   }
 }
@@ -626,14 +1008,61 @@ export function createDefaultSettings(): SystemSettings {
     gasPriceCtPerKwh: 8,
     oilPriceCtPerLiter: 95,
     pelletPriceEurPerTon: 350,
-    gridMaxPowerKw: 30,
-    gridPhases: 3,
-    gridVoltageV: 400,
-    feedInLimitPercent: 100,
-    feedInLimitKw: 0,
-    gridOperator: '',
-    meterPointId: '',
-    weatherProvider: 'openweathermap',
+    weatherProvider: 'openmeteo',
     weatherApiKey: '',
+    optimizerWeights: createDefaultOptimizerWeights(),
+  }
+}
+
+export function createDefaultSource(type: SourceType = 'solar_thermal'): Source {
+  return {
+    id: '',
+    name: '',
+    type,
+    location: '',
+    notes: '',
+    assignedMeterIds: [],
+    assignedSensorIds: [],
+    communication: createDefaultCommunication(),
+    collectorAreaM2: 10,
+    collectorCount: 4,
+    azimuthDeg: 180,
+    tiltDeg: 45,
+    opticalEfficiency: 0.8,
+    boreholeDepthM: 100,
+    boreholeCount: 2,
+    probeType: 'double_u',
+    soilThermalConductivity: 2.0,
+    flowRateM3PerH: 3,
+    temperatureC: 10,
+    wellDepthM: 15,
+  }
+}
+
+export function createDefaultSensor(): Sensor {
+  return {
+    id: '',
+    name: '',
+    sensorType: 'temperature',
+    measurement: 'vorlauf_temp',
+    unit: '°C',
+    signalType: 'pt1000',
+    rangeMin: -20,
+    rangeMax: 120,
+    accuracy: 0.5,
+    location: '',
+    assignedSourceId: '',
+    notes: '',
+    communication: createDefaultCommunication(),
+  }
+}
+
+export function createDefaultOptimizerWeights(): OptimizerWeights {
+  return {
+    co2Reduction: 50,
+    economy: 80,
+    comfort: 70,
+    selfConsumption: 60,
+    gridFriendly: 30,
   }
 }

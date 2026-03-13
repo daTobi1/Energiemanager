@@ -3,13 +3,15 @@ import { useEnergyStore } from '../store/useEnergyStore'
 import { Link } from 'react-router-dom'
 import {
   Sun, Gauge, Plug, Battery, Home, Waypoints, GitBranch, Settings,
-  CheckCircle2, AlertCircle, ArrowRight, Database, Trash2,
+  CheckCircle2, AlertCircle, ArrowRight, Database, Trash2, TrendingUp, Cloud,
 } from 'lucide-react'
-import type { GeneratorType } from '../types'
+import LiveDashboard from '../components/LiveDashboard'
+import DashboardWidgets from '../components/DashboardWidgets'
+import type { GeneratorType, GridGenerator } from '../types'
 import { createBavariaSeedData } from '../data/seedBavaria'
 
 const typeLabels: Record<GeneratorType, string> = {
-  pv: 'PV', chp: 'BHKW', heat_pump: 'WP', boiler: 'Kessel', chiller: 'Kälte',
+  pv: 'PV', chp: 'BHKW', heat_pump: 'WP', boiler: 'Kessel', chiller: 'Kälte', grid: 'Netz',
 }
 
 export default function DashboardPage() {
@@ -18,6 +20,7 @@ export default function DashboardPage() {
 
   const configComplete = generators.length > 0 && meters.length > 0 && consumers.length > 0
   const hasHausanschlussZaehler = meters.some((m) => m.assignedToType === 'grid')
+  const gridGen = generators.find((g) => g.type === 'grid')
 
   const sections = [
     {
@@ -67,7 +70,8 @@ export default function DashboardPage() {
   const checklistItems = [
     { label: 'Gebäudedaten & Standort eingeben', done: !!settings.buildingName, to: '/settings' },
     { label: 'Stromtarif konfigurieren', done: settings.gridConsumptionCtPerKwh > 0, to: '/settings' },
-    { label: 'Wetter-API einrichten', done: !!settings.weatherApiKey || settings.weatherProvider === 'brightsky', to: '/settings' },
+    { label: 'Wetter-API einrichten', done: !!settings.weatherApiKey || settings.weatherProvider === 'brightsky' || settings.weatherProvider === 'openmeteo', to: '/settings' },
+    { label: 'Hausanschluss konfigurieren', done: !!gridGen, to: '/generators' },
     { label: 'Mindestens einen Erzeuger anlegen', done: generators.length > 0, to: '/generators' },
     { label: 'Speicher konfigurieren', done: storages.length > 0, to: '/storage' },
     { label: 'Heizkreise konfigurieren', done: circuits.length > 0, to: '/circuits' },
@@ -86,6 +90,16 @@ export default function DashboardPage() {
         <p className="text-sm text-dark-faded mt-1">
           {settings.buildingName || 'EnergyManager'} — Anlagenkonfiguration
         </p>
+      </div>
+
+      {/* Wetter, PV-Prognose, KPIs, Sparklines */}
+      <div className="mb-6">
+        <DashboardWidgets />
+      </div>
+
+      {/* Live-Daten */}
+      <div className="mb-6">
+        <LiveDashboard />
       </div>
 
       {/* Übersichtskarten */}
@@ -157,6 +171,28 @@ export default function DashboardPage() {
                 <ArrowRight className="w-4 h-4 text-emerald-500/50 ml-auto" />
               </Link>
               <Link
+                to="/trends"
+                className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors border border-amber-500/20"
+              >
+                <TrendingUp className="w-5 h-5 text-amber-400" />
+                <div>
+                  <span className="text-sm font-medium text-amber-400">Trends & Aufzeichnung</span>
+                  <p className="text-xs text-amber-500/70">Historische Messdaten, Statistiken und CSV-Export</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-amber-500/50 ml-auto" />
+              </Link>
+              <Link
+                to="/weather"
+                className="flex items-center gap-3 p-3 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 transition-colors border border-sky-500/20"
+              >
+                <Cloud className="w-5 h-5 text-sky-400" />
+                <div>
+                  <span className="text-sm font-medium text-sky-400">Wetter & PV-Prognose</span>
+                  <p className="text-xs text-sky-500/70">Wettervorhersage und PV-Ertragsprognose</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-sky-500/50 ml-auto" />
+              </Link>
+              <Link
                 to="/sankey"
                 className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 transition-colors border border-blue-500/20"
               >
@@ -189,7 +225,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-dark-faded">Hausanschluss</span>
-                <span className="text-dark-muted">{settings.gridMaxPowerKw} kW</span>
+                <span className="text-dark-muted">{gridGen ? (gridGen as GridGenerator).gridMaxPowerKw : '–'} kW</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-dark-faded">Konfiguration</span>

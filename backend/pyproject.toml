@@ -8,6 +8,7 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "sqlalchemy[asyncio]>=2.0",
     "asyncpg>=0.30",
+    "aiosqlite>=0.20",
     "alembic>=1.14",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
@@ -36,6 +37,13 @@ ml = [
     "torch>=2.5",
     "optuna>=4.1",
 ]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
 
 [tool.ruff]
 line-length = 100

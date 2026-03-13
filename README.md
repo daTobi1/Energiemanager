@@ -2,7 +2,7 @@
 
 > **STATUS: IN ENTWICKLUNG / WORK IN PROGRESS**
 >
-> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 1b).
+> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 2b — Trend-Erfassung abgeschlossen).
 > APIs, Datenmodelle und Schnittstellen koennen sich jederzeit aendern.
 > Beitraege und Feedback sind willkommen — siehe [Contributing](#contributing).
 
@@ -24,6 +24,7 @@ Ein selbstlernendes, prognosebasiertes Energiemanagementsystem fuer Gebaeude und
 │  │                    Web-Frontend (React)                          │    │
 │  │  Dashboard · Erzeuger · Speicher · Heizkreise · Raeume          │    │
 │  │  Verbraucher · Zaehler · Energiefluss · Sankey · System         │    │
+│  │  Hydraulikschema · Stromschema (React Flow)                     │    │
 │  └──────────────────────────┬──────────────────────────────────────┘    │
 │                              │ REST API                                 │
 │  ┌──────────────────────────┴──────────────────────────────────────┐    │
@@ -64,7 +65,7 @@ Das Frontend ist eine vollstaendige Konfigurationsoberflaeche fuer das Energiesy
 
 | Seite | Beschreibung |
 |---|---|
-| **Dashboard** | Uebersicht: Konfigurationsfortschritt, Schnellstatus, Testdaten laden |
+| **Dashboard** | Uebersicht: Konfigurationsfortschritt, Live-Daten, Bus-Status, Testdaten laden |
 | **Anlage & Standort** | Gebaeudedaten, Koordinaten, Tarife, Hausanschluss, Wetter-API |
 | **Erzeuger** | PV, BHKW, Waermepumpe (mit COP-Kennlinie), Heizkessel, Kaeltemaschine |
 | **Speicher** | Batterie (LFP/NMC/...), Waermespeicher, Kaeltespeicher mit Temperatursensoren |
@@ -74,6 +75,9 @@ Das Frontend ist eine vollstaendige Konfigurationsoberflaeche fuer das Energiesy
 | **Zaehler** | Alle Energiezaehler mit 6 Kategorien (Spalten im Energiefluss) |
 | **Energiefluss** | Interaktives SVG-Diagramm mit 11 Spalten — Drag-to-Connect, Click-to-Delete, bidirektionale Verbindungen |
 | **Sankey-Diagramm** | Jahres-Energiebilanz (Plotly.js), geschaetzte Werte aus Nennleistungen |
+| **Hydraulikschema** | Interaktiver Schemaeditor (React Flow) — Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreise, Pumpen, Ventile |
+| **Stromschema** | Interaktiver Schemaeditor (React Flow) — Trafo, PV, Batterie, Generator, Motor-Lasten, Wallbox, Sammelschiene, UV |
+| **Trends** | Zeitreihen-Analyse: Plotly-Liniendiagramme, Crosshair, Auto-Intervall, Statistiken, CSV/PNG-Export, Trend-Verwaltung |
 | **Systemverwaltung** | Systemzeit, WLAN, Bluetooth, Updates, Neustart/Herunterfahren |
 
 ### Energiefluss — Interaktives 11-Spalten-Diagramm
@@ -99,6 +103,67 @@ WP-Quell. Gaskessel HA-Zaehl. Puffer    WMZ Warmw.    HK OG              WE 2   
           Hausanschl.                                  HK Treph.         TG                     Wallbox 2
                                                                                                 ...
 ```
+
+### Hydraulik- & Stromschema (React Flow)
+
+Zwei dedizierte, interaktive Schema-Editoren ersetzen das klassische R&I-Fliessschema:
+
+**Hydraulikschema** — Thermische Anlagenseite:
+- Natuerliche Quellen: Solarthermie, Erdsonde, Luft (Umgebung), Brunnen/Grundwasser
+- Erzeuger: Heizkessel, Waermepumpe, BHKW, Kaeltemaschine
+- Speicher: Puffer-, Warmwasser-, Kaeltespeicher
+- Verteilung: Heizkreise, Hydraulische Weiche, Mischer, Pumpen
+- Farbcodierte Leitungen: Rot (VL), Blau (RL), Orange (Gas), Tuerkis (Quelle)
+
+**Stromschema** — Elektrische Anlagenseite:
+- Natuerliche Quellen: Sonne, Wind
+- Einspeisung: Trafo/Hausanschluss
+- Erzeugung: PV + Wechselrichter, BHKW-Generator, Windrad (vollwertiger Erzeuger)
+- Speicher: Batterie + Wechselrichter
+- Verteilung: Sammelschiene, Unterverteilung, LS-Schalter, Stromzaehler
+- Verbraucher: Motor-Lasten, Wallboxen, allgemeine Verbraucher
+- Verbindungen: Universeller Verbindungspunkt (T-Stueck / Kreuzung)
+
+**Leitungskreuzungen:**
+- Verbindungspunkte: Sichtbare Connector-Dots wo Leitungen verbunden sind (Junction-Node)
+- Kreuzungsboegen: Automatischer Halbkreis-Bogen wo sich Leitungen kreuzen aber NICHT verbunden sind (Norm-konform)
+- Farbgetreue Darstellung: Boegen und Unterkreuzungen in den jeweiligen Leitungsfarben
+
+**Cross-Schema-Verlinkung:**
+- Klickbare Badges (⚡/🔥) auf Dual-Schema-Komponenten (WP, BHKW, Kaeltemaschine)
+- Auto-Focus beim Schema-Wechsel — zentriert automatisch auf die verlinkte Komponente
+- Erweiterte Properties: COP, Wirkungsgrade, thermische Daten direkt im Stromschema sichtbar
+- Konsistenz-Hinweise: Warnung wenn z.B. eine WP im Stromschema keinen Speicher/Heizkreis hat
+- Pumpen-Linking: Hydraulik-Pumpen werden automatisch als Strom-Verbraucher angelegt
+- Auto-Pump: Heizkreis-Drop erzeugt automatisch eine verlinkte Umwaelzpumpe
+- Mess-Handles: Alle Quellen-Nodes haben Mess-Anschluesse fuer Sensoren (Pyranometer, Anemometer, Temperaturfuehler)
+
+**Bedienung:**
+- Drag & Drop aus der Komponentenpalette
+- Verbindungen per Maus zwischen Anschlusspunkten ziehen
+- Properties-Panel bei Klick auf Komponente (Typ, Name, Leistung, Drehung)
+- Sammelschiene/Weiche: Anzahl der Anschluesse konfigurierbar
+- Minimap zur Uebersicht
+- Legende fuer Leitungsfarben
+
+### Trend-Analyse & Datenerfassung
+
+**Trend-Seite** — Zeitreihen-Visualisierung und -Analyse:
+- **Plotly-Liniendiagramme:** Dual Y-Achse (kW links, %/°C rechts), Min/Max-Band, Hover-Tooltips
+- **Crosshair:** Vertikale/horizontale Spike-Linien bei Hover
+- **Zeitbereiche:** 1h, 6h, 24h, 7d, 30d + benutzerdefiniert (datetime-local)
+- **Auto-Intervall:** Intervall passt sich automatisch an Zeitbereich an (1h→raw, 6h→1min, 24h→5min, 7d→1h, 30d→1d)
+- **Statistik-Tabelle:** Min, Max, Durchschnitt, Summe, Messpunkte pro Serie mit Einheiten
+- **Export:** PNG-Screenshot (Plotly) + CSV-Download
+- **Vordefinierte Ansichten:** Stromuebersicht, Thermik, Batterie, Autarkie
+- **Trend-Verwaltung:** Eigene Ansichten erstellen/bearbeiten (Quellen, Farben, Y-Achsen-Zuordnung)
+- **Ad-hoc-Browser:** Alle verfuegbaren Quellen durchsuchen und direkt als Serie hinzufuegen
+
+**Datenerfassung (pro Geraet konfigurierbar):**
+- **Aufzeichnungsmodi:** Intervall-basiert, Aenderungs-basiert (Deadband), oder beides
+- **Intervall:** Konfigurierbarer Aufzeichnungstakt (1–3600 Sekunden)
+- **Deadband:** Schwellwert in Prozent — Wert wird nur aufgezeichnet wenn Aenderung > Schwelle
+- **Toggle:** Aufzeichnung pro Geraet ein-/ausschaltbar
 
 ### Zaehlerkategorien
 
@@ -138,11 +203,12 @@ Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angeb
 
 | Erzeuger | Energieform | Steuerbar | Beschreibung |
 |---|---|---|---|
-| PV-Anlage | Strom | Nein (prognostiziert) | Erzeugungsprognose via Wetter-API + ML |
+| PV-Anlage | Strom | Nein (prognostiziert) | Erzeugungsprognose via Wetter-API (Einstrahlung) + ML |
 | Waermepumpe | Waerme + Strom(verbrauch) | Ja | Flexibler Einsatz, COP-Kennlinie, SG Ready |
 | BHKW | Strom + Waerme | Ja | Kraft-Waerme-Kopplung, waerme-/stromgefuehrt |
 | Heizkessel | Waerme | Ja | Spitzenlastabdeckung, Brennwert, Modulation |
 | Kaeltemaschine | Kaelte | Ja | Klimatisierung, Prozesskaelte |
+| Windrad | Strom | Nein (prognostiziert) | Kleinwindkraftanlage, Prognose via Wetter-API (Windgeschwindigkeit) + Leistungskurve, PMSG/Synchron/Asynchron |
 
 ### Speichermanagement
 
@@ -180,8 +246,8 @@ Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angeb
 |---|---|
 | Framework | React 19, TypeScript, Vite |
 | Styling | Tailwind CSS (Dark Theme) |
-| State | Zustand + localStorage Persistenz |
-| Diagramme | Plotly.js (Sankey), SVG (Energiefluss) |
+| State | Zustand + API-Sync (localStorage Fallback) |
+| Diagramme | Plotly.js (Sankey, Trends), SVG (Energiefluss), React Flow (Schemas) |
 | Icons | Lucide React |
 
 ### Zielsystem
@@ -211,12 +277,17 @@ energiemanager/
 │   │   ├── config.py                    # Settings & Environment
 │   │   ├── api/                         # REST API Endpoints
 │   │   │   ├── router.py
+│   │   │   ├── crud.py                  # Generische CRUD-Router-Factory
 │   │   │   ├── endpoints/               # dashboard, generators, storage,
-│   │   │   │                            # charging, forecasts, settings
+│   │   │   │   ├── trends.py            # Trend-API (Zeitreihen, Statistiken, Quellen)
+│   │   │   │   └── data_acquisition.py  # DAQ-Endpoints
 │   │   │   └── websocket.py
 │   │   ├── models/                      # SQLAlchemy DB-Modelle
+│   │   │   ├── config.py               # JSONB-Konfigurationsmodelle (7 Entitaeten)
+│   │   │   ├── generator.py            # Runtime-Generator-Modell (Phase 2)
+│   │   │   └── ...
 │   │   ├── schemas/                     # Pydantic DTOs
-│   │   ├── services/                    # Business-Logik
+│   │   ├── services/                    # Business-Logik + Simulator
 │   │   ├── forecasting/                 # Prognose-Engine (Wetter, PV, Last, Thermisch)
 │   │   ├── ml/                          # ML-Pipeline (Training, Features, Anomalie)
 │   │   ├── connectors/                  # Hardware-Anbindung (Modbus, MQTT, Wallbox)
@@ -232,7 +303,30 @@ energiemanager/
 │       ├── App.tsx                      # Router (React Router v7)
 │       ├── components/
 │       │   ├── Layout.tsx               # Sidebar-Navigation
-│       │   └── ui/                      # FormField, CommunicationForm, ConfirmDelete
+│       │   ├── LiveDashboard.tsx        # Echtzeit-Metrikkarten (8 Karten)
+│       │   ├── ui/                      # FormField, CommunicationForm, ConfirmDelete
+│       │   ├── trends/                 # Trend-Komponenten
+│       │   │   ├── TrendChart.tsx       # Plotly-Liniendiagramm (Dual-Y, Min/Max-Band)
+│       │   │   ├── TrendToolbar.tsx     # Zeitbereich, Intervall, Auto-Intervall
+│       │   │   ├── TrendStatsCards.tsx  # Statistik-Tabelle (Min/Max/Avg/Sum)
+│       │   │   └── TrendManagementModal.tsx # Trend-Verwaltung (CRUD)
+│       │   ├── hydraulic/              # Hydraulikschema (React Flow)
+│       │   │   ├── nodes/              # 16 Node-Komponenten (Kessel, WP, Pumpe, ...)
+│       │   │   ├── edges/              # Thermisch, Gas, Quelle, Elektrisch
+│       │   │   ├── panels/             # Palette + PropertiesPanel
+│       │   │   ├── storeToFlow.ts      # Store → React-Flow-Nodes/Edges
+│       │   │   └── nodeTypes.ts
+│       │   ├── electrical/             # Stromschema (React Flow)
+│       │   │   ├── nodes/              # 11 Node-Komponenten (Trafo, PV, Bus, ...)
+│       │   │   ├── panels/             # Palette + PropertiesPanel
+│       │   │   ├── storeToFlow.ts
+│       │   │   └── nodeTypes.ts
+│       │   └── shared/                 # Cross-Schema-Utilities
+│       │       ├── CrossSchemaBadge.tsx # Klickbarer Schema-Wechsel-Badge
+│       │       ├── CrossingArcsOverlay.tsx # Kreuzungsbogen-Overlay (Halbkreise)
+│       │       ├── JunctionNode.tsx     # Universeller Verbindungspunkt (T/Kreuzung)
+│       │       ├── crossSchemaUtils.ts # Dual-Schema-Erkennung
+│       │       └── portUtils.ts        # Handle-ID-Parsing
 │       ├── pages/
 │       │   ├── DashboardPage.tsx        # Uebersicht + Testdaten-Button
 │       │   ├── SettingsPage.tsx         # Anlage, Standort, Tarife, Hausanschluss
@@ -244,11 +338,18 @@ energiemanager/
 │       │   ├── MetersPage.tsx           # Zaehler (6 Kategorien)
 │       │   ├── EnergyFlowPage.tsx       # SVG-Energieflussdiagramm (11 Spalten)
 │       │   ├── SankeyPage.tsx           # Sankey-Diagramm (Plotly.js)
+│       │   ├── HydraulicSchemaPage.tsx  # Hydraulikschema (React Flow)
+│       │   ├── ElectricalSchemaPage.tsx # Stromschema (React Flow)
+│       │   ├── TrendsPage.tsx            # Trend-Analyse (Plotly-Zeitreihen)
+│       │   ├── OptimizerPage.tsx       # Optimierer-Ziele (Radar-Diagramm)
 │       │   └── SystemPage.tsx           # Systemverwaltung
 │       ├── hooks/
-│       │   └── useCreateNavigation.ts   # Seitenuebergreifende Erstellung + Flow-Edit
+│       │   ├── useCreateNavigation.ts   # Seitenuebergreifende Erstellung + Flow-Edit
+│       │   └── useTrendData.ts          # Trend-Daten-Hook (Fetch + Debounce)
+│       ├── api/
+│       │   └── client.ts               # API-Client (CRUD + Seed + Health)
 │       ├── store/
-│       │   └── useEnergyStore.ts        # Zustand Store + localStorage
+│       │   └── useEnergyStore.ts        # Zustand Store + API-Sync
 │       ├── types/
 │       │   └── index.ts                 # Alle TypeScript-Typen
 │       └── data/
@@ -284,16 +385,19 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 | Phase | Beschreibung | Status |
 |---|---|---|
 | Phase 1 | Fundament (Backend + Web-Frontend + Install-Script) | Abgeschlossen |
-| Phase 1b | Anforderungen schaerfen (UI verfeinern, Datenmodelle ableiten) | **In Arbeit** |
+| Phase 1b | Backend-Anbindung (JSONB + API + Alembic) | Abgeschlossen |
+| Phase 1c | Optimierer-UI (Radar-Diagramm, Gewichtungen) | Abgeschlossen |
+| Phase 2a | Simulator + Hydraulik-/Stromschema | Abgeschlossen |
+| Phase 2b | Trend-Erfassung & Zeitreihen-Analyse | Abgeschlossen |
 | Phase 2 | Kernlogik (Regelung, Prognosen, Optimierer v1) | Ausstehend |
 | Phase 3 | Intelligenz (Wetter-API, ML, MILP, Selbstlernen) | Ausstehend |
 | Phase 4 | Mobile App (Flutter) | Ausstehend |
 | Phase 5 | Produktion (Edge-Deployment, Monitoring) | Ausstehend |
 
-### Phase 1b — Aktuelle Arbeiten
+### Bisherige Arbeiten
 
-**Erledigt:**
-- 11 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, System)
+**Erledigt (Phase 1):**
+- 15 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, Hydraulikschema, Stromschema, Optimierer, Trends, System)
 - Interaktives Energiefluss-Diagramm mit Drag-to-Connect und Click-to-Delete
 - Bidirektionale Batteriespeicher-Verbindungen (Laden/Entladen)
 - Smart-Meter-Logik (Durchverbindungen ueber Zaehler)
@@ -305,10 +409,64 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - Konsistente Terminologie (Spalten-basierte Zaehlerkategorien)
 - Testdaten MFH Bayern vollstaendig mit allen Zuordnungen
 
+**Erledigt (Backend-Anbindung):**
+- JSONB-Konfigurationsmodelle: Frontend-JSON wird 1:1 in PostgreSQL gespeichert
+- Generische CRUD-Factory: Ein Router-Generator fuer alle 7 Entitaetstypen
+- API-Endpoints: GET/POST/PUT/DELETE fuer Generators, Meters, Consumers, Storages, Rooms, Circuits
+- Settings-Endpoint: GET/PUT fuer SystemSettings (Singleton)
+- Seed/Clear-Endpoints: POST /data/seed (Testdaten) + DELETE /data/all (Reset)
+- Frontend API-Client: Typisierter fetch-Wrapper mit CRUD-Factory
+- Zustand Store: Optimistischer Sync (lokales Update + API-Call im Hintergrund)
+- Offline-Modus: localStorage-Fallback wenn Backend nicht erreichbar
+- Verbindungsstatus: Sidebar-Indikator + SystemPage Backend-Sektion
+- E2E-Test mit SQLite erfolgreich (alle CRUD-Endpoints + Seed/Clear)
+- Alembic-Migration fuer alle Config- und Runtime-Tabellen
+
+**Erledigt (Optimierer-UI):**
+- Interaktives Radar-/Spinnennetzdiagramm (SVG, Drag-to-Adjust)
+- 5 Optimierungsachsen: CO2-Einsparung, Wirtschaftlichkeit, Komfort, Eigenverbrauch, Netzdienlich
+- Feineinstellung per Slider (0-100% pro Achse)
+- 5 Vorlagen: Ausgewogen, Kostenoptimiert, Klimafreundlich, Maximaler Komfort, Autark
+- Gewichtungen als Teil der SystemSettings (API-sync + localStorage)
+
+**Erledigt (Simulator):**
+- Energie-Simulator: Erzeugt realistische Messwerte ohne Hardware
+- Simulationsmodelle: PV (Sonnenstand), Waermepumpe (COP/Aussentemp), Gaskessel (Hysterese), Last (VDI 4655), Batterie (Ueberschuss/Defizit), Netz (Bilanz)
+- API-Endpoints: Start/Stop/Status/Measurements + Latest-Aggregation
+- WebSocket-Streaming: Echtzeit-Updates an alle verbundenen Clients
+- LiveDashboard-Komponente: 8 Metrikkarten mit Echtzeit-Werten
+- Fallback-Polling wenn kein WebSocket verfuegbar
+
+**Erledigt (Hydraulik- & Stromschema):**
+- Hydraulikschema: 21 Node-Typen (Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreis, Pumpe, Mischer, Weiche, Zaehler, Verbraucher, Raum, Verbindungspunkt + 4 natuerliche Quellen)
+- Stromschema: 15 Node-Typen (Trafo, PV+WR, Batterie+WR, Generator, Windrad, Motor-Last, Wallbox, Verbraucher, LS-Schalter, Stromzaehler, Sammelschiene, UV, Verbindungspunkt + 2 natuerliche Quellen)
+- Natuerliche Energiequellen: Solarthermie, Erdsonde, Luft, Brunnen (Hydraulik) + Sonne, Wind (Strom)
+- Windrad als vollwertiger Generator-Typ mit technischen Parametern (Rotordurchmesser, Nabenhoehe, Windgeschwindigkeiten), prognostizierbar via Wetter-API (Windgeschwindigkeit + Leistungskurve)
+- Alle Quellen-Nodes mit Mess-Handles fuer Sensor-Anbindung (Pyranometer, Anemometer, Temperaturfuehler)
+- Verbindungspunkte: Universelle Junction-Nodes (T-Stueck/Kreuzung) mit 4 Handles fuer Leitungsverzweigungen
+- Kreuzungsboegen: Automatische Halbkreis-Darstellung bei sich kreuzenden, nicht-verbundenen Leitungen (normgerecht)
+- Drag & Drop aus Komponentenpalette + Verbindungen zwischen Anschluss-Handles
+- Farbcodierte Leitungen: Rot (Waerme VL), Blau (RL), Gelb (Strom), Orange (Gas), Tuerkis (Quelle)
+- Properties-Panel mit Typ-Info, Nennleistung, Drehung, Port-Konfiguration
+- Cross-Schema-Verlinkung: Klickbare Badges, Auto-Focus, COP/Wirkungsgrad-Anzeige
+- Konsistenz-Hinweise bei fehlenden Verbindungen im jeweils anderen Schema
+- Pumpen ↔ Strom-Verbraucher Linking mit Inline-kW-Editor
+- Auto-Pump-Erzeugung beim Heizkreis-Drop
+- Minimap + Legende + Store-basierte Seed-Initialisierung
+
+**Erledigt (Trend-Erfassung):**
+- Trend-API: 3 Endpoints (sources, data mit Aggregation, statistics) + time-range
+- Plotly-Zeitreihen: Liniendiagramme mit Dual Y-Achse, Min/Max-Band, Crosshair
+- Auto-Intervall: Intelligente Intervall-Auswahl basierend auf Zeitbereich
+- Statistik-Tabelle: Min, Max, Durchschnitt, Summe, Messpunkte pro Serie
+- 4 vordefinierte Ansichten: Stromuebersicht, Thermik, Batterie, Autarkie
+- Trend-Verwaltung: Eigene Ansichten erstellen/bearbeiten/loeschen
+- Export: PNG-Screenshot + CSV-Download
+- Datenerfassungs-Konfiguration: Intervall/Aenderung/Beides pro Geraet, Deadband-Schwellwert
+- Trend-Definitionen: CRUD-API + Store-Integration + Alembic-Migration
+
 **Naechste Schritte:**
-- Datenmodelle aus UI-Struktur finalisieren
-- Backend-API an Frontend-Bedarf anpassen
-- Frontend: Backend-Anbindung (API-Calls statt localStorage)
+- Phase 2: Prognosen, Optimierer-Kernlogik, Regelung
 
 ---
 
@@ -335,27 +493,38 @@ sudo bash uninstall.sh
 
 Schrittweise mit Rueckfragen (Services, Docker-Volumes, Verzeichnis, User).
 
-### Lokale Entwicklung (PC/Laptop)
+### Lokale Entwicklung (PC/Laptop, ohne Docker)
 
 ```bash
 git clone https://github.com/daTobi1/Energiemanager.git
 cd Energiemanager
 
-# DB + Redis starten
-docker-compose up -d db redis
-
-# Backend
+# Backend (SQLite, kein Docker noetig)
 cd backend
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-alembic upgrade head
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload    # -> http://localhost:8000
 
 # Frontend (in neuem Terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev                      # -> http://localhost:5173
+
+# Testdaten laden + Simulator starten
+npx vite-node scripts/seed-backend.ts
+curl -X POST "http://localhost:8000/api/v1/simulator/start?interval=5&speed=1"
+```
+
+### Lokale Entwicklung (mit Docker/PostgreSQL)
+
+```bash
+# DB + Redis starten
+docker-compose up -d db redis
+
+# Backend mit PostgreSQL
+DATABASE_URL=postgresql+asyncpg://energiemanager:secret@localhost:5432/energiemanager \
+  uvicorn app.main:app --reload
 ```
 
 ### Nach der Installation

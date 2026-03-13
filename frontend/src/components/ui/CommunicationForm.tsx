@@ -1,5 +1,5 @@
 import { InputField, SelectField, Section } from './FormField'
-import { Wifi } from 'lucide-react'
+import { Wifi, TrendingUp } from 'lucide-react'
 import type { CommunicationConfig } from '../../types'
 import { createDefaultModbus, createDefaultMqtt, createDefaultHttp } from '../../types'
 
@@ -268,6 +268,102 @@ export function CommunicationForm({ config, onChange, defaultOpen = false }: Pro
           )}
         </div>
       )}
+
+      {/* Datenerfassung / Trend-Aufzeichnung */}
+      <div className="space-y-3 p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-amber-400" />
+            <h4 className="text-sm font-semibold text-amber-400">Datenerfassung</h4>
+          </div>
+          <button
+            type="button"
+            onClick={() => update({ trendEnabled: !config.trendEnabled })}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              config.trendEnabled !== false ? 'bg-emerald-600' : 'bg-dark-border'
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                config.trendEnabled !== false ? 'translate-x-6' : 'translate-x-1'
+              }`}
+            />
+          </button>
+        </div>
+        {config.trendEnabled !== false && (
+          <div className="space-y-3">
+            {/* Aufzeichnungsmodus */}
+            <div className="flex gap-2">
+              {([
+                { value: 'interval', label: 'Zeitintervall', hint: 'Fester Takt' },
+                { value: 'on_change', label: 'Bei Aenderung', hint: 'Nur bei Wertaenderung' },
+                { value: 'both', label: 'Beides', hint: 'Intervall + Aenderung' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => update({ trendMode: opt.value })}
+                  className={`flex-1 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                    (config.trendMode ?? 'interval') === opt.value
+                      ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                      : 'bg-dark-bg border-dark-border text-dark-faded hover:text-dark-text hover:border-dark-faded'
+                  }`}
+                >
+                  <span className="font-medium">{opt.label}</span>
+                  <p className="text-xs mt-0.5 opacity-70">{opt.hint}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Intervall — sichtbar bei 'interval' und 'both' */}
+              {(config.trendMode ?? 'interval') !== 'on_change' && (
+                <InputField
+                  label="Aufzeichnungs-Intervall"
+                  value={config.trendIntervalSeconds ?? 30}
+                  onChange={(v) => update({ trendIntervalSeconds: Math.max(1, Number(v) || 30) })}
+                  type="number"
+                  unit="s"
+                  min={1}
+                  hint="Fester Takt fuer Aufzeichnung"
+                />
+              )}
+
+              {/* Deadband — sichtbar bei 'on_change' und 'both' */}
+              {(config.trendMode ?? 'interval') !== 'interval' && (
+                <InputField
+                  label="Schwellwert (Deadband)"
+                  value={config.trendDeadbandPercent ?? 1}
+                  onChange={(v) => update({ trendDeadbandPercent: Math.max(0, Number(v) || 1) })}
+                  type="number"
+                  unit="%"
+                  min={0}
+                  step="0.1"
+                  hint="Min. Aenderung fuer Aufzeichnung"
+                />
+              )}
+            </div>
+
+            {/* Info-Zeile */}
+            <p className="text-xs text-dark-faded">
+              {(() => {
+                const mode = config.trendMode ?? 'interval'
+                const sec = config.trendIntervalSeconds ?? 30
+                const db = config.trendDeadbandPercent ?? 1
+                const parts: string[] = []
+                if (mode !== 'on_change') {
+                  const perHour = Math.round(3600 / sec)
+                  parts.push(`${perHour} Werte/h (alle ${sec}s)`)
+                }
+                if (mode !== 'interval') {
+                  parts.push(`bei >${db}% Aenderung`)
+                }
+                return parts.join(' + ')
+              })()}
+            </p>
+          </div>
+        )}
+      </div>
     </Section>
   )
 }

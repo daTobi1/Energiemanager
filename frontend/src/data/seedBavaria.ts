@@ -1,64 +1,75 @@
 import { v4 as uuid } from 'uuid'
 import type {
   Generator, Meter, Consumer, Storage, SystemSettings,
-  PvGenerator, BoilerGenerator, HeatPumpGenerator,
+  GridGenerator, PvGenerator, ChpGenerator, BoilerGenerator, HeatPumpGenerator, ChillerGenerator,
   BatteryStorage, ThermalStorage,
   Room, HeatingCoolingCircuit,
 } from '../types'
 import { createDefaultCommunication, createDefaultTemperatureSensor, createDefaultControllableComponent } from '../types'
 
 /**
- * Beispieldaten: Typisches Mehrfamilienhaus in Bayern (Raum München)
+ * Beispieldaten: Gemischt genutztes Mehrfamilienhaus in Bayern (Raum München)
  *
- * Szenario: MFH Ahornweg 12, 85748 Garching b. München
- * - 6 Wohneinheiten (2 pro Stockwerk, EG + 1.OG + 2.OG)
- * - Baujahr 2008, EnEV-Standard, 720 m² BGF
- * - PV-Anlage 29.6 kWp Süddach
- * - Gas-Brennwertkessel 60 kW (Spitzenlast + WW)
- * - Luft-Wasser-Wärmepumpe 13 kW (Übergangszeit)
- * - Batteriespeicher 20.5 kWh (BYD HVS)
- * - Pufferspeicher 1500 L + WW-Speicher 500 L
- * - 2 Wallboxen in Tiefgarage (je 11 kW)
- * - Fußbodenheizung EG, Heizkörper OG
- * - Einzelraumregelung vorhanden
+ * Szenario: MFH + Gewerbe Ahornweg 12, 85748 Garching b. München
+ * - 5 Wohneinheiten + 1 Gewerbeeinheit (Arztpraxis EG)
+ * - Baujahr 2008, EnEV-Standard, 780 m² BGF
+ * - ALLE 6 Erzeugertypen: Hausanschluss, PV, BHKW, Gaskessel, WP, Kältemaschine
+ * - ALLE 3 Speichertypen: Batterie, Wärmespeicher, Kältespeicher
+ * - 17 Zähler aller 6 Kategorien (source, generation, consumption, circuit, group, end)
+ * - 5 Heiz-/Kühlkreise inkl. Kühldecke Gewerbe
+ * - 2 Wallboxen in Tiefgarage
  */
 export function createBavariaSeedData() {
-  // Feste IDs für Zuordnungen
   const ids = {
-    // Erzeuger
+    // Erzeuger (alle 6 Typen)
+    hausanschluss: uuid(),
     pvSued: uuid(),
+    bhkw: uuid(),
     gaskessel: uuid(),
     waermepumpe: uuid(),
-    // Speicher
+    kaeltemaschine: uuid(),
+    // Speicher (alle 3 Typen)
     batterie: uuid(),
     pufferspeicher: uuid(),
     wwSpeicher: uuid(),
-    // Heizkreise
+    kaeltespeicher: uuid(),
+    // Heiz-/Kältekreise
     hkFbh: uuid(),
     hkRadiator: uuid(),
     hkWarmwasser: uuid(),
     hkTreppenhaus: uuid(),
+    kkGewerbe: uuid(),
     // Räume
     roomWe1: uuid(), roomWe2: uuid(), roomWe3: uuid(),
-    roomWe4: uuid(), roomWe5: uuid(), roomWe6: uuid(),
+    roomWe4: uuid(), roomWe5: uuid(),
+    roomGewerbe: uuid(),
     roomTreppenhaus: uuid(), roomTechnik: uuid(), roomTiefgarage: uuid(),
     // Verbraucher
     we1: uuid(), we2: uuid(), we3: uuid(),
-    we4: uuid(), we5: uuid(), we6: uuid(),
+    we4: uuid(), we5: uuid(),
+    gewerbe: uuid(),
     allgemeinstrom: uuid(),
     wallbox1: uuid(), wallbox2: uuid(),
     zirkPumpe: uuid(),
-    // Zähler
+    // Zähler (17 Stück, alle 6 Kategorien)
     hauptzaehlerStrom: uuid(),
+    gasZaehler: uuid(),
+    gasZaehlerBhkw: uuid(),
+    quellenZaehlerWP: uuid(),
     pvZaehler: uuid(),
+    bhkwStromZaehler: uuid(),
+    bhkwWaermeZaehler: uuid(),
     batterieZaehler: uuid(),
-    allgemeinstromZaehler: uuid(),
-    wallboxZaehler: uuid(),
     waermeZaehlerHeizung: uuid(),
     waermeZaehlerWW: uuid(),
-    gasZaehler: uuid(),
-    quellenZaehlerWP: uuid(),
+    kaelteZaehler: uuid(),
+    wpStromZaehler: uuid(),
+    kaeltemaschinenZaehler: uuid(),
     raumzaehlerWe1: uuid(),
+    raumzaehlerGewerbe: uuid(),
+    allgemeinstromZaehler: uuid(),
+    wallboxZaehler: uuid(),
+    gewerbeZaehler: uuid(),
     endzaehlerWallbox1: uuid(),
   }
 
@@ -67,15 +78,15 @@ export function createBavariaSeedData() {
   // ============================================================
 
   const settings: SystemSettings = {
-    buildingName: 'MFH Ahornweg 12',
-    buildingArea: 720,
+    buildingName: 'MFH + Gewerbe Ahornweg 12',
+    buildingArea: 780,
     buildingYear: 2008,
     insulationStandard: 'good',
-    buildingType: 'residential',
-    occupants: 18,
-    heatedArea: 660,
-    annualHeatingDemandKwh: 52800,
-    annualCoolingDemandKwh: 0,
+    buildingType: 'mixed',
+    occupants: 16,
+    heatedArea: 700,
+    annualHeatingDemandKwh: 56000,
+    annualCoolingDemandKwh: 8000,
 
     address: 'Ahornweg 12, 85748 Garching bei München, Bayern, Deutschland',
     latitude: 48.2489,
@@ -99,6 +110,54 @@ export function createBavariaSeedData() {
     oilPriceCtPerLiter: 0,
     pelletPriceEurPerTon: 0,
 
+    weatherProvider: 'brightsky',
+    weatherApiKey: '',
+
+    optimizerWeights: {
+      co2Reduction: 50,
+      economy: 80,
+      comfort: 70,
+      selfConsumption: 60,
+      gridFriendly: 30,
+    },
+  }
+
+  // ============================================================
+  // ERZEUGER (alle 6 Typen)
+  // ============================================================
+
+  const hausanschluss: GridGenerator = {
+    id: ids.hausanschluss,
+    name: 'Hausanschluss Ahornweg 12',
+    type: 'grid',
+    energyForm: 'electricity',
+    manufacturer: '',
+    model: '',
+    serialNumber: '',
+    commissioningDate: '',
+    location: 'Zählerschrank Keller',
+    notes: '55 kW Anschlussleistung, 3×63A Vorsicherung, Bayernwerk Netz.',
+    communication: {
+      ...createDefaultCommunication(),
+      protocol: 'mqtt',
+      ipAddress: '192.168.1.70',
+      port: 1883,
+      pollingIntervalSeconds: 2,
+      enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 5,
+      mqtt: {
+        topic: 'energy/grid/power',
+        qos: 1,
+        payloadFormat: 'json',
+        valueJsonPath: '$.power_w',
+      },
+    },
+    assignedMeterIds: [ids.hauptzaehlerStrom],
+    ports: [
+      { id: uuid(), side: 'left', energy: 'electricity', label: 'Netzbezug' },
+      { id: uuid(), side: 'right', energy: 'electricity', label: 'Einspeisung' },
+    ],
     gridMaxPowerKw: 55,
     gridPhases: 3,
     gridVoltageV: 400,
@@ -106,14 +165,8 @@ export function createBavariaSeedData() {
     feedInLimitKw: 0,
     gridOperator: 'Bayernwerk Netz GmbH',
     meterPointId: 'DE000411286401000000000000012345',
-
-    weatherProvider: 'brightsky',
-    weatherApiKey: '',
+    connectedGeneratorIds: [ids.pvSued, ids.bhkw, ids.kaeltemaschine],
   }
-
-  // ============================================================
-  // ERZEUGER
-  // ============================================================
 
   const pvSued: PvGenerator = {
     id: ids.pvSued,
@@ -133,6 +186,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 5,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 5,
       modbus: {
         unitId: 3,
         registerAddress: 40000,
@@ -144,6 +199,7 @@ export function createBavariaSeedData() {
       },
     },
     assignedMeterIds: [ids.pvZaehler],
+    connectedGeneratorIds: [],
     peakPowerKwp: 29.6,
     numberOfModules: 74,
     moduleType: 'JA Solar JAM54S30-400/MR Mono PERC',
@@ -158,6 +214,60 @@ export function createBavariaSeedData() {
     degradationPerYear: 0.4,
     temperatureCoefficient: -0.35,
     albedo: 0.2,
+  }
+
+  const bhkw: ChpGenerator = {
+    id: ids.bhkw,
+    name: 'BHKW Dachs 5.5',
+    type: 'chp',
+    energyForm: 'electricity_heat',
+    manufacturer: 'SenerTec',
+    model: 'Dachs 5.5 Gen2',
+    serialNumber: 'ST-2021-DACHS-001',
+    commissioningDate: '2021-11-15',
+    location: 'Technikraum Keller',
+    notes: '5.5 kW_el + 12.5 kW_th. Erdgas. Wärmegeführter Betrieb, ~4000 h/a.',
+    communication: {
+      ...createDefaultCommunication(),
+      protocol: 'modbus_tcp',
+      ipAddress: '192.168.1.54',
+      port: 502,
+      pollingIntervalSeconds: 10,
+      enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 10,
+      modbus: {
+        unitId: 1,
+        registerAddress: 0,
+        registerCount: 40,
+        registerType: 'holding',
+        dataType: 'float32',
+        scaleFactor: 1,
+        byteOrder: 'big_endian',
+      },
+    },
+    assignedMeterIds: [ids.gasZaehlerBhkw, ids.bhkwStromZaehler, ids.bhkwWaermeZaehler],
+    connectedGeneratorIds: [],
+    ports: [
+      { id: uuid(), side: 'left', energy: 'gas', label: 'Erdgas' },
+      { id: uuid(), side: 'right', energy: 'electricity', label: 'Strom' },
+      { id: uuid(), side: 'right', energy: 'heat', label: 'Wärme' },
+    ],
+    electricalPowerKw: 5.5,
+    thermalPowerKw: 12.5,
+    fuelType: 'natural_gas',
+    electricalEfficiency: 0.29,
+    thermalEfficiency: 0.65,
+    overallEfficiency: 0.94,
+    modulationMinPercent: 50,
+    modulationMaxPercent: 100,
+    minimumRunTimeMin: 30,
+    minimumOffTimeMin: 15,
+    startCostEur: 0.5,
+    maintenanceIntervalHours: 3500,
+    currentOperatingHours: 8200,
+    fuelCostCtPerKwh: 9.5,
+    powerToHeatRatio: 0.44,
   }
 
   const gaskessel: BoilerGenerator = {
@@ -178,6 +288,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 10,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 10,
       modbus: {
         unitId: 1,
         registerAddress: 0,
@@ -189,6 +301,7 @@ export function createBavariaSeedData() {
       },
     },
     assignedMeterIds: [ids.gasZaehler],
+    connectedGeneratorIds: [],
     fuelType: 'natural_gas',
     nominalPowerKw: 60,
     efficiency: 0.98,
@@ -220,6 +333,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 10,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 10,
       modbus: {
         unitId: 1,
         registerAddress: 100,
@@ -230,7 +345,8 @@ export function createBavariaSeedData() {
         byteOrder: 'big_endian',
       },
     },
-    assignedMeterIds: [ids.waermeZaehlerHeizung, ids.quellenZaehlerWP],
+    assignedMeterIds: [ids.quellenZaehlerWP, ids.wpStromZaehler],
+    connectedGeneratorIds: [ids.hausanschluss],
     heatPumpType: 'air_water',
     heatingPowerKw: 13,
     coolingCapable: false,
@@ -261,10 +377,51 @@ export function createBavariaSeedData() {
     refrigerant: 'R290 (Propan)',
   }
 
-  const generators: Generator[] = [pvSued, gaskessel, waermepumpe]
+  const kaeltemaschine: ChillerGenerator = {
+    id: ids.kaeltemaschine,
+    name: 'Kältemaschine Gewerbe',
+    type: 'chiller',
+    energyForm: 'cold',
+    manufacturer: 'Daikin',
+    model: 'EWAD-B 015',
+    serialNumber: 'DK-2022-KM-001',
+    commissioningDate: '2022-05-10',
+    location: 'Dach Nordseite',
+    notes: '15 kW Kälteleistung für Arztpraxis EG. Reversibel, aber aktuell nur Kühlung. BACnet-Anbindung.',
+    communication: {
+      ...createDefaultCommunication(),
+      protocol: 'bacnet_ip',
+      ipAddress: '192.168.1.57',
+      port: 47808,
+      pollingIntervalSeconds: 15,
+      enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 15,
+    },
+    assignedMeterIds: [ids.kaeltemaschinenZaehler],
+    connectedGeneratorIds: [ids.hausanschluss],
+    ports: [
+      { id: uuid(), side: 'left', energy: 'electricity', label: 'Strom' },
+      { id: uuid(), side: 'right', energy: 'cold', label: 'Kälte' },
+    ],
+    coolingPowerKw: 15,
+    electricalPowerKw: 4.2,
+    eerRated: 3.57,
+    seerRated: 5.2,
+    coolantType: 'Wasser/Glykol 30%',
+    refrigerant: 'R32',
+    flowTemperatureC: 7,
+    returnTemperatureC: 12,
+    modulationMinPercent: 25,
+    modulationMaxPercent: 100,
+    minOutdoorTempC: -10,
+    maxOutdoorTempC: 46,
+  }
+
+  const generators: Generator[] = [hausanschluss, pvSued, bhkw, gaskessel, waermepumpe, kaeltemaschine]
 
   // ============================================================
-  // SPEICHER
+  // SPEICHER (alle 3 Typen: battery, heat, cold)
   // ============================================================
 
   const sensorIds = {
@@ -272,6 +429,7 @@ export function createBavariaSeedData() {
     pufferUntenMitte: uuid(), pufferUnten: uuid(),
     pufferVorlauf: uuid(), pufferRuecklauf: uuid(),
     wwOben: uuid(), wwMitte: uuid(), wwUnten: uuid(),
+    kaelteOben: uuid(), kaelteMitte: uuid(), kaelteUnten: uuid(),
     batTemp: uuid(),
   }
 
@@ -315,6 +473,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 5,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 5,
       modbus: {
         unitId: 1,
         registerAddress: 0,
@@ -325,11 +485,16 @@ export function createBavariaSeedData() {
         byteOrder: 'big_endian',
       },
     },
-    connectedGeneratorIds: ['grid'],
-    connectedConsumerIds: [],
+    connectedGeneratorIds: [ids.hausanschluss, ids.pvSued, ids.bhkw],
+    connectedConsumerIds: [ids.wallbox1, ids.wallbox2],
     assignedMeterIds: [ids.batterieZaehler],
-    notes: '8 Module à 2.56 kWh, installiert 2023. Garantie: 10 Jahre / 80% Restkapazität.',
+    notes: '8 Module à 2.56 kWh, installiert 2023. PV-Überschuss + BHKW-Überschuss laden. Wallboxen als Verbraucher.',
   }
+
+  const mkTempSensor = (id: string, name: string, pos: string) => ({
+    ...createDefaultTemperatureSensor(), id, name, position: pos as any, sensorType: 'PT1000' as const,
+    communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp' as const, ipAddress: '192.168.1.61', port: 502, enabled: true },
+  })
 
   const pufferspeicher: ThermalStorage = {
     id: ids.pufferspeicher,
@@ -348,43 +513,15 @@ export function createBavariaSeedData() {
     ambientTemperatureC: 18,
     specificHeatCapacity: 4.18,
     temperatureSensors: [
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.pufferOben,
-        name: 'Puffer oben', position: 'top', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.pufferObenMitte,
-        name: 'Puffer oben-mitte', position: 'upper_middle', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.pufferMitte,
-        name: 'Puffer mitte', position: 'middle', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.pufferUntenMitte,
-        name: 'Puffer unten-mitte', position: 'lower_middle', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.pufferUnten,
-        name: 'Puffer unten', position: 'bottom', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.pufferVorlauf,
-        name: 'Vorlauf Heizung', position: 'flow', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.pufferRuecklauf,
-        name: 'Rücklauf Heizung', position: 'return', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
+      mkTempSensor(sensorIds.pufferOben, 'Puffer oben', 'top'),
+      mkTempSensor(sensorIds.pufferObenMitte, 'Puffer oben-mitte', 'upper_middle'),
+      mkTempSensor(sensorIds.pufferMitte, 'Puffer mitte', 'middle'),
+      mkTempSensor(sensorIds.pufferUntenMitte, 'Puffer unten-mitte', 'lower_middle'),
+      mkTempSensor(sensorIds.pufferUnten, 'Puffer unten', 'bottom'),
+      mkTempSensor(sensorIds.pufferVorlauf, 'Vorlauf Heizung', 'flow'),
+      mkTempSensor(sensorIds.pufferRuecklauf, 'Rücklauf Heizung', 'return'),
     ],
-    connectedGeneratorIds: [ids.gaskessel, ids.waermepumpe],
+    connectedGeneratorIds: [ids.gaskessel, ids.waermepumpe, ids.bhkw],
     connectedConsumerIds: [],
     assignedMeterIds: [ids.waermeZaehlerHeizung],
     stratificationEnabled: true,
@@ -399,7 +536,7 @@ export function createBavariaSeedData() {
       pollingIntervalSeconds: 30,
       enabled: true,
     },
-    notes: 'Viessmann Vitocell 100-E, 1500L Schichtenspeicher. 7 PT1000-Sensoren über Modbus-I/O-Modul.',
+    notes: 'Viessmann Vitocell 100-E, 1500L Schichtenspeicher. Gespeist von Gaskessel, WP und BHKW.',
   }
 
   const wwSpeicher: ThermalStorage = {
@@ -419,21 +556,9 @@ export function createBavariaSeedData() {
     ambientTemperatureC: 18,
     specificHeatCapacity: 4.18,
     temperatureSensors: [
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.wwOben,
-        name: 'WW oben', position: 'top', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.wwMitte,
-        name: 'WW mitte', position: 'middle', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
-      {
-        ...createDefaultTemperatureSensor(), id: sensorIds.wwUnten,
-        name: 'WW unten', position: 'bottom', sensorType: 'PT1000',
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.61', port: 502, enabled: true },
-      },
+      mkTempSensor(sensorIds.wwOben, 'WW oben', 'top'),
+      mkTempSensor(sensorIds.wwMitte, 'WW mitte', 'middle'),
+      mkTempSensor(sensorIds.wwUnten, 'WW unten', 'bottom'),
     ],
     connectedGeneratorIds: [ids.gaskessel],
     connectedConsumerIds: [ids.zirkPumpe],
@@ -453,10 +578,49 @@ export function createBavariaSeedData() {
     notes: 'Viessmann Vitocell 100-W, 500L. Heizstab 3 kW für PV-Überschuss. Legionellenschutz: 1x/Woche auf 65°C.',
   }
 
-  const storages: Storage[] = [batterie, pufferspeicher, wwSpeicher]
+  const kaeltespeicher: ThermalStorage = {
+    id: ids.kaeltespeicher,
+    name: 'Kältespeicher Gewerbe',
+    type: 'cold',
+    volumeLiters: 800,
+    heightMm: 1800,
+    diameterMm: 750,
+    maxTemperatureC: 14,
+    minTemperatureC: 4,
+    targetTemperatureC: 7,
+    hysteresisK: 2,
+    heatLossCoefficientWPerK: 1.5,
+    insulationThicknessMm: 100,
+    insulationMaterial: 'PU-Hartschaum',
+    ambientTemperatureC: 22,
+    specificHeatCapacity: 4.18,
+    temperatureSensors: [
+      mkTempSensor(sensorIds.kaelteOben, 'Kälte oben', 'top'),
+      mkTempSensor(sensorIds.kaelteMitte, 'Kälte mitte', 'middle'),
+      mkTempSensor(sensorIds.kaelteUnten, 'Kälte unten', 'bottom'),
+    ],
+    connectedGeneratorIds: [ids.kaeltemaschine],
+    connectedConsumerIds: [ids.gewerbe],
+    assignedMeterIds: [ids.kaelteZaehler],
+    stratificationEnabled: false,
+    numberOfLayers: 3,
+    hasElectricalHeatingElement: false,
+    heatingElementPowerKw: 0,
+    communication: {
+      ...createDefaultCommunication(),
+      protocol: 'modbus_tcp',
+      ipAddress: '192.168.1.62',
+      port: 502,
+      pollingIntervalSeconds: 30,
+      enabled: true,
+    },
+    notes: '800L Kältepuffer für Kühldecke Arztpraxis. Geladen von Daikin Kältemaschine. Nachtladung bevorzugt.',
+  }
+
+  const storages: Storage[] = [batterie, pufferspeicher, wwSpeicher, kaeltespeicher]
 
   // ============================================================
-  // HEIZ-/KÄLTEKREISE
+  // HEIZ-/KÄLTEKREISE (inkl. Kühlkreis)
   // ============================================================
 
   const circuits: HeatingCoolingCircuit[] = [
@@ -471,7 +635,7 @@ export function createBavariaSeedData() {
       },
       mixerValve: {
         enabled: true,
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.62', port: 502, enabled: true },
+        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.63', port: 502, enabled: true },
       },
       pumpControl: createDefaultControllableComponent(),
       zoneValves: createDefaultControllableComponent(),
@@ -486,7 +650,7 @@ export function createBavariaSeedData() {
       generatorIds: [],
       roomIds: [ids.roomWe1, ids.roomWe2],
       meterIds: [],
-      notes: 'Niedertemperatur-FBH EG. Gespeist aus Pufferspeicher. VL-Sollwert über WP-Modbus, Mischer über Modbus-I/O.',
+      notes: 'Niedertemperatur-FBH EG Wohnungen. Gespeist aus Pufferspeicher.',
     },
     {
       id: ids.hkRadiator,
@@ -500,7 +664,7 @@ export function createBavariaSeedData() {
       mixerValve: createDefaultControllableComponent(),
       pumpControl: {
         enabled: true,
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.63', port: 502, enabled: true },
+        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.64', port: 502, enabled: true },
       },
       zoneValves: createDefaultControllableComponent(),
       distributionType: 'radiator',
@@ -512,9 +676,9 @@ export function createBavariaSeedData() {
       pumpPowerW: 60,
       supplyStorageIds: [ids.pufferspeicher],
       generatorIds: [],
-      roomIds: [ids.roomWe3, ids.roomWe4, ids.roomWe5, ids.roomWe6],
+      roomIds: [ids.roomWe3, ids.roomWe4, ids.roomWe5],
       meterIds: [],
-      notes: 'HK 1.+2. OG. Gespeist aus Pufferspeicher. VL-Sollwert über Gaskessel-Modbus, Pumpe separat regelbar.',
+      notes: 'HK 1.+2. OG. Gespeist aus Pufferspeicher.',
     },
     {
       id: ids.hkWarmwasser,
@@ -528,7 +692,7 @@ export function createBavariaSeedData() {
       mixerValve: createDefaultControllableComponent(),
       pumpControl: {
         enabled: true,
-        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.64', port: 502, enabled: true },
+        communication: { ...createDefaultCommunication(), protocol: 'modbus_tcp', ipAddress: '192.168.1.65', port: 502, enabled: true },
       },
       zoneValves: createDefaultControllableComponent(),
       distributionType: 'mixed',
@@ -542,7 +706,7 @@ export function createBavariaSeedData() {
       generatorIds: [ids.gaskessel],
       roomIds: [],
       meterIds: [ids.waermeZaehlerWW],
-      notes: 'Direkt vom Gaskessel in WW-Speicher. Konstant 65°C VL (Legionellenschutz). Ladepumpe über Modbus schaltbar.',
+      notes: 'Direkt vom Gaskessel in WW-Speicher. Konstant 65°C VL.',
     },
     {
       id: ids.hkTreppenhaus,
@@ -564,7 +728,38 @@ export function createBavariaSeedData() {
       generatorIds: [],
       roomIds: [ids.roomTreppenhaus],
       meterIds: [],
-      notes: 'Aus Pufferspeicher. Nicht regelbar — Thermostatventile nur manuell. Frostschutz über Mindestsollwert.',
+      notes: 'Aus Pufferspeicher. Thermostatventile nur manuell.',
+    },
+    {
+      id: ids.kkGewerbe,
+      name: 'Kühldecke Arztpraxis',
+      type: 'cooling',
+      controllable: true,
+      flowTempSetpoint: {
+        enabled: true,
+        communication: { ...createDefaultCommunication(), protocol: 'bacnet_ip', ipAddress: '192.168.1.57', port: 47808, enabled: true },
+      },
+      mixerValve: {
+        enabled: true,
+        communication: { ...createDefaultCommunication(), protocol: 'bacnet_ip', ipAddress: '192.168.1.66', port: 47808, enabled: true },
+      },
+      pumpControl: {
+        enabled: true,
+        communication: { ...createDefaultCommunication(), protocol: 'bacnet_ip', ipAddress: '192.168.1.66', port: 47808, enabled: true },
+      },
+      zoneValves: createDefaultControllableComponent(),
+      distributionType: 'ceiling_cooling',
+      flowTemperatureC: 7,
+      returnTemperatureC: 12,
+      designOutdoorTemperatureC: 35,
+      heatingCurve: { steepness: 0, parallelShift: 0 },
+      pumpType: 'variable_speed',
+      pumpPowerW: 80,
+      supplyStorageIds: [ids.kaeltespeicher],
+      generatorIds: [],
+      roomIds: [ids.roomGewerbe],
+      meterIds: [ids.kaelteZaehler],
+      notes: 'Kühldecke in Arztpraxis EG. Gespeist aus Kältespeicher. BACnet-Regelung.',
     },
   ]
 
@@ -572,80 +767,79 @@ export function createBavariaSeedData() {
   // RÄUME
   // ============================================================
 
+  const mkSchedule = (startH: string, endH: string, temp: number) => [
+    { id: uuid(), name: 'Tag', days: ['mo', 'di', 'mi', 'do', 'fr'] as any, startTime: startH, endTime: endH, targetTemperatureC: temp },
+    { id: uuid(), name: 'Nacht', days: ['mo', 'di', 'mi', 'do', 'fr'] as any, startTime: endH, endTime: startH, targetTemperatureC: temp - 3 },
+    { id: uuid(), name: 'Wochenende', days: ['sa', 'so'] as any, startTime: '08:00', endTime: '23:00', targetTemperatureC: temp },
+  ]
+
   const rooms: Room[] = [
     {
       id: ids.roomWe1, name: 'WE 1 – EG links', floor: 'EG', areaM2: 85, heightM: 2.6,
       roomType: 'wohnen', targetTemperatureC: 21, nightSetbackK: 3, minTemperatureC: 16, maxTemperatureC: 26,
-      coolingEnabled: false, coolingTargetTemperatureC: 24,
-      schedule: [
-        { id: uuid(), name: 'Tag', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '06:00', endTime: '22:00', targetTemperatureC: 21 },
-        { id: uuid(), name: 'Nacht', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '22:00', endTime: '06:00', targetTemperatureC: 18 },
-        { id: uuid(), name: 'Wochenende', days: ['sa', 'so'], startTime: '08:00', endTime: '23:00', targetTemperatureC: 21 },
-      ],
-      heatingCircuitId: ids.hkFbh, coolingCircuitId: '', consumerIds: [ids.we1], meterIds: [ids.raumzaehlerWe1], notes: '3-Zimmer-Wohnung, Familie (4 Pers.)',
+      coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: mkSchedule('06:00', '22:00', 21),
+      heatingCircuitId: ids.hkFbh, coolingCircuitId: '', consumerIds: [ids.we1], meterIds: [ids.raumzaehlerWe1],
+      notes: '3-Zimmer-Wohnung, Familie (4 Pers.)',
     },
     {
-      id: ids.roomWe2, name: 'WE 2 – EG rechts', floor: 'EG', areaM2: 78, heightM: 2.6,
+      id: ids.roomWe2, name: 'WE 2 – EG rechts', floor: 'EG', areaM2: 55, heightM: 2.6,
       roomType: 'wohnen', targetTemperatureC: 21, nightSetbackK: 3, minTemperatureC: 16, maxTemperatureC: 26,
-      coolingEnabled: false, coolingTargetTemperatureC: 24,
+      coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: mkSchedule('06:00', '22:00', 21),
+      heatingCircuitId: ids.hkFbh, coolingCircuitId: '', consumerIds: [ids.we2], meterIds: [],
+      notes: '2-Zimmer-Wohnung, Paar',
+    },
+    {
+      id: ids.roomGewerbe, name: 'Arztpraxis – EG Mitte', floor: 'EG', areaM2: 120, heightM: 2.8,
+      roomType: 'buero', targetTemperatureC: 22, nightSetbackK: 4, minTemperatureC: 16, maxTemperatureC: 26,
+      coolingEnabled: true, coolingTargetTemperatureC: 24,
       schedule: [
-        { id: uuid(), name: 'Tag', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '06:00', endTime: '22:00', targetTemperatureC: 21 },
-        { id: uuid(), name: 'Nacht', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '22:00', endTime: '06:00', targetTemperatureC: 18 },
+        { id: uuid(), name: 'Sprechstunde', days: ['mo', 'di', 'mi', 'do', 'fr'] as any, startTime: '07:00', endTime: '18:00', targetTemperatureC: 22 },
+        { id: uuid(), name: 'Nacht/WE', days: ['mo', 'di', 'mi', 'do', 'fr', 'sa', 'so'] as any, startTime: '18:00', endTime: '07:00', targetTemperatureC: 18 },
       ],
-      heatingCircuitId: ids.hkFbh, coolingCircuitId: '', consumerIds: [ids.we2], meterIds: [], notes: '2-Zimmer-Wohnung, Paar',
+      heatingCircuitId: ids.hkFbh, coolingCircuitId: ids.kkGewerbe, consumerIds: [ids.gewerbe], meterIds: [ids.raumzaehlerGewerbe],
+      notes: 'Arztpraxis mit Kühldecke. Hohe interne Lasten (Medizingeräte, Beleuchtung). Kühlung Mai–September.',
     },
     {
       id: ids.roomWe3, name: 'WE 3 – 1. OG links', floor: 'OG1', areaM2: 85, heightM: 2.5,
       roomType: 'wohnen', targetTemperatureC: 21, nightSetbackK: 3, minTemperatureC: 16, maxTemperatureC: 26,
-      coolingEnabled: false, coolingTargetTemperatureC: 24,
-      schedule: [
-        { id: uuid(), name: 'Tag', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '07:00', endTime: '22:00', targetTemperatureC: 21 },
-        { id: uuid(), name: 'Nacht', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '22:00', endTime: '07:00', targetTemperatureC: 18 },
-      ],
-      heatingCircuitId: ids.hkRadiator, coolingCircuitId: '', consumerIds: [ids.we3], meterIds: [], notes: '3-Zimmer-Wohnung, Familie (3 Pers.)',
+      coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: mkSchedule('07:00', '22:00', 21),
+      heatingCircuitId: ids.hkRadiator, coolingCircuitId: '', consumerIds: [ids.we3], meterIds: [],
+      notes: '3-Zimmer-Wohnung, Familie (3 Pers.)',
     },
     {
       id: ids.roomWe4, name: 'WE 4 – 1. OG rechts', floor: 'OG1', areaM2: 78, heightM: 2.5,
       roomType: 'wohnen', targetTemperatureC: 22, nightSetbackK: 3, minTemperatureC: 16, maxTemperatureC: 26,
-      coolingEnabled: false, coolingTargetTemperatureC: 24,
-      schedule: [
-        { id: uuid(), name: 'Tag', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '06:30', endTime: '23:00', targetTemperatureC: 22 },
-        { id: uuid(), name: 'Nacht', days: ['mo', 'di', 'mi', 'do', 'fr'], startTime: '23:00', endTime: '06:30', targetTemperatureC: 19 },
-      ],
-      heatingCircuitId: ids.hkRadiator, coolingCircuitId: '', consumerIds: [ids.we4], meterIds: [], notes: '2-Zimmer-Wohnung, Einzelperson (bevorzugt 22°C)',
+      coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: mkSchedule('06:30', '23:00', 22),
+      heatingCircuitId: ids.hkRadiator, coolingCircuitId: '', consumerIds: [ids.we4], meterIds: [],
+      notes: '2-Zimmer-Wohnung, Einzelperson (bevorzugt 22°C)',
     },
     {
-      id: ids.roomWe5, name: 'WE 5 – 2. OG links', floor: 'OG2', areaM2: 85, heightM: 2.5,
+      id: ids.roomWe5, name: 'WE 5 – 2. OG', floor: 'OG2', areaM2: 110, heightM: 2.5,
       roomType: 'wohnen', targetTemperatureC: 21, nightSetbackK: 3, minTemperatureC: 16, maxTemperatureC: 26,
       coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: [],
-      heatingCircuitId: ids.hkRadiator, coolingCircuitId: '', consumerIds: [ids.we5], meterIds: [], notes: '3-Zimmer-Wohnung, Paar (2 Pers.)',
-    },
-    {
-      id: ids.roomWe6, name: 'WE 6 – 2. OG rechts', floor: 'OG2', areaM2: 78, heightM: 2.5,
-      roomType: 'wohnen', targetTemperatureC: 20, nightSetbackK: 4, minTemperatureC: 16, maxTemperatureC: 26,
-      coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: [],
-      heatingCircuitId: ids.hkRadiator, coolingCircuitId: '', consumerIds: [ids.we6], meterIds: [], notes: '2-Zimmer-Wohnung, Einzelperson (bevorzugt 20°C, stärkere Nachtabsenkung)',
+      heatingCircuitId: ids.hkRadiator, coolingCircuitId: '', consumerIds: [ids.we5], meterIds: [],
+      notes: '4-Zimmer-Wohnung, Familie (4 Pers.)',
     },
     {
       id: ids.roomTreppenhaus, name: 'Treppenhaus', floor: 'EG', areaM2: 45, heightM: 9.0,
       roomType: 'flur', targetTemperatureC: 16, nightSetbackK: 2, minTemperatureC: 12, maxTemperatureC: 24,
       coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: [],
       heatingCircuitId: ids.hkTreppenhaus, coolingCircuitId: '', consumerIds: [ids.allgemeinstrom], meterIds: [],
-      notes: 'Über alle 3 Geschosse. Frostschutz, nicht aktiv geregelt.',
+      notes: 'Über alle 3 Geschosse. Frostschutz.',
     },
     {
-      id: ids.roomTechnik, name: 'Technikraum Keller', floor: 'UG', areaM2: 25, heightM: 2.4,
+      id: ids.roomTechnik, name: 'Technikraum Keller', floor: 'UG', areaM2: 30, heightM: 2.4,
       roomType: 'technik', targetTemperatureC: 18, nightSetbackK: 0, minTemperatureC: 15, maxTemperatureC: 30,
       coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: [],
       heatingCircuitId: '', coolingCircuitId: '', consumerIds: [], meterIds: [],
-      notes: 'Heizungsraum, Verteiler, Wechselrichter. Eigenwärme durch Geräteabwärme.',
+      notes: 'Heizungsraum, BHKW, Wechselrichter, Batterie. Eigenwärme durch Geräteabwärme.',
     },
     {
       id: ids.roomTiefgarage, name: 'Tiefgarage', floor: 'UG', areaM2: 180, heightM: 2.3,
       roomType: 'lager', targetTemperatureC: 10, nightSetbackK: 0, minTemperatureC: 5, maxTemperatureC: 30,
       coolingEnabled: false, coolingTargetTemperatureC: 24, schedule: [],
       heatingCircuitId: '', coolingCircuitId: '', consumerIds: [ids.wallbox1, ids.wallbox2], meterIds: [ids.wallboxZaehler],
-      notes: '10 Stellplätze, 2 Wallboxen an Stellplatz 3 + 7. Unbeheizt.',
+      notes: '10 Stellplätze, 2 Wallboxen. Unbeheizt.',
     },
   ]
 
@@ -658,8 +852,7 @@ export function createBavariaSeedData() {
     { id: ids.we2, name: 'WE 2 – EG rechts', kwh: 2800, note: 'Paar, Homeoffice' },
     { id: ids.we3, name: 'WE 3 – 1. OG links', kwh: 3500, note: 'Familie (3 Pers.), E-Herd + Geschirrspüler' },
     { id: ids.we4, name: 'WE 4 – 1. OG rechts', kwh: 3000, note: 'Einzelperson, IT-Equipment' },
-    { id: ids.we5, name: 'WE 5 – 2. OG links', kwh: 2600, note: 'Paar, selten zuhause' },
-    { id: ids.we6, name: 'WE 6 – 2. OG rechts', kwh: 3100, note: 'Einzelperson, Gaming-PC' },
+    { id: ids.we5, name: 'WE 5 – 2. OG', kwh: 3800, note: 'Familie (4 Pers.), Sauna im Bad' },
   ]
 
   const consumers: Consumer[] = [
@@ -673,10 +866,11 @@ export function createBavariaSeedData() {
       controllable: false,
       sheddable: false,
       priority: 3,
-      connectedSourceIds: ['grid'] as string[],
+      connectedSourceIds: [ids.hausanschluss] as string[],
       assignedMeterIds: [] as string[],
       communication: createDefaultCommunication(),
-      notes: `${we.note}. Eigener Wohnungszähler (nicht im EMS erfasst). Jahresverbrauch: ${we.kwh} kWh.`,
+      ports: [] as any[],
+      notes: `${we.note}. Jahresverbrauch: ${we.kwh} kWh.`,
       wallboxMaxPowerKw: 0,
       wallboxPhases: 3 as const,
       wallboxMinCurrentA: 6,
@@ -684,6 +878,28 @@ export function createBavariaSeedData() {
       vehicleConsumptionPer100km: 0,
       ocppEnabled: false,
     })),
+    {
+      id: ids.gewerbe,
+      name: 'Arztpraxis (Gewerbe)',
+      type: 'commercial' as const,
+      nominalPowerKw: 12,
+      annualConsumptionKwh: 18000,
+      loadProfile: 'G0' as const,
+      controllable: false,
+      sheddable: false,
+      priority: 2,
+      connectedSourceIds: [ids.hausanschluss],
+      assignedMeterIds: [ids.gewerbeZaehler],
+      communication: createDefaultCommunication(),
+      ports: [],
+      notes: 'Arztpraxis EG: Medizingeräte, Beleuchtung, Server, Klimatisierung. Hoher Grundlastanteil.',
+      wallboxMaxPowerKw: 0,
+      wallboxPhases: 3 as const,
+      wallboxMinCurrentA: 6,
+      vehicleBatteryKwh: 0,
+      vehicleConsumptionPer100km: 0,
+      ocppEnabled: false,
+    },
     {
       id: ids.allgemeinstrom,
       name: 'Allgemeinstrom (Haus)',
@@ -694,10 +910,11 @@ export function createBavariaSeedData() {
       controllable: false,
       sheddable: false,
       priority: 2,
-      connectedSourceIds: ['grid'],
+      connectedSourceIds: [ids.hausanschluss],
       assignedMeterIds: [ids.allgemeinstromZaehler],
       communication: createDefaultCommunication(),
-      notes: 'Treppenhausbeleuchtung, Aufzug, Tiefgaragenlüftung, Heizungspumpen, Klingelanlage.',
+      ports: [],
+      notes: 'Treppenhausbeleuchtung, Aufzug, Tiefgaragenlüftung, Heizungspumpen.',
       wallboxMaxPowerKw: 0,
       wallboxPhases: 3,
       wallboxMinCurrentA: 6,
@@ -723,9 +940,12 @@ export function createBavariaSeedData() {
         port: 9000,
         pollingIntervalSeconds: 5,
         enabled: true,
+        trendEnabled: true,
+        trendIntervalSeconds: 10,
       },
-      connectedSourceIds: ['grid'],
-      notes: 'Heidelberg Energy Control. PV-Überschussladen bevorzugt. OCPP 1.6J. VW ID.4 (77 kWh).',
+      connectedSourceIds: [ids.hausanschluss, ids.batterie],
+      ports: [],
+      notes: 'Heidelberg Energy Control. PV-Überschussladen bevorzugt. VW ID.4 (77 kWh).',
       wallboxMaxPowerKw: 11,
       wallboxPhases: 3,
       wallboxMinCurrentA: 6,
@@ -751,9 +971,12 @@ export function createBavariaSeedData() {
         port: 9000,
         pollingIntervalSeconds: 5,
         enabled: true,
+        trendEnabled: true,
+        trendIntervalSeconds: 10,
       },
-      connectedSourceIds: ['grid'],
-      notes: 'Heidelberg Energy Control. Niedrigere Priorität als WB1. BMW i4 (83.9 kWh).',
+      connectedSourceIds: [ids.hausanschluss, ids.batterie],
+      ports: [],
+      notes: 'Heidelberg Energy Control. BMW i4 (83.9 kWh).',
       wallboxMaxPowerKw: 11,
       wallboxPhases: 3,
       wallboxMinCurrentA: 6,
@@ -773,8 +996,9 @@ export function createBavariaSeedData() {
       priority: 4,
       assignedMeterIds: [],
       communication: createDefaultCommunication(),
-      connectedSourceIds: [],
-      notes: 'Warmwasser-Zirkulationspumpe. Zeitprogramm 05:30–22:00, steuerbar über Modbus-Relais.',
+      connectedSourceIds: [ids.hausanschluss],
+      ports: [],
+      notes: 'Warmwasser-Zirkulationspumpe. Zeitprogramm 05:30–22:00.',
       wallboxMaxPowerKw: 0,
       wallboxPhases: 1,
       wallboxMinCurrentA: 6,
@@ -785,10 +1009,11 @@ export function createBavariaSeedData() {
   ]
 
   // ============================================================
-  // ZÄHLER
+  // ZÄHLER (17 Stück, alle 6 Kategorien)
   // ============================================================
 
   const meters: Meter[] = [
+    // --- SOURCE (3) ---
     {
       id: ids.hauptzaehlerStrom,
       name: 'Hausanschluss-Zähler Strom (EVU)',
@@ -804,7 +1029,7 @@ export function createBavariaSeedData() {
       vtRatio: 1,
       pulsesPerUnit: 1000,
       assignedToType: 'grid',
-      assignedToId: 'grid',
+      assignedToId: ids.hausanschluss,
       communication: {
         ...createDefaultCommunication(),
         protocol: 'sml_tcp',
@@ -816,6 +1041,101 @@ export function createBavariaSeedData() {
       registerMappings: [],
       notes: 'Zweirichtungszähler am Hausanschluss. IR-Lesekopf (Hichi) auf SML/TCP.',
     },
+    {
+      id: ids.gasZaehler,
+      name: 'Gaszähler',
+      type: 'gas',
+      meterNumber: 'G-2020-001',
+      direction: 'consumption',
+      category: 'source',
+      parentMeterId: '',
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 100,
+      assignedToType: 'generator',
+      assignedToId: ids.gaskessel,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mqtt',
+        ipAddress: '192.168.1.70',
+        port: 1883,
+        pollingIntervalSeconds: 30,
+        enabled: true,
+        mqtt: {
+          topic: 'energy/gas/meter',
+          qos: 1,
+          payloadFormat: 'json',
+          valueJsonPath: '$.volume_m3',
+        },
+      },
+      registerMappings: [],
+      notes: 'Elster BK-G4 mit Impulsgeber. Gasversorgung Brennwertkessel.',
+    },
+    {
+      id: ids.gasZaehlerBhkw,
+      name: 'Gaszähler BHKW',
+      type: 'gas',
+      meterNumber: 'G-2021-002',
+      direction: 'consumption',
+      category: 'source',
+      parentMeterId: '',
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 100,
+      assignedToType: 'generator',
+      assignedToId: ids.bhkw,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mqtt',
+        ipAddress: '192.168.1.70',
+        port: 1883,
+        pollingIntervalSeconds: 30,
+        enabled: true,
+        mqtt: {
+          topic: 'energy/gas/meter_bhkw',
+          qos: 1,
+          payloadFormat: 'json',
+          valueJsonPath: '$.volume_m3',
+        },
+      },
+      registerMappings: [],
+      notes: 'Separater Gaszähler BHKW für Wirkungsgradberechnung.',
+    },
+    {
+      id: ids.quellenZaehlerWP,
+      name: 'Quellenzähler Wärmepumpe',
+      type: 'source',
+      meterNumber: 'WMZ-Q-001',
+      direction: 'consumption',
+      category: 'source',
+      parentMeterId: '',
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1,
+      assignedToType: 'generator',
+      assignedToId: ids.waermepumpe,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mbus_tcp',
+        ipAddress: '192.168.1.60',
+        port: 10002,
+        pollingIntervalSeconds: 60,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Kamstrup Multical 303. Misst der Umgebungsluft entzogene Wärme.',
+    },
+
+    // --- GENERATION (4) ---
     {
       id: ids.pvZaehler,
       name: 'PV-Erzeugungszähler',
@@ -844,6 +1164,60 @@ export function createBavariaSeedData() {
       notes: 'Integriert im SMA Wechselrichter (SunSpec Meter Model).',
     },
     {
+      id: ids.bhkwStromZaehler,
+      name: 'BHKW-Stromzähler',
+      type: 'electricity',
+      meterNumber: 'BHKW-E-001',
+      direction: 'generation',
+      category: 'generation',
+      parentMeterId: ids.hauptzaehlerStrom,
+      phases: 3,
+      nominalCurrentA: 16,
+      nominalVoltageV: 230,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1000,
+      assignedToType: 'generator',
+      assignedToId: ids.bhkw,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'modbus_tcp',
+        ipAddress: '192.168.1.54',
+        port: 502,
+        pollingIntervalSeconds: 10,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Erzeugungszähler BHKW Strom. Eastron SDM630.',
+    },
+    {
+      id: ids.bhkwWaermeZaehler,
+      name: 'BHKW-Wärmezähler',
+      type: 'heat',
+      meterNumber: 'BHKW-W-001',
+      direction: 'generation',
+      category: 'generation',
+      parentMeterId: '',
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1,
+      assignedToType: 'generator',
+      assignedToId: ids.bhkw,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mbus_tcp',
+        ipAddress: '192.168.1.60',
+        port: 10004,
+        pollingIntervalSeconds: 60,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Kamstrup Multical 303. Wärmeerzeugung BHKW → Puffer.',
+    },
+    {
       id: ids.batterieZaehler,
       name: 'Batteriezähler',
       type: 'electricity',
@@ -870,6 +1244,174 @@ export function createBavariaSeedData() {
       registerMappings: [],
       notes: 'Integriert im BYD Battery-Box HVS.',
     },
+
+    // --- CONSUMPTION (4) ---
+    {
+      id: ids.waermeZaehlerHeizung,
+      name: 'Wärmemengenzähler Heizung',
+      type: 'heat',
+      meterNumber: 'WMZ-H-001',
+      direction: 'consumption',
+      category: 'consumption',
+      parentMeterId: '',
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1,
+      assignedToType: 'storage',
+      assignedToId: ids.pufferspeicher,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mbus_tcp',
+        ipAddress: '192.168.1.60',
+        port: 10001,
+        pollingIntervalSeconds: 60,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Kamstrup Multical 303. Gesamt-Heizwärme am Pufferspeicher.',
+    },
+    {
+      id: ids.waermeZaehlerWW,
+      name: 'Wärmemengenzähler Warmwasser',
+      type: 'heat',
+      meterNumber: 'WMZ-WW-001',
+      direction: 'consumption',
+      category: 'consumption',
+      parentMeterId: ids.waermeZaehlerHeizung,
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1,
+      assignedToType: 'storage',
+      assignedToId: ids.wwSpeicher,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mbus_tcp',
+        ipAddress: '192.168.1.60',
+        port: 10001,
+        pollingIntervalSeconds: 60,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Kamstrup Multical 303 für Warmwasserbereitung.',
+    },
+    {
+      id: ids.kaelteZaehler,
+      name: 'Kältemengenzähler',
+      type: 'cold',
+      meterNumber: 'KMZ-001',
+      direction: 'consumption',
+      category: 'consumption',
+      parentMeterId: '',
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1,
+      assignedToType: 'storage',
+      assignedToId: ids.kaeltespeicher,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mbus_tcp',
+        ipAddress: '192.168.1.60',
+        port: 10005,
+        pollingIntervalSeconds: 60,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Kamstrup Multical 303. Kälteleistung Kältespeicher → Kühldecke.',
+    },
+    {
+      id: ids.wpStromZaehler,
+      name: 'WP-Stromzähler',
+      type: 'electricity',
+      meterNumber: 'WP-E-001',
+      direction: 'consumption',
+      category: 'consumption',
+      parentMeterId: ids.hauptzaehlerStrom,
+      phases: 3,
+      nominalCurrentA: 16,
+      nominalVoltageV: 230,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1000,
+      assignedToType: 'generator',
+      assignedToId: ids.waermepumpe,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'modbus_tcp',
+        ipAddress: '192.168.1.44',
+        port: 502,
+        pollingIntervalSeconds: 10,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Eastron SDM630. Stromverbrauch Wärmepumpe (für JAZ-Berechnung).',
+    },
+
+    // --- CIRCUIT (2) ---
+    {
+      id: ids.raumzaehlerWe1,
+      name: 'Wärmezähler WE 1',
+      type: 'heat',
+      meterNumber: 'WMZ-WE1-001',
+      direction: 'consumption',
+      category: 'circuit',
+      parentMeterId: ids.waermeZaehlerHeizung,
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1,
+      assignedToType: 'none' as const,
+      assignedToId: '',
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mbus_tcp' as const,
+        ipAddress: '192.168.1.60',
+        port: 10003,
+        pollingIntervalSeconds: 300,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Heizkostenerfassung WE 1. Am FBH-Verteiler EG links.',
+    },
+    {
+      id: ids.raumzaehlerGewerbe,
+      name: 'Kältezähler Arztpraxis',
+      type: 'cold',
+      meterNumber: 'KMZ-GP-001',
+      direction: 'consumption',
+      category: 'circuit',
+      parentMeterId: ids.kaelteZaehler,
+      phases: 1,
+      nominalCurrentA: 0,
+      nominalVoltageV: 0,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1,
+      assignedToType: 'none' as const,
+      assignedToId: '',
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'mbus_tcp' as const,
+        ipAddress: '192.168.1.60',
+        port: 10006,
+        pollingIntervalSeconds: 300,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Kälte-Verbrauchszähler Arztpraxis für Nebenkostenabrechnung.',
+    },
+
+    // --- GROUP (3) ---
     {
       id: ids.allgemeinstromZaehler,
       name: 'Allgemeinstromzähler',
@@ -934,146 +1476,34 @@ export function createBavariaSeedData() {
       notes: 'Eastron SDM630 für beide Wallboxen zusammen.',
     },
     {
-      id: ids.waermeZaehlerHeizung,
-      name: 'Wärmemengenzähler Heizung',
-      type: 'heat',
-      meterNumber: 'WMZ-H-001',
+      id: ids.gewerbeZaehler,
+      name: 'Gewerbezähler Arztpraxis',
+      type: 'electricity',
+      meterNumber: 'GEW-001',
       direction: 'consumption',
-      category: 'consumption',
-      parentMeterId: '',
-      phases: 1,
-      nominalCurrentA: 0,
-      nominalVoltageV: 0,
+      category: 'group',
+      parentMeterId: ids.hauptzaehlerStrom,
+      phases: 3,
+      nominalCurrentA: 32,
+      nominalVoltageV: 230,
       ctRatio: 1,
       vtRatio: 1,
-      pulsesPerUnit: 1,
-      assignedToType: 'storage',
-      assignedToId: ids.pufferspeicher,
+      pulsesPerUnit: 1000,
+      assignedToType: 'consumer',
+      assignedToId: ids.gewerbe,
       communication: {
         ...createDefaultCommunication(),
-        protocol: 'mbus_tcp',
-        ipAddress: '192.168.1.60',
-        port: 10001,
-        pollingIntervalSeconds: 60,
+        protocol: 'modbus_tcp',
+        ipAddress: '192.168.1.45',
+        port: 502,
+        pollingIntervalSeconds: 10,
         enabled: true,
       },
       registerMappings: [],
-      notes: 'Kamstrup Multical 303. Gesamt-Heizwärme am Pufferspeicher. M-Bus über TCP-Gateway.',
+      notes: 'Eastron SDM630. Separater Stromzähler Arztpraxis für Nebenkostenabrechnung.',
     },
-    {
-      id: ids.waermeZaehlerWW,
-      name: 'Wärmemengenzähler Warmwasser',
-      type: 'heat',
-      meterNumber: 'WMZ-WW-001',
-      direction: 'consumption',
-      category: 'consumption',
-      parentMeterId: ids.waermeZaehlerHeizung,
-      phases: 1,
-      nominalCurrentA: 0,
-      nominalVoltageV: 0,
-      ctRatio: 1,
-      vtRatio: 1,
-      pulsesPerUnit: 1,
-      assignedToType: 'storage',
-      assignedToId: ids.wwSpeicher,
-      communication: {
-        ...createDefaultCommunication(),
-        protocol: 'mbus_tcp',
-        ipAddress: '192.168.1.60',
-        port: 10001,
-        pollingIntervalSeconds: 60,
-        enabled: true,
-      },
-      registerMappings: [],
-      notes: 'Kamstrup Multical 303 für Warmwasserbereitung.',
-    },
-    {
-      id: ids.gasZaehler,
-      name: 'Gaszähler',
-      type: 'gas',
-      meterNumber: 'G-2020-001',
-      direction: 'consumption',
-      category: 'source',
-      parentMeterId: '',
-      phases: 1,
-      nominalCurrentA: 0,
-      nominalVoltageV: 0,
-      ctRatio: 1,
-      vtRatio: 1,
-      pulsesPerUnit: 100,
-      assignedToType: 'generator',
-      assignedToId: ids.gaskessel,
-      communication: {
-        ...createDefaultCommunication(),
-        protocol: 'mqtt',
-        ipAddress: '192.168.1.70',
-        port: 1883,
-        pollingIntervalSeconds: 30,
-        enabled: true,
-        mqtt: {
-          topic: 'energy/gas/meter',
-          qos: 1,
-          payloadFormat: 'json',
-          valueJsonPath: '$.volume_m3',
-        },
-      },
-      registerMappings: [],
-      notes: 'Elster BK-G4 mit Impulsgeber. ESP32 + MQTT Gateway.',
-    },
-    {
-      id: ids.quellenZaehlerWP,
-      name: 'Quellenzähler Wärmepumpe',
-      type: 'heat',
-      meterNumber: 'WMZ-Q-001',
-      direction: 'consumption',
-      category: 'source',
-      parentMeterId: '',
-      phases: 1,
-      nominalCurrentA: 0,
-      nominalVoltageV: 0,
-      ctRatio: 1,
-      vtRatio: 1,
-      pulsesPerUnit: 1,
-      assignedToType: 'generator',
-      assignedToId: ids.waermepumpe,
-      communication: {
-        ...createDefaultCommunication(),
-        protocol: 'mbus_tcp',
-        ipAddress: '192.168.1.60',
-        port: 10002,
-        pollingIntervalSeconds: 60,
-        enabled: true,
-      },
-      registerMappings: [],
-      notes: 'Kamstrup Multical 303 auf der Quellenleitung der Luft-Wasser-WP. Misst die der Umgebungsluft entzogene Wärme.',
-    },
-    {
-      id: ids.raumzaehlerWe1,
-      name: 'Wärmezähler WE 1',
-      type: 'heat',
-      meterNumber: 'WMZ-WE1-001',
-      direction: 'consumption',
-      category: 'circuit',
-      parentMeterId: ids.waermeZaehlerHeizung,
-      phases: 1,
-      nominalCurrentA: 0,
-      nominalVoltageV: 0,
-      ctRatio: 1,
-      vtRatio: 1,
-      pulsesPerUnit: 1,
-      assignedToType: 'none' as const,
-      assignedToId: '',
-      communication: {
-        ...createDefaultCommunication(),
-        protocol: 'mbus_tcp' as const,
-        ipAddress: '192.168.1.60',
-        port: 10003,
-        pollingIntervalSeconds: 300,
-        enabled: true,
-      },
-      registerMappings: [],
-      notes: 'Heizkostenerfassung WE 1. Wärmemengenzähler am FBH-Verteiler EG links. M-Bus über TCP-Gateway.',
-    },
+
+    // --- END (1) ---
     {
       id: ids.endzaehlerWallbox1,
       name: 'Endzähler Wallbox 1',
@@ -1099,7 +1529,36 @@ export function createBavariaSeedData() {
         enabled: true,
       },
       registerMappings: [],
-      notes: 'MID-konformer Zähler in Wallbox 1 integriert. Für eichrechtskonforme Abrechnung nach §14a EnWG.',
+      notes: 'MID-konformer Zähler in Wallbox 1 integriert. Eichrechtskonform.',
+    },
+
+    // Kältemaschine Stromzähler (consumption)
+    {
+      id: ids.kaeltemaschinenZaehler,
+      name: 'Kältemaschine-Stromzähler',
+      type: 'electricity',
+      meterNumber: 'KM-E-001',
+      direction: 'consumption',
+      category: 'consumption',
+      parentMeterId: ids.hauptzaehlerStrom,
+      phases: 3,
+      nominalCurrentA: 16,
+      nominalVoltageV: 230,
+      ctRatio: 1,
+      vtRatio: 1,
+      pulsesPerUnit: 1000,
+      assignedToType: 'generator',
+      assignedToId: ids.kaeltemaschine,
+      communication: {
+        ...createDefaultCommunication(),
+        protocol: 'modbus_tcp',
+        ipAddress: '192.168.1.46',
+        port: 502,
+        pollingIntervalSeconds: 10,
+        enabled: true,
+      },
+      registerMappings: [],
+      notes: 'Eastron SDM630. Stromverbrauch Kältemaschine (für EER-Berechnung).',
     },
   ]
 

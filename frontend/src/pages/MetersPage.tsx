@@ -3,45 +3,11 @@ import { v4 as uuid } from 'uuid'
 import { Plus, Edit2, Gauge, X, Copy, ArrowLeft } from 'lucide-react'
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
-import { InputField, SelectField, TextareaField, Section } from '../components/ui/FormField'
-import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { MeterForm } from '../components/forms/MeterForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Meter, MeterType, MeterDirection, MeterCategory, MeterAssignmentType } from '../types'
+import type { Meter, MeterType, MeterDirection, MeterCategory, EnergyPort } from '../types'
 import { createDefaultCommunication } from '../types'
-
-const meterTypeOptions = [
-  { value: 'electricity', label: 'Stromzähler' },
-  { value: 'heat', label: 'Wärmemengenzähler' },
-  { value: 'gas', label: 'Gaszähler' },
-  { value: 'water', label: 'Wasserzähler' },
-  { value: 'cold', label: 'Kältemengenzähler' },
-]
-
-const directionOptions = [
-  { value: 'consumption', label: 'Verbrauch' },
-  { value: 'generation', label: 'Erzeugung' },
-  { value: 'bidirectional', label: 'Bidirektional (Zweirichtung)' },
-  { value: 'grid_feed_in', label: 'Netzeinspeisung' },
-  { value: 'grid_consumption', label: 'Netzbezug' },
-]
-
-const categoryOptions = [
-  { value: 'source', label: 'Quellenzähler' },
-  { value: 'generation', label: 'Erzeugerzähler' },
-  { value: 'consumption', label: 'Heiz-/Kühlkreiszähler' },
-  { value: 'circuit', label: 'Raumzähler' },
-  { value: 'group', label: 'Verbrauchergruppenzähler' },
-  { value: 'end', label: 'Endzähler' },
-  { value: 'unassigned', label: 'Nicht zugeordnet' },
-]
-
-const assignmentTypeOptions = [
-  { value: 'none', label: '— Keine Zuordnung —' },
-  { value: 'generator', label: 'Erzeuger' },
-  { value: 'consumer', label: 'Verbraucher' },
-  { value: 'storage', label: 'Speicher' },
-  { value: 'grid', label: 'Hausanschluss' },
-]
+import { mkPort } from '../components/ui/PortEditor'
 
 const typeColors: Record<MeterType, string> = {
   electricity: 'bg-yellow-500/15 text-yellow-400',
@@ -49,6 +15,7 @@ const typeColors: Record<MeterType, string> = {
   gas: 'bg-blue-500/15 text-blue-400',
   water: 'bg-cyan-500/15 text-cyan-400',
   cold: 'bg-indigo-500/15 text-indigo-400',
+  source: 'bg-teal-500/15 text-teal-400',
 }
 
 const typeLabels: Record<MeterType, string> = {
@@ -57,6 +24,7 @@ const typeLabels: Record<MeterType, string> = {
   gas: 'Gas',
   water: 'Wasser',
   cold: 'Kälte',
+  source: 'Quelle',
 }
 
 const categoryLabels: Record<MeterCategory, string> = {
@@ -75,6 +43,14 @@ const directionLabels: Record<MeterDirection, string> = {
   bidirectional: 'Bidirektional',
   grid_feed_in: 'Einspeisung',
   grid_consumption: 'Netzbezug',
+}
+
+function createDefaultMeterPorts(type: MeterType, direction: MeterDirection): EnergyPort[] {
+  const energy = type === 'electricity' ? 'electricity' : type === 'heat' ? 'heat' : type === 'gas' ? 'gas' : type === 'cold' ? 'cold' : type === 'source' ? 'source' : 'electricity'
+  const label = typeLabels[type] || 'Energie'
+  if (direction === 'bidirectional') return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
+  if (direction === 'generation' || direction === 'grid_feed_in') return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
+  return [mkPort('input', energy as any, label + ' rein'), mkPort('output', energy as any, label + ' raus')]
 }
 
 function createDefaultMeter(): Meter {
@@ -96,16 +72,17 @@ function createDefaultMeter(): Meter {
     assignedToId: '',
     communication: createDefaultCommunication(),
     registerMappings: [],
+    ports: createDefaultMeterPorts('electricity', 'consumption'),
     notes: '',
   }
 }
 
 export default function MetersPage() {
-  const { meters, generators, consumers, storages, addMeter, updateMeter, removeMeter } = useEnergyStore()
+  const { meters, addMeter, updateMeter, removeMeter } = useEnergyStore()
   const [editing, setEditing] = useState<Meter | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [draftMeter, setDraftMeter] = useState<Meter | null>(null)
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = () => {
     setEditing(createDefaultMeter())
@@ -199,23 +176,6 @@ export default function MetersPage() {
     setEditing(null)
   }
 
-  const update = <K extends keyof Meter>(key: K, value: Meter[K]) => {
-    if (!editing) return
-    setEditing({ ...editing, [key]: value })
-  }
-
-  // Zuordnungs-Optionen basierend auf Typ
-  const getAssignmentOptions = () => {
-    if (!editing) return []
-    switch (editing.assignedToType) {
-      case 'generator': return generators.map((g) => ({ value: g.id, label: g.name || 'Unbenannt' }))
-      case 'consumer': return consumers.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
-      case 'storage': return storages.map((s) => ({ value: s.id, label: s.name || 'Unbenannt' }))
-      case 'grid': return [{ value: 'grid', label: 'Hausanschluss' }]
-      default: return []
-    }
-  }
-
   const parentMeterOptions = meters
     .filter((m) => m.id !== editing?.id)
     .map((m) => ({ value: m.id, label: m.name || m.meterNumber }))
@@ -250,114 +210,7 @@ export default function MetersPage() {
         )}
 
         <div className="space-y-4">
-          <Section title="Grunddaten" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Hausanschluss-Zähler, PV-Erzeugungszähler" />
-              <InputField label="Zählernummer" value={editing.meterNumber} onChange={(v) => update('meterNumber', v)} placeholder="z.B. 1EMH0012345678" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <SelectField label="Medium" value={editing.type} onChange={(v) => update('type', v as MeterType)} options={meterTypeOptions} />
-              <SelectField label="Messrichtung" value={editing.direction} onChange={(v) => update('direction', v as MeterDirection)} options={directionOptions} />
-              <SelectField label="Zählerart" value={editing.category} onChange={(v) => update('category', v as MeterCategory)} options={categoryOptions} />
-            </div>
-            {parentMeterOptions.length > 0 && (
-              <div>
-                <SelectField label="Übergeordneter Zähler (optional)" value={editing.parentMeterId} onChange={(v) => update('parentMeterId', v)} options={[{ value: '', label: '— Kein übergeordneter Zähler —' }, ...parentMeterOptions]} hint="Zählerhierarchie für Abrechnungszwecke" />
-              </div>
-            )}
-          </Section>
-
-          {editing.type === 'electricity' && (
-            <Section title="Elektrische Eigenschaften" defaultOpen={true}>
-              <div className="grid grid-cols-3 gap-4">
-                <SelectField label="Phasen" value={String(editing.phases)} onChange={(v) => update('phases', Number(v) as 1 | 3)} options={[{ value: '1', label: '1-phasig' }, { value: '3', label: '3-phasig' }]} />
-                <InputField label="Nennstrom" value={editing.nominalCurrentA} onChange={(v) => update('nominalCurrentA', Number(v))} type="number" unit="A" />
-                <InputField label="Nennspannung" value={editing.nominalVoltageV} onChange={(v) => update('nominalVoltageV', Number(v))} type="number" unit="V" />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <InputField label="Stromwandler-Faktor" value={editing.ctRatio} onChange={(v) => update('ctRatio', Number(v))} type="number" hint="CT Ratio, 1 = Direktmessung" step="0.1" />
-                <InputField label="Spannungswandler-Faktor" value={editing.vtRatio} onChange={(v) => update('vtRatio', Number(v))} type="number" hint="VT Ratio, 1 = Direktmessung" step="0.1" />
-                <InputField label="Impulse pro kWh" value={editing.pulsesPerUnit} onChange={(v) => update('pulsesPerUnit', Number(v))} type="number" hint="S0-Schnittstelle" />
-              </div>
-            </Section>
-          )}
-
-          <Section title="Zuordnung" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <SelectField
-                label="Zuordnung zu"
-                value={editing.assignedToType}
-                onChange={(v) => { update('assignedToType', v as MeterAssignmentType); update('assignedToId', '') }}
-                options={assignmentTypeOptions}
-              />
-              {editing.assignedToType !== 'none' && (
-                getAssignmentOptions().length > 0 ? (
-                  <div>
-                    <SelectField
-                      label="Zugeordnetes Gerät"
-                      value={editing.assignedToId}
-                      onChange={(v) => update('assignedToId', v)}
-                      options={getAssignmentOptions()}
-                    />
-                    {editing.assignedToType === 'consumer' && (
-                      <button onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Verbraucher anlegen</button>
-                    )}
-                    {editing.assignedToType === 'generator' && (
-                      <button onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Erzeuger anlegen</button>
-                    )}
-                    {editing.assignedToType === 'storage' && (
-                      <button onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'assignedToId', assignMode: 'single', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Speicher anlegen</button>
-                    )}
-                  </div>
-                ) : editing.assignedToType === 'consumer' ? (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/consumers', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Verbraucher jetzt anlegen</span>
-                    </button>
-                  </div>
-                ) : editing.assignedToType === 'generator' ? (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Erzeuger jetzt anlegen</span>
-                    </button>
-                  </div>
-                ) : editing.assignedToType === 'storage' ? (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'assignedToId', assignMode: 'single', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Speicher jetzt anlegen</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="label">Zugeordnetes Gerät</label>
-                    <p className="text-sm text-dark-faded mt-1">Hausanschluss wird automatisch zugeordnet</p>
-                  </div>
-                )
-              )}
-            </div>
-          </Section>
-
-          <CommunicationForm config={editing.communication} onChange={(c) => update('communication', c)} />
-
-          <Section title="Notizen" defaultOpen={false}>
-            <TextareaField label="Bemerkungen" value={editing.notes} onChange={(v) => update('notes', v)} />
-          </Section>
-
+          <MeterForm entity={editing} onChange={setEditing} parentMeterOptions={parentMeterOptions} />
           <div className="flex gap-3 pt-4 border-t">
             <button onClick={save} className="btn-primary" disabled={!editing.name}>Speichern</button>
             <button onClick={cancel} className="btn-secondary">Abbrechen</button>

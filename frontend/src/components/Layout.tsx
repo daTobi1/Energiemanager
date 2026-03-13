@@ -1,9 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   LayoutDashboard, Settings, Gauge, Sun, Plug, Battery,
-  Home, Waypoints, Monitor,
-  GitBranch, BarChart3, Zap,
+  Home, Waypoints, Monitor, Target,
+  GitBranch, BarChart3, Zap, Wifi, WifiOff, PenTool,
+  Mountain, Activity, TrendingUp, Cloud,
 } from 'lucide-react'
+import { useEnergyStore } from '../store/useEnergyStore'
 
 interface NavGroup {
   title: string
@@ -20,8 +22,18 @@ const navGroups: NavGroup[] = [
   {
     title: 'VISUALISIERUNG',
     items: [
+      { to: '/hydraulic-schema', icon: PenTool, label: 'Hydraulikschema' },
+      { to: '/electrical-schema', icon: Zap, label: 'Stromschema' },
       { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
+      { to: '/trends', icon: TrendingUp, label: 'Trends' },
+      { to: '/weather', icon: Cloud, label: 'Wetter & Prognose' },
       { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
+    ],
+  },
+  {
+    title: 'OPTIMIERUNG',
+    items: [
+      { to: '/optimizer', icon: Target, label: 'Optimierer' },
     ],
   },
   {
@@ -34,6 +46,8 @@ const navGroups: NavGroup[] = [
       { to: '/rooms', icon: Home, label: 'Räume' },
       { to: '/consumers', icon: Plug, label: 'Verbraucher' },
       { to: '/meters', icon: Gauge, label: 'Zähler' },
+      { to: '/sources', icon: Mountain, label: 'Quellen' },
+      { to: '/sensors', icon: Activity, label: 'Sensoren' },
     ],
   },
   {
@@ -45,6 +59,9 @@ const navGroups: NavGroup[] = [
 ]
 
 export default function Layout() {
+  const apiConnected = useEnergyStore((s) => s.apiConnected)
+  const syncing = useEnergyStore((s) => s.syncing)
+
   return (
     <div className="flex h-screen bg-dark-bg">
       {/* Sidebar */}
@@ -91,8 +108,19 @@ export default function Layout() {
         </nav>
 
         <div className="p-4 border-t border-dark-border">
+          <div className="flex items-center gap-2 mb-1">
+            {syncing ? (
+              <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            ) : apiConnected ? (
+              <Wifi className="w-3 h-3 text-emerald-400" />
+            ) : (
+              <WifiOff className="w-3 h-3 text-dark-faded" />
+            )}
+            <span className="text-xs text-dark-faded">
+              {syncing ? 'Synchronisiere...' : apiConnected ? 'Backend verbunden' : 'Offline-Modus'}
+            </span>
+          </div>
           <p className="text-xs text-dark-faded">EnergyManager v0.1.0</p>
-          <p className="text-xs text-dark-hover">Prototyp</p>
         </div>
       </aside>
 

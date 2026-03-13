@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, Section } from '../components/ui/FormField'
 import {
-  Building2, MapPin, Thermometer, Banknote, Zap, Cloud,
+  Building2, MapPin, Thermometer, Banknote, Cloud,
   CheckCircle2, Search, Loader2, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import type { SystemSettings, TariffType } from '../types'
@@ -243,27 +243,26 @@ export default function SettingsPage() {
           )}
         </Section>
 
-        <Section title="Hausanschluss" icon={<Zap className="w-4 h-4 text-indigo-400" />} defaultOpen={true}>
-          <div className="grid grid-cols-3 gap-4">
-            <InputField label="Max. Anschlussleistung" value={settings.gridMaxPowerKw} onChange={(v) => update('gridMaxPowerKw', Number(v))} type="number" unit="kW" info="Maximale Leistung des Hausanschlusses laut Anschlussvertrag." />
-            <InputField label="Nennspannung" value={settings.gridVoltageV} onChange={(v) => update('gridVoltageV', Number(v))} type="number" unit="V" />
-            <InputField label="Einspeisebegrenzung" value={settings.feedInLimitPercent} onChange={(v) => update('feedInLimitPercent', Number(v))} type="number" unit="%" hint="z.B. 70%-Regel" min={0} max={100} info="Maximale Einspeiseleistung in Prozent der installierten PV-Leistung (70%-Regelung nach EEG, seit 2023 auf 0% reduziert für neue Anlagen)." />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <InputField label="Netzbetreiber" value={settings.gridOperator} onChange={(v) => update('gridOperator', v)} placeholder="z.B. E.ON, Stadtwerke..." />
-            <InputField label="Zählpunkt-ID (MeLo)" value={settings.meterPointId} onChange={(v) => update('meterPointId', v)} placeholder="DE000..." hint="Marktlokations-ID" info="Die Marktlokations-ID (MaLo) identifiziert den Hausanschlusspunkt eindeutig im deutschen Stromnetz." />
-          </div>
-        </Section>
-
         <Section title="Wetter-API" icon={<Cloud className="w-4 h-4 text-sky-400" />} defaultOpen={true}>
           <div className="grid grid-cols-2 gap-4">
             <SelectField label="Anbieter" value={settings.weatherProvider} onChange={(v) => update('weatherProvider', v as SystemSettings['weatherProvider'])} options={[
+              { value: 'openmeteo', label: 'Open-Meteo (kostenlos, kein Key)' },
               { value: 'openweathermap', label: 'OpenWeatherMap' },
               { value: 'brightsky', label: 'Bright Sky (DWD, kostenlos)' },
               { value: 'visual_crossing', label: 'Visual Crossing' },
-            ]} info="Wetterdaten werden für PV-Ertragsprognose und Heiz-/Kühlbedarf-Vorhersage benötigt." />
-            <InputField label="API-Key" value={settings.weatherApiKey} onChange={(v) => update('weatherApiKey', v)} type="password" hint={settings.weatherProvider === 'brightsky' ? 'Bright Sky benötigt keinen API-Key' : 'API-Key des Anbieters'} />
+            ]} info="Wetterdaten werden für PV-Ertragsprognose und Heiz-/Kühlbedarf-Vorhersage benötigt. Aktuell ist nur Open-Meteo im Backend implementiert." />
+            {settings.weatherProvider !== 'openmeteo' && settings.weatherProvider !== 'brightsky' && (
+              <InputField label="API-Key" value={settings.weatherApiKey} onChange={(v) => update('weatherApiKey', v)} type="password" hint="API-Key des Anbieters" />
+            )}
+            {(settings.weatherProvider === 'openmeteo' || settings.weatherProvider === 'brightsky') && (
+              <div className="flex items-end pb-1">
+                <p className="text-xs text-dark-faded">Kein API-Key erforderlich</p>
+              </div>
+            )}
           </div>
+          {settings.weatherProvider !== 'openmeteo' && (
+            <p className="text-xs text-amber-400 mt-2">Hinweis: Im Backend ist aktuell nur Open-Meteo implementiert. Andere Anbieter werden in einer zukuenftigen Version unterstuetzt.</p>
+          )}
         </Section>
 
         <div className="card bg-emerald-500/10 border-emerald-500/30">

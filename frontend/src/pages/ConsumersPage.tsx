@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
 import { Plus, Edit2, Plug, X, Copy, Home, Factory, Lightbulb, Wind, Car, Droplets, ArrowLeft } from 'lucide-react'
+
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
-import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
-import { CommunicationForm } from '../components/ui/CommunicationForm'
+import { ConsumerForm } from '../components/forms/ConsumerForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Consumer, ConsumerType, LoadProfile } from '../types'
+import type { Consumer, ConsumerType, LoadProfile, EnergyPort } from '../types'
 import { createDefaultCommunication } from '../types'
+import { mkPort } from '../components/ui/PortEditor'
 
 const consumerTypeOptions = [
   { value: 'household', label: 'Haushalt' },
@@ -72,6 +73,14 @@ const typeLabels: Record<ConsumerType, string> = {
   other: 'Sonstige',
 }
 
+function createDefaultConsumerPorts(type: ConsumerType): EnergyPort[] {
+  switch (type) {
+    case 'hvac':       return [mkPort('input', 'electricity', 'Strom'), mkPort('input', 'heat', 'Heizung'), mkPort('input', 'cold', 'Kälte')]
+    case 'hot_water':  return [mkPort('input', 'electricity', 'Strom'), mkPort('input', 'heat', 'Wärme')]
+    default:           return [mkPort('input', 'electricity', 'Strom')]
+  }
+}
+
 function createDefaultConsumer(type: ConsumerType): Consumer {
   return {
     id: uuid(),
@@ -86,6 +95,7 @@ function createDefaultConsumer(type: ConsumerType): Consumer {
     connectedSourceIds: [],
     assignedMeterIds: [],
     communication: createDefaultCommunication(),
+    ports: createDefaultConsumerPorts(type),
     notes: '',
     wallboxMaxPowerKw: 22,
     wallboxPhases: 3,
@@ -97,16 +107,14 @@ function createDefaultConsumer(type: ConsumerType): Consumer {
 }
 
 export default function ConsumersPage() {
-  const { consumers, rooms, meters, storages, addConsumer, updateConsumer, removeConsumer, updateRoom } = useEnergyStore()
+  const { consumers, addConsumer, updateConsumer, removeConsumer } = useEnergyStore()
   const [editing, setEditing] = useState<Consumer | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [selectedRoomId, setSelectedRoomId] = useState('')
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, returnFromFlow } = useCreateNavigation()
 
-  const startAdd = (type: ConsumerType) => { setEditing(createDefaultConsumer(type)); setSelectedRoomId(''); setShowForm(true) }
+  const startAdd = (type: ConsumerType) => { setEditing(createDefaultConsumer(type)); setShowForm(true) }
   const startEdit = (c: Consumer) => {
     setEditing({ ...c })
-    setSelectedRoomId(rooms.find((r) => r.consumerIds.includes(c.id))?.id || '')
     setShowForm(true)
   }
 
@@ -135,22 +143,14 @@ export default function ConsumersPage() {
   // Handle return from other pages with a created entity
   useEffect(() => {
     if (pendingReturn) {
-      if (pendingReturn.assignField === 'selectedRoomId') {
-        setSelectedRoomId(pendingReturn.createdEntityId!)
-        setEditing({ ...pendingReturn.draft } as Consumer)
+      const draft = { ...pendingReturn.draft } as Consumer
+      if (pendingReturn.assignMode === 'single') {
+        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
       } else {
-        const draft = { ...pendingReturn.draft } as Consumer
-        if (pendingReturn.assignMode === 'single') {
-          (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
-        } else {
-          (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
-        }
-        setEditing(draft)
+        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
       }
+      setEditing(draft)
       setShowForm(true)
-      if (pendingReturn.extraState?.selectedRoomId !== undefined) {
-        setSelectedRoomId(pendingReturn.extraState.selectedRoomId)
-      }
       clearPendingCreation()
     }
   }, [pendingReturn])
@@ -159,18 +159,6 @@ export default function ConsumersPage() {
     if (!editing) return
     if (consumers.find((c) => c.id === editing.id)) updateConsumer(editing.id, editing)
     else addConsumer(editing)
-
-    // Raumzuordnung aktualisieren
-    const currentRoom = rooms.find((r) => r.consumerIds.includes(editing.id))
-    if (currentRoom && currentRoom.id !== selectedRoomId) {
-      updateRoom(currentRoom.id, { ...currentRoom, consumerIds: currentRoom.consumerIds.filter((id) => id !== editing.id) })
-    }
-    if (selectedRoomId && (!currentRoom || currentRoom.id !== selectedRoomId)) {
-      const newRoom = rooms.find((r) => r.id === selectedRoomId)
-      if (newRoom) {
-        updateRoom(newRoom.id, { ...newRoom, consumerIds: [...newRoom.consumerIds, editing.id] })
-      }
-    }
 
     // If we are a creation target, save and navigate back
     if (isCreationTarget) {
@@ -190,12 +178,6 @@ export default function ConsumersPage() {
     if (isFlowEdit || flowCreateNew) { returnFromFlow(); return }
     setShowForm(false); setEditing(null)
   }
-  const update = <K extends keyof Consumer>(key: K, value: Consumer[K]) => {
-    if (editing) setEditing({ ...editing, [key]: value })
-  }
-
-  const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
-  const roomOptions = [{ value: '', label: '— Kein Raum —' }, ...rooms.map((r) => ({ value: r.id, label: r.name || 'Unbenannt' }))]
 
   if (showForm && editing) {
     return (
@@ -219,129 +201,7 @@ export default function ConsumersPage() {
         )}
 
         <div className="space-y-4">
-          <Section title="Grunddaten" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <SelectField label="Typ" value={editing.type} onChange={(v) => { const c = createDefaultConsumer(v as ConsumerType); setEditing({ ...c, id: editing.id, name: editing.name, connectedSourceIds: editing.connectedSourceIds, assignedMeterIds: editing.assignedMeterIds }) }} options={consumerTypeOptions} />
-              <InputField label="Bezeichnung" value={editing.name} onChange={(v) => update('name', v)} placeholder="z.B. Haushalt EG, Wallbox Carport" />
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <InputField label="Nennleistung" value={editing.nominalPowerKw} onChange={(v) => update('nominalPowerKw', Number(v))} type="number" unit="kW" step="0.1" />
-              <InputField label="Jahresverbrauch" value={editing.annualConsumptionKwh} onChange={(v) => update('annualConsumptionKwh', Number(v))} type="number" unit="kWh" hint="Geschätzter Jahresverbrauch" />
-              <SelectField label="Lastprofil" value={editing.loadProfile} onChange={(v) => update('loadProfile', v as LoadProfile)} options={loadProfileOptions} hint="Standardlastprofil BDEW" />
-            </div>
-            {meterOptions.length > 0 ? (
-              <div>
-                <SelectField
-                  label="Zugeordneter Zähler"
-                  value={editing.assignedMeterIds[0] || ''}
-                  onChange={(v) => update('assignedMeterIds', v ? [v] : [])}
-                  options={meterOptions}
-                />
-                <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing, extraState: { selectedRoomId } })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Zähler anlegen</button>
-              </div>
-            ) : (
-              <div>
-                <label className="label">Zugeordneter Zähler</label>
-                <button
-                  onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing, extraState: { selectedRoomId } })}
-                  className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm">Zähler jetzt anlegen</span>
-                </button>
-              </div>
-            )}
-            {rooms.length > 0 ? (
-              <div>
-                <SelectField
-                  label="Zugeordneter Raum"
-                  value={selectedRoomId}
-                  onChange={(v) => setSelectedRoomId(v)}
-                  options={roomOptions}
-                  hint="Optional — in welchem Raum befindet sich der Verbraucher?"
-                />
-                <button onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'selectedRoomId', assignMode: 'single', draft: editing, extraState: { selectedRoomId } })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Raum anlegen</button>
-              </div>
-            ) : (
-              <div>
-                <label className="label">Zugeordneter Raum</label>
-                <button
-                  onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'selectedRoomId', assignMode: 'single', draft: editing, extraState: { selectedRoomId } })}
-                  className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm">Raum jetzt anlegen</span>
-                </button>
-              </div>
-            )}
-          </Section>
-
-          <Section title="Energiequellen" defaultOpen={true}>
-            <p className="text-sm text-dark-faded mb-3">Von welchen Quellen wird dieser Verbraucher versorgt?</p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={(editing.connectedSourceIds || []).includes('grid')}
-                  onChange={(e) => {
-                    const ids = e.target.checked
-                      ? [...(editing.connectedSourceIds || []), 'grid']
-                      : (editing.connectedSourceIds || []).filter((id) => id !== 'grid')
-                    update('connectedSourceIds', ids)
-                  }}
-                  className="w-4 h-4 text-emerald-600 rounded"
-                />
-                Netz (Hausanschluss)
-              </label>
-              {storages.filter((s) => s.type === 'battery').map((s) => (
-                <label key={s.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={(editing.connectedSourceIds || []).includes(s.id)}
-                    onChange={(e) => {
-                      const ids = e.target.checked
-                        ? [...(editing.connectedSourceIds || []), s.id]
-                        : (editing.connectedSourceIds || []).filter((id) => id !== s.id)
-                      update('connectedSourceIds', ids)
-                    }}
-                    className="w-4 h-4 text-emerald-600 rounded"
-                  />
-                  {s.name || 'Batteriespeicher'}
-                </label>
-              ))}
-            </div>
-          </Section>
-
-          <Section title="Lastmanagement" defaultOpen={true}>
-            <div className="grid grid-cols-2 gap-4">
-              <CheckboxField label="Steuerbar" checked={editing.controllable} onChange={(v) => update('controllable', v)} hint="Leistung kann vom System geregelt werden" />
-              <CheckboxField label="Abschaltbar (Lastabwurf)" checked={editing.sheddable} onChange={(v) => update('sheddable', v)} hint="Kann bei Engpässen abgeschaltet werden" />
-            </div>
-            <InputField label="Priorität" value={editing.priority} onChange={(v) => update('priority', Number(v))} type="number" min={1} max={10} hint="1 = höchste Priorität (zuletzt abschalten), 10 = niedrigste" />
-          </Section>
-
-          {/* Wallbox-spezifische Felder */}
-          {editing.type === 'wallbox' && (
-            <Section title="Wallbox / Ladestation" defaultOpen={true} badge="Wallbox">
-              <div className="grid grid-cols-3 gap-4">
-                <InputField label="Max. Ladeleistung" value={editing.wallboxMaxPowerKw} onChange={(v) => update('wallboxMaxPowerKw', Number(v))} type="number" unit="kW" step="0.1" />
-                <SelectField label="Phasen" value={String(editing.wallboxPhases)} onChange={(v) => update('wallboxPhases', Number(v) as 1 | 3)} options={[{ value: '1', label: '1-phasig (3.7 kW)' }, { value: '3', label: '3-phasig (11/22 kW)' }]} />
-                <InputField label="Min. Ladestrom" value={editing.wallboxMinCurrentA} onChange={(v) => update('wallboxMinCurrentA', Number(v))} type="number" unit="A" hint="Min. 6A nach Norm" min={6} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <InputField label="Fahrzeug-Batterie" value={editing.vehicleBatteryKwh} onChange={(v) => update('vehicleBatteryKwh', Number(v))} type="number" unit="kWh" hint="Kapazität des E-Fahrzeugs" />
-                <InputField label="Fahrzeug-Verbrauch" value={editing.vehicleConsumptionPer100km} onChange={(v) => update('vehicleConsumptionPer100km', Number(v))} type="number" unit="kWh/100km" step="0.1" />
-              </div>
-              <CheckboxField label="OCPP-fähig" checked={editing.ocppEnabled} onChange={(v) => update('ocppEnabled', v)} hint="Open Charge Point Protocol für intelligentes Laden" />
-            </Section>
-          )}
-
-          <CommunicationForm config={editing.communication} onChange={(c) => update('communication', c)} />
-
-          <Section title="Notizen" defaultOpen={false}>
-            <TextareaField label="Bemerkungen" value={editing.notes} onChange={(v) => update('notes', v)} />
-          </Section>
-
+          <ConsumerForm entity={editing} onChange={setEditing} />
           <div className="flex gap-3 pt-4 border-t">
             <button onClick={save} className="btn-primary" disabled={!editing.name}>Speichern</button>
             <button onClick={cancel} className="btn-secondary">Abbrechen</button>
