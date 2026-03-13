@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.config import SystemSettingsConfig
 from app.models.weather import WeatherCache
+from app.services.load_forecast import load_forecast_service
 from app.services.pv_forecast import pv_forecast_service
 from app.services.weather import weather_service
 
@@ -101,6 +102,12 @@ async def get_weather_forecast(
 async def get_pv_forecast(hours: int = Query(72, ge=1, le=168)):
     """PV-Ertragsprognose basierend auf Wetterdaten + Anlagenparametern."""
     return await pv_forecast_service.get_forecast(hours)
+
+
+@router.get("/load-forecast")
+async def get_load_forecast(hours: int = Query(72, ge=1, le=168)):
+    """Last-Prognose basierend auf Profil + Wetter + historischen Mustern."""
+    return await load_forecast_service.get_forecast(hours)
 
 
 @router.get("/pv-accuracy")

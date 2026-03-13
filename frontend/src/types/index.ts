@@ -680,6 +680,20 @@ export interface PvForecastResponse {
   error?: string
 }
 
+export interface LoadForecastHourly {
+  time: string
+  power_kw: number
+  temperature_c: number
+  profile_factor: number
+}
+
+export interface LoadForecastResponse {
+  generated_at: string
+  annual_consumption_kwh: number
+  hourly: LoadForecastHourly[]
+  daily_summary: Record<string, number>
+}
+
 export interface PvAccuracyResponse {
   mae: number
   rmse: number

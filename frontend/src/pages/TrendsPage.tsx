@@ -213,26 +213,51 @@ export default function TrendsPage() {
       .catch(() => {})
   }, [])
 
-  // PV Forecast overlay: fetch when definition has pv.power_kw
+  // Forecast overlays: PV + Load
   const hasPvSeries = selectedDef.series.some(s => s.source === 'pv' && s.metric === 'power_kw')
+  const hasLoadSeries = selectedDef.series.some(s => s.source === 'load' && s.metric === 'power_kw')
   useEffect(() => {
-    if (!hasPvSeries) {
+    const overlays: ForecastOverlay[] = []
+    const promises: Promise<void>[] = []
+
+    if (hasPvSeries) {
+      promises.push(
+        api.weather.pvForecast(72).then(fc => {
+          if (fc?.hourly?.length) {
+            overlays.push({
+              timestamps: fc.hourly.map(h => h.time),
+              values: fc.hourly.map(h => h.power_kw),
+              label: 'PV-Prognose',
+              color: '#f59e0b',
+            })
+          }
+        }).catch(() => {})
+      )
+    }
+    if (hasLoadSeries) {
+      promises.push(
+        api.weather.loadForecast(72).then(fc => {
+          if (fc?.hourly?.length) {
+            overlays.push({
+              timestamps: fc.hourly.map(h => h.time),
+              values: fc.hourly.map(h => h.power_kw),
+              label: 'Last-Prognose',
+              color: '#60a5fa',
+            })
+          }
+        }).catch(() => {})
+      )
+    }
+
+    if (promises.length === 0) {
       setPvForecastOverlay(undefined)
       return
     }
-    api.weather.pvForecast(72).then(fc => {
-      if (fc?.hourly?.length) {
-        setPvForecastOverlay([{
-          timestamps: fc.hourly.map(h => h.time),
-          values: fc.hourly.map(h => h.power_kw),
-          label: 'PV-Prognose',
-          color: '#f59e0b',
-        }])
-      } else {
-        setPvForecastOverlay(undefined)
-      }
-    }).catch(() => setPvForecastOverlay(undefined))
-  }, [hasPvSeries])
+
+    Promise.all(promises).then(() => {
+      setPvForecastOverlay(overlays.length > 0 ? overlays : undefined)
+    })
+  }, [hasPvSeries, hasLoadSeries])
 
   // Fetch data when sources, range or interval change
   useEffect(() => {

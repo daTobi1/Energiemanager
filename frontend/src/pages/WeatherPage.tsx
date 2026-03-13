@@ -5,7 +5,7 @@ import {
   CloudLightning, CloudFog, Camera,
 } from 'lucide-react'
 import { api } from '../api/client'
-import type { WeatherCurrent, WeatherForecast, PvForecastResponse } from '../types'
+import type { WeatherCurrent, WeatherForecast, PvForecastResponse, LoadForecastResponse } from '../types'
 
 let Plotly: typeof import('plotly.js-dist-min') | null = null
 
@@ -42,26 +42,30 @@ export default function WeatherPage() {
   const [current, setCurrent] = useState<WeatherCurrent | null>(null)
   const [forecast, setForecast] = useState<WeatherForecast | null>(null)
   const [pvForecast, setPvForecast] = useState<PvForecastResponse | null>(null)
+  const [loadForecast, setLoadForecast] = useState<LoadForecastResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
   const weatherChartRef = useRef<HTMLDivElement>(null)
   const pvChartRef = useRef<HTMLDivElement>(null)
+  const loadChartRef = useRef<HTMLDivElement>(null)
   const [chartsRendered, setChartsRendered] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
-      const [cur, fc, pv] = await Promise.all([
+      const [cur, fc, pv, load] = await Promise.all([
         api.weather.current().catch(() => null),
         api.weather.forecast(72).catch(() => null),
         api.weather.pvForecast(72).catch(() => null),
+        api.weather.loadForecast(72).catch(() => null),
       ])
       setCurrent(cur)
       setForecast(fc as WeatherForecast | null)
       setPvForecast(pv)
+      setLoadForecast(load)
     } catch (e: any) {
       setError(e.message || 'Fehler beim Laden')
     } finally {
@@ -180,6 +184,47 @@ export default function WeatherPage() {
         })
       }
 
+      // Load Forecast chart
+      if (loadChartRef.current && loadForecast?.hourly?.length) {
+        const loadTimes = loadForecast.hourly.map(d => d.time)
+        const traces: any[] = [
+          {
+            type: 'scatter', x: loadTimes, y: loadForecast.hourly.map(d => d.power_kw),
+            mode: 'lines', name: 'Last-Prognose kW',
+            line: { color: '#3b82f6', width: 2 },
+            fill: 'tozeroy', fillcolor: 'rgba(59, 130, 246, 0.12)',
+            hovertemplate: '<b>Last</b>: %{y:.2f} kW<extra></extra>',
+          },
+          {
+            type: 'scatter', x: loadTimes, y: loadForecast.hourly.map(d => d.temperature_c),
+            mode: 'lines', name: 'Temperatur °C',
+            line: { color: '#ef4444', width: 1, dash: 'dot' }, yaxis: 'y2',
+            hovertemplate: '<b>Temp</b>: %{y:.1f} °C<extra></extra>',
+          },
+        ]
+        const layout: Record<string, any> = {
+          font: { size: 12, family: 'system-ui, sans-serif', color: '#b1bac4' },
+          paper_bgcolor: '#0d1117', plot_bgcolor: '#161b22',
+          margin: { t: 10, l: 55, r: 55, b: 40 }, height: 300,
+          legend: { orientation: 'h', y: -0.18, x: 0.5, xanchor: 'center', font: { size: 11 } },
+          hovermode: 'x unified',
+          hoverlabel: { bgcolor: '#1c2128', bordercolor: '#30363d', font: { size: 12, color: '#e6edf3' } },
+          xaxis: { type: 'date', gridcolor: '#21262d', linecolor: '#30363d', tickfont: { size: 10 } },
+          yaxis: {
+            title: 'kW', gridcolor: '#21262d', linecolor: '#30363d', zeroline: false,
+            rangemode: 'tozero', titlefont: { color: '#3b82f6' },
+          },
+          yaxis2: {
+            title: '°C', overlaying: 'y', side: 'right',
+            gridcolor: '#21262d', linecolor: '#30363d', zeroline: false,
+            titlefont: { color: '#ef4444' },
+          },
+        }
+        Plotly!.newPlot(loadChartRef.current, traces, layout, {
+          responsive: true, displayModeBar: false,
+        })
+      }
+
       setChartsRendered(true)
     }
 
@@ -188,9 +233,10 @@ export default function WeatherPage() {
       cancelled = true
       if (weatherChartRef.current && Plotly) try { Plotly.purge(weatherChartRef.current) } catch {}
       if (pvChartRef.current && Plotly) try { Plotly.purge(pvChartRef.current) } catch {}
+      if (loadChartRef.current && Plotly) try { Plotly.purge(loadChartRef.current) } catch {}
       setChartsRendered(false)
     }
-  }, [forecast, pvForecast])
+  }, [forecast, pvForecast, loadForecast])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -372,21 +418,64 @@ export default function WeatherPage() {
         )}
       </div>
 
+      {/* Load Forecast */}
+      <div className="card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-blue-400" />
+            <h3 className="text-sm font-medium text-dark-text">Last-Prognose</h3>
+            {loadForecast && (
+              <span className="text-xs text-dark-faded">
+                {loadForecast.annual_consumption_kwh.toLocaleString('de-DE')} kWh/a
+              </span>
+            )}
+          </div>
+          {chartsRendered && (
+            <button
+              onClick={() => handleExportPng(loadChartRef, 'last_prognose')}
+              className="p-1.5 rounded bg-dark-hover/80 text-dark-faded hover:text-dark-text border border-dark-border/50 transition-colors"
+              title="Als PNG speichern"
+            >
+              <Camera className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <div ref={loadChartRef} style={{ minHeight: 300 }} />
+        {!loadForecast?.hourly?.length && !loading && (
+          <div className="flex items-center justify-center h-[300px] text-dark-faded text-sm">
+            Keine Verbraucher konfiguriert.
+          </div>
+        )}
+      </div>
+
       {/* Daily Energy Summary */}
       {dailySummary.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {dailySummary.map(([day, kwh], i) => (
-            <div key={day} className="card p-4">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-dark-faded">{dayLabels[i] || day}</span>
-                <span className="text-xs text-dark-faded">{day}</span>
+          {dailySummary.map(([day, kwh], i) => {
+            const loadKwh = loadForecast?.daily_summary?.[day]
+            return (
+              <div key={day} className="card p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-dark-faded">{dayLabels[i] || day}</span>
+                  <span className="text-xs text-dark-faded">{day}</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-baseline gap-1">
+                    <Sun className="w-4 h-4 text-yellow-400" />
+                    <span className="text-xl font-bold text-yellow-400">{kwh}</span>
+                    <span className="text-xs text-dark-faded">kWh</span>
+                  </div>
+                  {loadKwh != null && (
+                    <div className="flex items-baseline gap-1">
+                      <Zap className="w-4 h-4 text-blue-400" />
+                      <span className="text-xl font-bold text-blue-400">{loadKwh}</span>
+                      <span className="text-xs text-dark-faded">kWh</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-yellow-400">{kwh}</span>
-                <span className="text-sm text-dark-faded">kWh</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
