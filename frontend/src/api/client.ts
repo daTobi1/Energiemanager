@@ -11,6 +11,7 @@ import type {
   Room, HeatingCoolingCircuit, Source, Sensor, SystemSettings,
   TrendDefinition,
   WeatherCurrent, WeatherForecast, PvForecastResponse, PvAccuracyResponse, LoadForecastResponse, ThermalForecastResponse, OptimizationSchedule,
+  ControllerStatus, ControllerHistoryEntry,
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
@@ -148,6 +149,18 @@ export const api = {
   optimizer: {
     schedule: (hours = 24) =>
       request<OptimizationSchedule>(`/optimizer/schedule?hours=${hours}`),
+  },
+
+  controller: {
+    status: () => request<ControllerStatus>('/controller/status'),
+    setMode: (mode: string) =>
+      request<{ status: string; mode: string }>('/controller/mode', { method: 'POST', body: JSON.stringify({ mode }) }),
+    setOverride: (key: string, value: number) =>
+      request<{ status: string }>('/controller/override', { method: 'POST', body: JSON.stringify({ key, value }) }),
+    clearOverrides: () =>
+      request<{ status: string }>('/controller/overrides', { method: 'DELETE' }),
+    history: (last = 48) =>
+      request<{ count: number; entries: ControllerHistoryEntry[] }>(`/controller/history?last=${last}`),
   },
 
   /** Prüft ob das Backend erreichbar ist. */

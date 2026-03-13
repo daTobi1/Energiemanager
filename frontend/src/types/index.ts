@@ -787,6 +787,46 @@ export interface OptimizationSchedule {
 }
 
 // ============================================================
+// Controller (Regelung)
+// ============================================================
+
+export type ControllerMode = 'auto' | 'manual' | 'off'
+
+export interface ControllerSetpoints {
+  battery_kw: number
+  hp_modulation_pct: number
+  hp_thermal_kw: number
+  boiler_kw: number
+  flow_temp_c: number
+  wallbox_kw: number
+  source: string
+  strategy: string
+}
+
+export interface ControllerStatus {
+  mode: ControllerMode
+  safety_active: string | null
+  schedule_loaded: boolean
+  schedule_hours: number
+  schedule_strategy: string
+  manual_overrides: Record<string, number>
+  active_setpoints: ControllerSetpoints
+  history_count: number
+  avg_deviation_pct: number
+}
+
+export interface ControllerHistoryEntry {
+  timestamp: string
+  setpoint_battery_kw: number
+  actual_battery_kw: number
+  setpoint_grid_kw: number
+  actual_grid_kw: number
+  setpoint_hp_kw: number
+  actual_hp_kw: number
+  deviation_pct: number
+}
+
+// ============================================================
 // Defaults
 // ============================================================
 

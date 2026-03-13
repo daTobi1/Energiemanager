@@ -4,9 +4,10 @@ import { Section } from '../components/ui/FormField'
 import {
   Target, Leaf, Coins, Thermometer, Sun, Zap,
   RotateCcw, Info, CalendarClock, Loader2, Battery, TrendingDown,
+  Settings2, ShieldAlert, Play, Hand, Power, Gauge,
 } from 'lucide-react'
 import { api } from '../api/client'
-import type { OptimizerWeights, OptimizationSchedule } from '../types'
+import type { OptimizerWeights, OptimizationSchedule, ControllerStatus, ControllerHistoryEntry } from '../types'
 import { createDefaultOptimizerWeights } from '../types'
 
 let Plotly: typeof import('plotly.js-dist-min') | null = null
@@ -290,6 +291,11 @@ export default function OptimizerPage() {
   const scheduleChartRef = useRef<HTMLDivElement>(null)
   const socChartRef = useRef<HTMLDivElement>(null)
 
+  // Controller state
+  const [ctrlStatus, setCtrlStatus] = useState<ControllerStatus | null>(null)
+  const [ctrlHistory, setCtrlHistory] = useState<ControllerHistoryEntry[]>([])
+  const deviationChartRef = useRef<HTMLDivElement>(null)
+
   const setWeight = (key: keyof OptimizerWeights, value: number) => {
     updateSettings({
       optimizerWeights: { ...weights, [key]: value },
@@ -317,6 +323,31 @@ export default function OptimizerPage() {
     const timer = setTimeout(fetchSchedule, 1000)
     return () => clearTimeout(timer)
   }, [weights.economy, weights.co2Reduction, weights.comfort, weights.selfConsumption, weights.gridFriendly])
+
+  // Controller polling
+  const fetchController = useCallback(async () => {
+    try {
+      const [status, hist] = await Promise.all([
+        api.controller.status(),
+        api.controller.history(48),
+      ])
+      setCtrlStatus(status)
+      setCtrlHistory(hist.entries)
+    } catch { /* backend may not be running */ }
+  }, [])
+
+  useEffect(() => {
+    fetchController()
+    const iv = setInterval(fetchController, 5000)
+    return () => clearInterval(iv)
+  }, [fetchController])
+
+  const handleModeChange = async (mode: string) => {
+    try {
+      await api.controller.setMode(mode)
+      fetchController()
+    } catch { /* ignore */ }
+  }
 
   // Render schedule charts
   useEffect(() => {
@@ -407,6 +438,60 @@ export default function OptimizerPage() {
       if (socChartRef.current && Plotly) try { Plotly.purge(socChartRef.current) } catch {}
     }
   }, [schedule])
+
+  // Render deviation chart
+  useEffect(() => {
+    if (!ctrlHistory.length) return
+    let cancelled = false
+
+    const render = async () => {
+      if (!Plotly) Plotly = await import('plotly.js-dist-min')
+      if (cancelled || !deviationChartRef.current) return
+
+      const times = ctrlHistory.map(h => h.timestamp)
+      const traces: any[] = [
+        {
+          type: 'scatter', x: times, y: ctrlHistory.map(h => h.setpoint_battery_kw),
+          mode: 'lines', name: 'Soll Bat.', line: { color: '#22c55e', width: 2 },
+        },
+        {
+          type: 'scatter', x: times, y: ctrlHistory.map(h => h.actual_battery_kw),
+          mode: 'lines', name: 'Ist Bat.', line: { color: '#22c55e', width: 1, dash: 'dot' },
+        },
+        {
+          type: 'scatter', x: times, y: ctrlHistory.map(h => h.setpoint_hp_kw),
+          mode: 'lines', name: 'Soll WP', line: { color: '#f97316', width: 2 },
+        },
+        {
+          type: 'scatter', x: times, y: ctrlHistory.map(h => h.actual_hp_kw),
+          mode: 'lines', name: 'Ist WP', line: { color: '#f97316', width: 1, dash: 'dot' },
+        },
+        {
+          type: 'bar', x: times, y: ctrlHistory.map(h => h.deviation_pct),
+          name: 'Abweichung %', yaxis: 'y2',
+          marker: { color: ctrlHistory.map(h => h.deviation_pct > 20 ? 'rgba(239, 68, 68, 0.5)' : 'rgba(59, 130, 246, 0.3)') },
+        },
+      ]
+      const layout: Record<string, any> = {
+        font: { size: 12, family: 'system-ui, sans-serif', color: '#b1bac4' },
+        paper_bgcolor: '#0d1117', plot_bgcolor: '#161b22',
+        margin: { t: 10, l: 50, r: 50, b: 40 }, height: 250,
+        legend: { orientation: 'h', y: -0.2, x: 0.5, xanchor: 'center', font: { size: 11 } },
+        hovermode: 'x unified',
+        hoverlabel: { bgcolor: '#1c2128', bordercolor: '#30363d', font: { size: 12, color: '#e6edf3' } },
+        xaxis: { type: 'date', gridcolor: '#21262d', linecolor: '#30363d', tickfont: { size: 10 } },
+        yaxis: { title: 'kW', gridcolor: '#21262d', linecolor: '#30363d' },
+        yaxis2: { title: '%', overlaying: 'y', side: 'right', gridcolor: '#21262d', range: [0, 100] },
+      }
+      Plotly!.newPlot(deviationChartRef.current, traces, layout, { responsive: true, displayModeBar: false })
+    }
+
+    render()
+    return () => {
+      cancelled = true
+      if (deviationChartRef.current && Plotly) try { Plotly.purge(deviationChartRef.current) } catch {}
+    }
+  }, [ctrlHistory])
 
   const s = schedule?.summary
 
@@ -636,6 +721,151 @@ export default function OptimizerPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* === Controller (Regelung) === */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Settings2 className="w-5 h-5 text-cyan-400" />
+          <h2 className="text-lg font-bold text-dark-text">Regelung</h2>
+          {ctrlStatus?.safety_active && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/30 flex items-center gap-1">
+              <ShieldAlert className="w-3 h-3" /> {ctrlStatus.safety_active}
+            </span>
+          )}
+        </div>
+
+        {/* Mode Toggle */}
+        <div className="card p-4">
+          <h3 className="text-sm font-medium text-dark-text mb-3">Betriebsmodus</h3>
+          <div className="grid grid-cols-3 gap-3">
+            {([
+              { mode: 'auto', icon: Play, label: 'Automatik', desc: 'Fahrplan wird automatisch ausgefuehrt', color: 'emerald' },
+              { mode: 'manual', icon: Hand, label: 'Manuell', desc: 'Nur manuelle Overrides, kein Fahrplan', color: 'amber' },
+              { mode: 'off', icon: Power, label: 'Aus', desc: 'Simulator laeuft mit eigener Heuristik', color: 'gray' },
+            ] as const).map(({ mode, icon: Icon, label, desc, color }) => {
+              const isActive = ctrlStatus?.mode === mode
+              return (
+                <button
+                  key={mode}
+                  onClick={() => handleModeChange(mode)}
+                  className={`text-left p-3 rounded-lg border transition-colors ${
+                    isActive
+                      ? `border-${color}-500 bg-${color}-500/10`
+                      : 'border-dark-border bg-dark-hover hover:border-dark-faded'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon className={`w-4 h-4 ${isActive ? `text-${color}-400` : 'text-dark-faded'}`} />
+                    <span className={`text-sm font-medium ${isActive ? `text-${color}-400` : 'text-dark-text'}`}>
+                      {label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-dark-faded">{desc}</p>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Active Setpoints */}
+        {ctrlStatus && (
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Battery className="w-4 h-4 text-green-400" />
+                <span className="text-xs text-dark-faded">Batterie</span>
+              </div>
+              <span className={`text-lg font-bold ${ctrlStatus.active_setpoints.battery_kw >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {ctrlStatus.active_setpoints.battery_kw > 0 ? '+' : ''}{ctrlStatus.active_setpoints.battery_kw.toFixed(1)} kW
+              </span>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Gauge className="w-4 h-4 text-orange-400" />
+                <span className="text-xs text-dark-faded">WP Modul.</span>
+              </div>
+              <span className="text-lg font-bold text-orange-400">
+                {ctrlStatus.active_setpoints.hp_modulation_pct.toFixed(0)} %
+              </span>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Thermometer className="w-4 h-4 text-red-400" />
+                <span className="text-xs text-dark-faded">WP therm.</span>
+              </div>
+              <span className="text-lg font-bold text-red-400">
+                {ctrlStatus.active_setpoints.hp_thermal_kw.toFixed(1)} kW
+              </span>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-dark-faded">Kessel</span>
+              </div>
+              <span className="text-lg font-bold text-amber-400">
+                {ctrlStatus.active_setpoints.boiler_kw.toFixed(1)} kW
+              </span>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Thermometer className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs text-dark-faded">Vorlauf</span>
+              </div>
+              <span className="text-lg font-bold text-cyan-400">
+                {ctrlStatus.active_setpoints.flow_temp_c.toFixed(0)} °C
+              </span>
+            </div>
+            <div className="card p-3">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Settings2 className="w-4 h-4 text-purple-400" />
+                <span className="text-xs text-dark-faded">Quelle</span>
+              </div>
+              <span className="text-sm font-medium text-purple-400">
+                {ctrlStatus.active_setpoints.source}
+              </span>
+              <p className="text-xs text-dark-faded truncate">{ctrlStatus.active_setpoints.strategy}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Controller Info */}
+        {ctrlStatus && (
+          <div className="card p-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-dark-faded">Fahrplan geladen</span>
+                <span className={`ml-2 font-medium ${ctrlStatus.schedule_loaded ? 'text-emerald-400' : 'text-dark-faded'}`}>
+                  {ctrlStatus.schedule_loaded ? `Ja (${ctrlStatus.schedule_hours}h)` : 'Nein'}
+                </span>
+              </div>
+              <div>
+                <span className="text-dark-faded">Abweichung (1h)</span>
+                <span className={`ml-2 font-medium ${ctrlStatus.avg_deviation_pct > 20 ? 'text-red-400' : ctrlStatus.avg_deviation_pct > 10 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {ctrlStatus.avg_deviation_pct.toFixed(1)} %
+                </span>
+              </div>
+              <div>
+                <span className="text-dark-faded">Historie-Eintraege</span>
+                <span className="ml-2 font-medium text-dark-text">{ctrlStatus.history_count}</span>
+              </div>
+              <div>
+                <span className="text-dark-faded">Sicherheit</span>
+                <span className={`ml-2 font-medium ${ctrlStatus.safety_active ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {ctrlStatus.safety_active || 'Inaktiv'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Deviation Chart */}
+        {ctrlHistory.length > 0 && (
+          <div className="card p-4">
+            <h3 className="text-sm font-medium text-dark-text mb-2">Soll-Ist-Vergleich</h3>
+            <div ref={deviationChartRef} style={{ minHeight: 250 }} />
           </div>
         )}
       </div>

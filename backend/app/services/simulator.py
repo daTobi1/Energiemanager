@@ -59,6 +59,7 @@ class Simulator:
         self._config: dict[str, Any] = {}
         self._task: asyncio.Task | None = None
         self._sim_time: datetime | None = None  # Simulierte Uhrzeit
+        self._controller = None  # Wird bei start() gesetzt wenn verfuegbar
 
     @property
     def is_running(self) -> bool:
@@ -135,6 +136,13 @@ class Simulator:
         self._state = SimulatorState()
         self._sim_time = datetime.now(timezone.utc)
         await self._load_config()
+        # Controller anbinden (optional)
+        try:
+            from app.services.controller import controller
+            self._controller = controller
+            logger.info("Controller angebunden (Modus: %s)", controller.mode)
+        except Exception:
+            self._controller = None
         self._task = asyncio.create_task(self._run_loop())
         logger.info("Simulator gestartet (interval=%ds, speed=%dx)", interval, speed_factor)
 
@@ -194,32 +202,65 @@ class Simulator:
         month = now.month
         self._state.outdoor_temp_c = self._simulate_outdoor_temp(hour, month)
 
-        # === PV-Erzeugung ===
+        # === PV-Erzeugung (immer physikbasiert) ===
         pv_power_kw = self._simulate_pv(hour)
 
-        # === Wärmepumpe ===
-        hp_power_kw, hp_heat_kw = self._simulate_heat_pump(hour)
-
-        # === Gaskessel ===
-        boiler_heat_kw = self._simulate_boiler()
-
-        # === Haushaltslast ===
+        # === Haushaltslast (immer physikbasiert) ===
         load_kw = self._simulate_load(hour)
 
-        # === Gesamtbilanz (elektrisch) ===
-        total_generation_kw = pv_power_kw
-        total_consumption_kw = load_kw + hp_power_kw
+        # === Controller-gesteuert oder Heuristik ===
+        ctrl_setpoints = None
+        if self._controller and self._controller.mode != "off":
+            ctrl_setpoints = self._controller.get_setpoints_for_step(now, self._state)
 
-        surplus_kw = total_generation_kw - total_consumption_kw
+        if ctrl_setpoints and ctrl_setpoints.source != "heuristic":
+            # Controller-Modus: Setpoints uebernehmen
+            hp_power_kw, hp_heat_kw = self._apply_hp_setpoint(ctrl_setpoints, hour)
+            boiler_heat_kw = ctrl_setpoints.boiler_kw
 
-        # === Batteriespeicher ===
-        battery_power_kw = 0.0  # positiv=Laden, negativ=Entladen
-        if self._state.battery_capacity_kwh > 0:
-            battery_power_kw = self._simulate_battery(surplus_kw)
+            total_generation_kw = pv_power_kw
+            total_consumption_kw = load_kw + hp_power_kw
+            surplus_kw = total_generation_kw - total_consumption_kw
+
+            battery_power_kw = self._apply_battery_setpoint(ctrl_setpoints, surplus_kw)
+        else:
+            # Heuristik-Modus (wie bisher)
+            hp_power_kw, hp_heat_kw = self._simulate_heat_pump(hour)
+            boiler_heat_kw = self._simulate_boiler()
+
+            total_generation_kw = pv_power_kw
+            total_consumption_kw = load_kw + hp_power_kw
+            surplus_kw = total_generation_kw - total_consumption_kw
+
+            battery_power_kw = 0.0
+            if self._state.battery_capacity_kwh > 0:
+                battery_power_kw = self._simulate_battery(surplus_kw)
+
+        # Wärmespeicher-Update bei Controller-Modus
+        if ctrl_setpoints and ctrl_setpoints.source != "heuristic":
+            dt_h = self._interval_seconds * self._speed_factor / 3600.0
+            heat_loss_kw = max(0, (self._state.heat_storage_temp_c - 20) * 0.05)
+            net_heat = (hp_heat_kw + boiler_heat_kw - heat_loss_kw) * dt_h
+            temp_change = net_heat / 1.7
+            self._state.heat_storage_temp_c = max(25, min(85,
+                self._state.heat_storage_temp_c + temp_change
+            ))
 
         # === Netz ===
         grid_power_kw = total_consumption_kw - total_generation_kw + battery_power_kw
         # positiv=Bezug, negativ=Einspeisung
+
+        # Soll-Ist-Abweichung aufzeichnen
+        if ctrl_setpoints and ctrl_setpoints.source == "schedule" and self._controller:
+            self._controller.record_deviation(
+                timestamp=now.isoformat(),
+                setpoint_battery=ctrl_setpoints.battery_kw,
+                actual_battery=battery_power_kw,
+                setpoint_grid=0,  # Netz ist Ergebnis, kein Setpoint
+                actual_grid=grid_power_kw,
+                setpoint_hp=ctrl_setpoints.hp_thermal_kw,
+                actual_hp=hp_heat_kw,
+            )
 
         # Energie-Zähler aktualisieren
         dt_h = self._interval_seconds * self._speed_factor / 3600.0
@@ -436,6 +477,66 @@ class Simulator:
 
         power = avg_kw * factor * noise
         return max(0.1, power)
+
+    def _apply_hp_setpoint(self, setpoints, hour: float) -> tuple[float, float]:
+        """WP nach Controller-Setpoint betreiben."""
+        hp_configs = [
+            g for g in self._config.get("generators", [])
+            if g.get("type") == "heat_pump"
+        ]
+        if not hp_configs:
+            return 0.0, 0.0
+
+        total_heating_kw = sum(g.get("heatingPowerKw", 0) for g in hp_configs)
+
+        # COP abhaengig von Aussentemperatur
+        cop = max(2.0, 5.0 - 0.08 * (20 - self._state.outdoor_temp_c))
+
+        # Controller gibt thermische Leistung vor
+        heat_kw = min(setpoints.hp_thermal_kw, total_heating_kw)
+
+        # Mindest-Modulation
+        if 0 < heat_kw < total_heating_kw * 0.3:
+            heat_kw = total_heating_kw * 0.3
+
+        electric_kw = heat_kw / cop if cop > 0 else 0
+        return round(electric_kw, 2), round(heat_kw, 2)
+
+    def _apply_battery_setpoint(self, setpoints, surplus_kw: float) -> float:
+        """Batterie nach Controller-Setpoint betreiben."""
+        if self._state.battery_capacity_kwh <= 0:
+            return 0.0
+
+        target_kw = setpoints.battery_kw
+        dt_h = self._interval_seconds * self._speed_factor / 3600.0
+
+        # Max-Lade/Entladeleistung aus Konfiguration
+        max_charge_kw = 0.0
+        max_discharge_kw = 0.0
+        for s in self._config.get("storages", []):
+            if s.get("type") == "battery":
+                max_charge_kw += s.get("maxChargePowerKw", s.get("capacityKwh", 10) * 0.5)
+                max_discharge_kw += s.get("maxDischargePowerKw", s.get("capacityKwh", 10) * 0.5)
+
+        if target_kw > 0:
+            # Laden
+            charge = min(target_kw, max_charge_kw)
+            if self._state.battery_soc_pct >= 95:
+                return 0.0
+            energy_kwh = charge * dt_h * 0.95
+            new_soc = self._state.battery_soc_pct + (energy_kwh / self._state.battery_capacity_kwh * 100)
+            self._state.battery_soc_pct = min(100, new_soc)
+            return round(charge, 2)
+        elif target_kw < 0:
+            # Entladen
+            discharge = min(abs(target_kw), max_discharge_kw)
+            if self._state.battery_soc_pct <= 10:
+                return 0.0
+            energy_kwh = discharge * dt_h / 0.95
+            new_soc = self._state.battery_soc_pct - (energy_kwh / self._state.battery_capacity_kwh * 100)
+            self._state.battery_soc_pct = max(5, new_soc)
+            return round(-discharge, 2)
+        return 0.0
 
     def _simulate_battery(self, surplus_kw: float) -> float:
         """

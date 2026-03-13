@@ -246,12 +246,23 @@ export default function SettingsPage() {
         <Section title="Wetter-API" icon={<Cloud className="w-4 h-4 text-sky-400" />} defaultOpen={true}>
           <div className="grid grid-cols-2 gap-4">
             <SelectField label="Anbieter" value={settings.weatherProvider} onChange={(v) => update('weatherProvider', v as SystemSettings['weatherProvider'])} options={[
+              { value: 'openmeteo', label: 'Open-Meteo (kostenlos, kein Key)' },
               { value: 'openweathermap', label: 'OpenWeatherMap' },
               { value: 'brightsky', label: 'Bright Sky (DWD, kostenlos)' },
               { value: 'visual_crossing', label: 'Visual Crossing' },
-            ]} info="Wetterdaten werden für PV-Ertragsprognose und Heiz-/Kühlbedarf-Vorhersage benötigt." />
-            <InputField label="API-Key" value={settings.weatherApiKey} onChange={(v) => update('weatherApiKey', v)} type="password" hint={settings.weatherProvider === 'brightsky' ? 'Bright Sky benötigt keinen API-Key' : 'API-Key des Anbieters'} />
+            ]} info="Wetterdaten werden für PV-Ertragsprognose und Heiz-/Kühlbedarf-Vorhersage benötigt. Aktuell ist nur Open-Meteo im Backend implementiert." />
+            {settings.weatherProvider !== 'openmeteo' && settings.weatherProvider !== 'brightsky' && (
+              <InputField label="API-Key" value={settings.weatherApiKey} onChange={(v) => update('weatherApiKey', v)} type="password" hint="API-Key des Anbieters" />
+            )}
+            {(settings.weatherProvider === 'openmeteo' || settings.weatherProvider === 'brightsky') && (
+              <div className="flex items-end pb-1">
+                <p className="text-xs text-dark-faded">Kein API-Key erforderlich</p>
+              </div>
+            )}
           </div>
+          {settings.weatherProvider !== 'openmeteo' && (
+            <p className="text-xs text-amber-400 mt-2">Hinweis: Im Backend ist aktuell nur Open-Meteo implementiert. Andere Anbieter werden in einer zukuenftigen Version unterstuetzt.</p>
+          )}
         </Section>
 
         <div className="card bg-emerald-500/10 border-emerald-500/30">
