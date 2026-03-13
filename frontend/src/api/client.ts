@@ -10,7 +10,7 @@ import type {
   Generator, Meter, Consumer, Storage,
   Room, HeatingCoolingCircuit, Source, Sensor, SystemSettings,
   TrendDefinition,
-  WeatherCurrent, WeatherForecast, PvForecastResponse, PvAccuracyResponse, LoadForecastResponse, ThermalForecastResponse,
+  WeatherCurrent, WeatherForecast, PvForecastResponse, PvAccuracyResponse, LoadForecastResponse, ThermalForecastResponse, OptimizationSchedule,
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
@@ -143,6 +143,11 @@ export const api = {
         `/weather/pv-accuracy?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}`
       ),
     refresh: () => request<{ status: string }>('/weather/refresh', { method: 'POST' }),
+  },
+
+  optimizer: {
+    schedule: (hours = 24) =>
+      request<OptimizationSchedule>(`/optimizer/schedule?hours=${hours}`),
   },
 
   /** Prüft ob das Backend erreichbar ist. */

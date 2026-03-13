@@ -738,6 +738,55 @@ export interface PvAccuracyResponse {
 }
 
 // ============================================================
+// Optimizer Schedule
+// ============================================================
+
+export interface ScheduleHourly {
+  time: string
+  pv_forecast_kw: number
+  load_forecast_kw: number
+  battery_setpoint_kw: number
+  battery_soc_pct: number
+  hp_thermal_kw: number
+  hp_electric_kw: number
+  hp_cop: number
+  boiler_kw: number
+  storage_temp_c: number
+  heating_demand_kw: number
+  grid_kw: number
+  cost_ct: number
+  co2_kg: number
+  self_consumption_pct: number
+  tariff_ct: number
+  strategy: string
+}
+
+export interface ScheduleSummary {
+  total_cost_ct: number
+  total_revenue_ct: number
+  net_cost_ct: number
+  total_co2_kg: number
+  avg_self_consumption_pct: number
+  peak_grid_import_kw: number
+  peak_grid_export_kw: number
+  total_pv_kwh: number
+  total_grid_import_kwh: number
+  total_grid_export_kwh: number
+  total_battery_charged_kwh: number
+  total_battery_discharged_kwh: number
+}
+
+export interface OptimizationSchedule {
+  generated_at: string
+  hours: number
+  weights: OptimizerWeights
+  strategy: string
+  strategy_description: string
+  summary: ScheduleSummary
+  hourly: ScheduleHourly[]
+}
+
+// ============================================================
 // Defaults
 // ============================================================
 
