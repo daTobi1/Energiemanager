@@ -12,6 +12,7 @@ import type {
   TrendDefinition,
   WeatherCurrent, WeatherForecast, PvForecastResponse, PvAccuracyResponse, LoadForecastResponse, ThermalForecastResponse, OptimizationSchedule,
   ControllerStatus, ControllerHistoryEntry,
+  MLStatusResponse, MLModelDetail,
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
@@ -149,6 +150,15 @@ export const api = {
   optimizer: {
     schedule: (hours = 24) =>
       request<OptimizationSchedule>(`/optimizer/schedule?hours=${hours}`),
+  },
+
+  ml: {
+    status: () => request<MLStatusResponse>('/ml/status'),
+    statusDetail: (type: string) => request<MLModelDetail>(`/ml/status/${type}`),
+    train: (type?: string) =>
+      request<Record<string, unknown>>(type ? `/ml/train/${type}` : '/ml/train', { method: 'POST' }),
+    deleteModel: (type: string) =>
+      request<{ status: string }>(`/ml/models/${type}`, { method: 'DELETE' }),
   },
 
   controller: {

@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Cloud, Sun, Droplets, Wind, Thermometer, Eye,
   RefreshCw, AlertTriangle, Zap, CloudRain, Snowflake,
-  CloudLightning, CloudFog, Camera,
+  CloudLightning, CloudFog, Camera, Brain, Loader2,
 } from 'lucide-react'
 import { api } from '../api/client'
-import type { WeatherCurrent, WeatherForecast, PvForecastResponse, LoadForecastResponse, ThermalForecastResponse } from '../types'
+import type { WeatherCurrent, WeatherForecast, PvForecastResponse, LoadForecastResponse, ThermalForecastResponse, MLStatusResponse } from '../types'
 
 let Plotly: typeof import('plotly.js-dist-min') | null = null
 
@@ -44,6 +44,8 @@ export default function WeatherPage() {
   const [pvForecast, setPvForecast] = useState<PvForecastResponse | null>(null)
   const [loadForecast, setLoadForecast] = useState<LoadForecastResponse | null>(null)
   const [thermalForecast, setThermalForecast] = useState<ThermalForecastResponse | null>(null)
+  const [mlStatus, setMlStatus] = useState<MLStatusResponse | null>(null)
+  const [mlTraining, setMlTraining] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
@@ -71,6 +73,8 @@ export default function WeatherPage() {
       setPvForecast(pv)
       setLoadForecast(load)
       setThermalForecast(thermal)
+      // ML-Status laden (nicht-blockierend)
+      api.ml.status().then(setMlStatus).catch(() => {})
     } catch (e: any) {
       setError(e.message || 'Fehler beim Laden')
     } finally {
@@ -695,6 +699,85 @@ export default function WeatherPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ML-Prognose-Status */}
+      {mlStatus && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Brain className="w-5 h-5 text-purple-400" />
+              <h2 className="text-lg font-bold text-dark-text">ML-Prognosekorrektur</h2>
+            </div>
+            <button
+              onClick={async () => {
+                setMlTraining(true)
+                try {
+                  await api.ml.train()
+                  const s = await api.ml.status()
+                  setMlStatus(s)
+                } catch {}
+                setMlTraining(false)
+              }}
+              disabled={mlTraining}
+              className="btn-primary flex items-center gap-2 text-sm"
+            >
+              {mlTraining ? <Loader2 className="w-4 h-4 animate-spin" /> : <Brain className="w-4 h-4" />}
+              {mlTraining ? 'Trainiere...' : 'Alle trainieren'}
+            </button>
+          </div>
+          <p className="text-xs text-dark-faded mb-3">
+            ML-Modelle lernen aus historischen Messdaten und korrigieren die Physik-Prognosen.
+            Mindestens 7 Tage Messdaten erforderlich.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {mlStatus.models.map((m) => {
+              const labels: Record<string, string> = {
+                pv_correction: 'PV-Ertrag',
+                load_correction: 'Stromverbrauch',
+                thermal_correction: 'Waermebedarf',
+              }
+              return (
+                <div key={m.forecast_type} className={`p-3 rounded-lg border ${m.is_active ? 'border-purple-500/50 bg-purple-500/5' : 'border-dark-border bg-dark-hover'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-dark-text">
+                      {labels[m.forecast_type] || m.forecast_type}
+                    </span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${m.is_active ? 'bg-purple-500/20 text-purple-400' : 'bg-dark-hover text-dark-faded'}`}>
+                      {m.is_active ? 'Aktiv' : 'Nicht trainiert'}
+                    </span>
+                  </div>
+                  {m.is_trained && (
+                    <div className="space-y-1 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-dark-faded">MAE</span>
+                        <span className="text-dark-text tabular-nums">{m.mae.toFixed(3)} kW</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-dark-faded">R²</span>
+                        <span className={`tabular-nums ${m.r2_score > 0.7 ? 'text-emerald-400' : m.r2_score > 0.4 ? 'text-amber-400' : 'text-red-400'}`}>
+                          {m.r2_score.toFixed(3)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-dark-faded">Samples</span>
+                        <span className="text-dark-text tabular-nums">{m.training_samples}</span>
+                      </div>
+                      {m.trained_at && (
+                        <div className="text-dark-faded pt-1 border-t border-dark-border/50">
+                          Trainiert: {new Date(m.trained_at).toLocaleString('de-DE')}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {!m.is_trained && (
+                    <p className="text-xs text-dark-faded">Noch keine Trainingsdaten vorhanden.</p>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}

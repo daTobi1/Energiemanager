@@ -268,6 +268,24 @@ class ThermalForecastService:
                 # Nur fuer die ersten 24h blenden (danach zu unsicher)
                 total_demand_kw = 0.6 * total_demand_kw + 0.4 * hist_heat
 
+            # ML-Korrektur anwenden
+            try:
+                from app.services.ml.predictor import ml_predictor
+                if ml_predictor.is_available("thermal_correction"):
+                    from app.services.ml.features import build_time_features
+                    ml_features = build_time_features(dt)
+                    ml_features.update({
+                        "outdoor_temp_c": outdoor_temp,
+                        "cloud_cover_pct": 50.0,
+                        "wind_speed_ms": 3.0,
+                        "physics_baseline_kw": total_demand_kw,
+                        "heating_demand_kw": demand_kw,
+                    })
+                    correction, _, _ = ml_predictor.predict_correction("thermal_correction", ml_features)
+                    total_demand_kw = max(0, total_demand_kw + correction)
+            except Exception:
+                pass
+
             # Vorlauftemperatur
             flow_temp = _flow_temperature(
                 outdoor_temp, design_outdoor, design_flow,

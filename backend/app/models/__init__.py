@@ -11,6 +11,7 @@ from app.models.config import (
     TrendDefinitionConfig,
 )
 from app.models.forecast import Forecast
+from app.models.ml_status import MLModelStatus
 from app.models.generator import Generator
 from app.models.measurement import Measurement
 from app.models.storage import EnergyStorage
@@ -30,6 +31,7 @@ __all__ = [
     "ChargingSession",
     "EnergyStorage",
     "Forecast",
+    "MLModelStatus",
     "Generator",
     "Measurement",
     "Wallbox",

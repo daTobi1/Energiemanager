@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.crud import create_crud_router
-from app.api.endpoints import controller, data_acquisition, optimizer, seed, settings, simulator, trends, weather
+from app.api.endpoints import controller, data_acquisition, ml, optimizer, seed, settings, simulator, trends, weather
 from app.api.websocket import router as ws_router
 from app.config import settings as app_settings
 from app.models.config import (
@@ -71,6 +71,9 @@ api_router.include_router(optimizer.router, prefix="/optimizer", tags=["Optimize
 
 # Controller (Regelung)
 api_router.include_router(controller.router, prefix="/controller", tags=["Controller"])
+
+# ML (Prognose-Korrektur)
+api_router.include_router(ml.router, prefix="/ml", tags=["ML"])
 
 # WebSocket (Echtzeit-Updates)
 api_router.include_router(ws_router)

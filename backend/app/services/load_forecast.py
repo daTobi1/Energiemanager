@@ -161,6 +161,24 @@ class LoadForecastService:
             else:
                 power_kw = avg_kw * profile_factor * temp_fact
 
+            # ML-Korrektur anwenden
+            try:
+                from app.services.ml.predictor import ml_predictor
+                if ml_predictor.is_available("load_correction"):
+                    from app.services.ml.features import build_time_features
+                    ml_features = build_time_features(dt)
+                    ml_features.update({
+                        "outdoor_temp_c": temp_c,
+                        "cloud_cover_pct": 50.0,
+                        "wind_speed_ms": 3.0,
+                        "physics_baseline_kw": power_kw,
+                        "humidity_pct": 60.0,
+                    })
+                    correction, _, _ = ml_predictor.predict_correction("load_correction", ml_features)
+                    power_kw = max(0, power_kw + correction)
+            except Exception:
+                pass
+
             result_hourly.append({
                 "time": time_str,
                 "power_kw": round(power_kw, 2),

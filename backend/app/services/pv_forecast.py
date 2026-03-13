@@ -249,6 +249,26 @@ class PvForecastService:
                 power = _calculate_pv_power(poa, peak_kwp, efficiency, temp_coeff, temp_c)
                 total_power_kw += power
 
+            # ML-Korrektur anwenden (falls Modell vorhanden)
+            ml_correction = 0.0
+            try:
+                from app.services.ml.predictor import ml_predictor
+                if ml_predictor.is_available("pv_correction"):
+                    from app.services.ml.features import build_time_features
+                    ml_features = build_time_features(dt)
+                    ml_features.update({
+                        "outdoor_temp_c": temp_c,
+                        "cloud_cover_pct": weather["hourly"].get("cloud_cover", [50] * len(times))[i] if i < len(weather["hourly"].get("cloud_cover", [])) else 50.0,
+                        "wind_speed_ms": weather["hourly"].get("wind_speed_10m", [3] * len(times))[i] if i < len(weather["hourly"].get("wind_speed_10m", [])) else 3.0,
+                        "ghi_wm2": ghi, "dni_wm2": dni, "dhi_wm2": dhi,
+                        "physics_baseline_kw": total_power_kw,
+                        "solar_altitude_deg": solar_alt,
+                    })
+                    ml_correction, _, _ = ml_predictor.predict_correction("pv_correction", ml_features)
+                    total_power_kw = max(0, total_power_kw + ml_correction)
+            except Exception:
+                pass
+
             result_hourly.append({
                 "time": time_str,
                 "power_kw": round(total_power_kw, 2),

@@ -787,6 +787,36 @@ export interface OptimizationSchedule {
 }
 
 // ============================================================
+// ML (Prognose-Korrektur)
+// ============================================================
+
+export interface MLModelInfo {
+  forecast_type: string
+  model_type: string
+  is_trained: boolean
+  trained_at: string | null
+  training_samples: number
+  feature_count: number
+  mae: number
+  rmse: number
+  r2_score: number
+  is_active: boolean
+}
+
+export interface MLStatusResponse {
+  models: MLModelInfo[]
+  loaded_models: string[]
+  model_dir: string
+}
+
+export interface MLModelDetail extends MLModelInfo {
+  version: string
+  model_path: string
+  is_loaded: boolean
+  metadata: { feature_importance?: Record<string, number> }
+}
+
+// ============================================================
 // Controller (Regelung)
 // ============================================================
 
