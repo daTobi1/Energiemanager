@@ -5,12 +5,20 @@ import type { TrendDataResponse } from '../../hooks/useTrendData'
 
 let Plotly: typeof import('plotly.js-dist-min') | null = null
 
+export interface ForecastOverlay {
+  timestamps: string[]
+  values: number[]
+  label: string
+  color: string
+}
+
 interface TrendChartProps {
   data: TrendDataResponse
   series: TrendSeries[]
+  forecastData?: ForecastOverlay[]
 }
 
-export default function TrendChart({ data, series }: TrendChartProps) {
+export default function TrendChart({ data, series, forecastData }: TrendChartProps) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [rendered, setRendered] = useState(false)
@@ -75,6 +83,21 @@ export default function TrendChart({ data, series }: TrendChartProps) {
             yaxis,
             hovertemplate:
               `<b>${s.label || key}</b>: %{y:.2f} ${d.unit}<extra></extra>`,
+          })
+        }
+
+        // Forecast overlay (dashed lines)
+        for (const fc of forecastData ?? []) {
+          if (fc.timestamps.length === 0) continue
+          traces.push({
+            type: 'scatter',
+            x: fc.timestamps,
+            y: fc.values,
+            mode: 'lines',
+            name: fc.label,
+            line: { color: fc.color, width: 2, dash: 'dash' },
+            yaxis: 'y',
+            hovertemplate: `<b>${fc.label}</b>: %{y:.2f} kW<extra></extra>`,
           })
         }
 
@@ -174,7 +197,7 @@ export default function TrendChart({ data, series }: TrendChartProps) {
       }
       setRendered(false)
     }
-  }, [data, series])
+  }, [data, series, forecastData])
 
   const handleExportPng = useCallback(async () => {
     if (!plotRef.current || !Plotly) return

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.crud import create_crud_router
-from app.api.endpoints import data_acquisition, seed, settings, simulator, trends
+from app.api.endpoints import data_acquisition, seed, settings, simulator, trends, weather
 from app.api.websocket import router as ws_router
 from app.config import settings as app_settings
 from app.models.config import (
@@ -62,6 +62,9 @@ api_router.include_router(simulator.router, prefix="/simulator", tags=["Simulato
 
 # Data Acquisition
 api_router.include_router(data_acquisition.router, prefix="/daq", tags=["Data Acquisition"])
+
+# Wetter & PV-Prognose
+api_router.include_router(weather.router, prefix="/weather", tags=["Weather"])
 
 # WebSocket (Echtzeit-Updates)
 api_router.include_router(ws_router)

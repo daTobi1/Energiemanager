@@ -8,6 +8,7 @@ import TrendStatsCards from '../components/trends/TrendStatsCards'
 import TrendManagementModal from '../components/trends/TrendManagementModal'
 import type { TrendDefinition, TrendInterval, TrendPresetRange, TrendSeries } from '../types'
 import type { TrendDataResponse, TrendStatsResponse } from '../hooks/useTrendData'
+import type { ForecastOverlay } from '../components/trends/TrendChart'
 
 // Farb-Palette fuer automatische Zuweisung
 const SOURCE_COLORS = [
@@ -122,6 +123,9 @@ export default function TrendsPage() {
   const [loading, setLoading] = useState(false)
   const fetchRef = useRef(0)
 
+  // PV Forecast overlay
+  const [pvForecastOverlay, setPvForecastOverlay] = useState<ForecastOverlay[] | undefined>()
+
   // Ad-hoc mode: manually selected sources
   const [adhocSources, setAdhocSources] = useState<Set<string>>(new Set())
 
@@ -208,6 +212,27 @@ export default function TrendsPage() {
       .then(setAvailableSources)
       .catch(() => {})
   }, [])
+
+  // PV Forecast overlay: fetch when definition has pv.power_kw
+  const hasPvSeries = selectedDef.series.some(s => s.source === 'pv' && s.metric === 'power_kw')
+  useEffect(() => {
+    if (!hasPvSeries) {
+      setPvForecastOverlay(undefined)
+      return
+    }
+    api.weather.pvForecast(72).then(fc => {
+      if (fc?.hourly?.length) {
+        setPvForecastOverlay([{
+          timestamps: fc.hourly.map(h => h.time),
+          values: fc.hourly.map(h => h.power_kw),
+          label: 'PV-Prognose',
+          color: '#f59e0b',
+        }])
+      } else {
+        setPvForecastOverlay(undefined)
+      }
+    }).catch(() => setPvForecastOverlay(undefined))
+  }, [hasPvSeries])
 
   // Fetch data when sources, range or interval change
   useEffect(() => {
@@ -458,7 +483,7 @@ export default function TrendsPage() {
             <Loader2 className="w-8 h-8 text-emerald-400 animate-spin" />
           </div>
         ) : hasData ? (
-          <TrendChart data={data!} series={selectedDef.series} />
+          <TrendChart data={data!} series={selectedDef.series} forecastData={pvForecastOverlay} />
         ) : (
           <div className="flex flex-col items-center justify-center h-[400px] text-dark-faded">
             <TrendingUp className="w-16 h-16 text-dark-border mb-4" />

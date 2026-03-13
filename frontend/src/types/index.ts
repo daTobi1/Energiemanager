@@ -540,7 +540,7 @@ export interface Sensor {
 
 export type InsulationStandard = 'poor' | 'average' | 'good' | 'passive_house'
 export type BuildingType = 'residential' | 'commercial' | 'industrial' | 'mixed'
-export type WeatherProvider = 'openweathermap' | 'brightsky' | 'visual_crossing'
+export type WeatherProvider = 'openmeteo' | 'openweathermap' | 'brightsky' | 'visual_crossing'
 export type TariffType = 'fixed' | 'time_of_use' | 'dynamic'
 
 export interface TimeOfUsePeriod {
@@ -627,6 +627,65 @@ export interface TrendDefinition {
   defaultInterval: TrendInterval
   defaultRange: TrendPresetRange
   isDefault: boolean
+}
+
+// ============================================================
+// Wetter & PV-Prognose
+// ============================================================
+
+export interface WeatherHourly {
+  time: string
+  temperature_c: number
+  humidity_pct: number
+  wind_speed_ms: number
+  wind_direction_deg: number
+  cloud_cover_pct: number
+  precipitation_mm: number
+  weather_code: number
+  ghi_wm2: number
+  dni_wm2: number
+  dhi_wm2: number
+}
+
+export interface WeatherCurrent {
+  temperature_c: number
+  humidity_pct: number
+  wind_speed_ms: number
+  cloud_cover_pct: number
+  precipitation_mm: number
+  weather_code: number
+  ghi_wm2: number
+  updated_at: string
+}
+
+export interface WeatherForecast {
+  location: { lat: number; lon: number; altitude: number }
+  generated_at: string
+  hourly: WeatherHourly[]
+}
+
+export interface PvForecastHourly {
+  time: string
+  power_kw: number
+  ghi_wm2: number
+  temperature_c: number
+}
+
+export interface PvForecastResponse {
+  generated_at: string
+  total_peak_kwp: number
+  panels: { id: string; name: string; peak_kwp: number; tilt: number; azimuth: number }[]
+  hourly: PvForecastHourly[]
+  daily_summary: Record<string, number>
+  error?: string
+}
+
+export interface PvAccuracyResponse {
+  mae: number
+  rmse: number
+  mbe: number
+  correlation: number
+  hourly: { time: string; forecast_kw: number; actual_kw: number }[]
 }
 
 // ============================================================
@@ -779,7 +838,7 @@ export function createDefaultSettings(): SystemSettings {
     gasPriceCtPerKwh: 8,
     oilPriceCtPerLiter: 95,
     pelletPriceEurPerTon: 350,
-    weatherProvider: 'openweathermap',
+    weatherProvider: 'openmeteo',
     weatherApiKey: '',
     optimizerWeights: createDefaultOptimizerWeights(),
   }
