@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { api } from '../api/client'
 import {
   Play, Square, Sun, Zap, Battery, Thermometer,
-  ArrowDownToLine, ArrowUpFromLine, Gauge, Flame, Wind,
+  ArrowDownToLine, ArrowUpFromLine, Gauge, Flame, Wind, Radio,
 } from 'lucide-react'
 
 interface LiveData {
@@ -44,19 +44,32 @@ function MetricCard({ icon: Icon, label, value, unit, color, subValue }: {
   )
 }
 
+interface BusConnection {
+  source: string
+  entity_type: string
+  protocol: string
+  ip: string
+  port: number
+  status: string
+  interval: number
+}
+
 export default function LiveDashboard() {
   const [simRunning, setSimRunning] = useState(false)
   const [data, setData] = useState<LiveData | null>(null)
   const [connected, setConnected] = useState(false)
+  const [busConnections, setBusConnections] = useState<BusConnection[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const checkStatus = useCallback(async () => {
     try {
-      const status = await api.simulator.status()
+      const status = await api.simulator.status() as any
       setSimRunning(status.running)
+      if (status.bus_connections) {
+        setBusConnections(status.bus_connections)
+      }
       if (status.running && status.state) {
-        // Setze initiale Werte aus dem Status
         setData((prev) => prev ?? {
           pv_power_kw: 0, grid_power_kw: 0, load_power_kw: 0,
           battery_power_kw: 0, battery_soc_pct: status.state.battery_soc_pct,
@@ -236,6 +249,27 @@ export default function LiveDashboard() {
             value={data?.self_sufficiency_pct.toFixed(0) ?? '—'} unit="%"
             subValue={`↓${data?.import_kwh.toFixed(1) ?? '0'} ↑${data?.export_kwh.toFixed(1) ?? '0'} kWh`}
           />
+        </div>
+      )}
+
+      {/* Bus-Verbindungen */}
+      {simRunning && busConnections.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-dark-border">
+          <div className="flex items-center gap-2 mb-2">
+            <Radio className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs font-medium text-dark-muted">
+              Bus-Kommunikation ({busConnections.length} Geräte simuliert)
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {busConnections.map((bc, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs bg-dark-bg border border-dark-border">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                <span className="text-dark-muted">{bc.source}</span>
+                <span className="text-dark-faded">{bc.protocol}</span>
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>

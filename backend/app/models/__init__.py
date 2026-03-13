@@ -8,6 +8,7 @@ from app.models.config import (
     RoomConfig,
     StorageConfig,
     SystemSettingsConfig,
+    TrendDefinitionConfig,
 )
 from app.models.forecast import Forecast
 from app.models.generator import Generator
@@ -24,6 +25,7 @@ __all__ = [
     "RoomConfig",
     "CircuitConfig",
     "SystemSettingsConfig",
+    "TrendDefinitionConfig",
     # Runtime (Phase 2)
     "ChargingSession",
     "EnergyStorage",

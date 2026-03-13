@@ -54,3 +54,9 @@ class SystemSettingsConfig(Base, TimestampMixin):
     __tablename__ = "system_settings"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default="default")
     data: Mapped[dict] = mapped_column(JSON, nullable=False)
+
+
+class TrendDefinitionConfig(Base, TimestampMixin):
+    __tablename__ = "trend_definitions"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)

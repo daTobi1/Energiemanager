@@ -12,6 +12,7 @@ import CircuitsPage from './pages/CircuitsPage'
 import EnergyFlowPage from './pages/EnergyFlowPage'
 import HydraulicSchemaPageWrapper from './pages/HydraulicSchemaPageWrapper'
 import ElectricalSchemaPageWrapper from './pages/ElectricalSchemaPageWrapper'
+import TrendsPage from './pages/TrendsPage'
 import SankeyPage from './pages/SankeyPage'
 import OptimizerPage from './pages/OptimizerPage'
 import SettingsPage from './pages/SettingsPage'
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/energy-flow" element={<EnergyFlowPage />} />
         <Route path="/hydraulic-schema" element={<HydraulicSchemaPageWrapper />} />
         <Route path="/electrical-schema" element={<ElectricalSchemaPageWrapper />} />
+        <Route path="/trends" element={<TrendsPage />} />
         <Route path="/sankey" element={<SankeyPage />} />
         <Route path="/optimizer" element={<OptimizerPage />} />
         <Route path="/settings" element={<SettingsPage />} />

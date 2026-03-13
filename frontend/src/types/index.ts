@@ -48,6 +48,11 @@ export interface CommunicationConfig {
   port: number
   pollingIntervalSeconds: number
   enabled: boolean
+  // Trend-Aufzeichnung
+  trendEnabled: boolean
+  trendMode: 'interval' | 'on_change' | 'both'
+  trendIntervalSeconds: number
+  trendDeadbandPercent: number   // Schwellwert fuer on_change: Aenderung in % vom Messbereich
   modbus?: ModbusConfig
   mqtt?: MqttConfig
   http?: HttpConfig
@@ -601,6 +606,30 @@ export interface OptimizerWeights {
 }
 
 // ============================================================
+// Trends
+// ============================================================
+
+export interface TrendSeries {
+  source: string
+  metric: string
+  color: string
+  label?: string
+  yAxisId?: 'left' | 'right'
+}
+
+export type TrendInterval = 'raw' | '1min' | '5min' | '15min' | '1h' | '1d'
+export type TrendPresetRange = '1h' | '6h' | '24h' | '7d' | '30d' | 'custom'
+
+export interface TrendDefinition {
+  id: string
+  name: string
+  series: TrendSeries[]
+  defaultInterval: TrendInterval
+  defaultRange: TrendPresetRange
+  isDefault: boolean
+}
+
+// ============================================================
 // Defaults
 // ============================================================
 
@@ -611,6 +640,10 @@ export function createDefaultCommunication(): CommunicationConfig {
     port: 502,
     pollingIntervalSeconds: 5,
     enabled: false,
+    trendEnabled: true,
+    trendMode: 'interval',
+    trendIntervalSeconds: 30,
+    trendDeadbandPercent: 1,
   }
 }
 

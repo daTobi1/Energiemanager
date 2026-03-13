@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 
 from app.api.crud import create_crud_router
-from app.api.endpoints import seed, settings, simulator
+from app.api.endpoints import data_acquisition, seed, settings, simulator, trends
+from app.api.websocket import router as ws_router
 from app.config import settings as app_settings
 from app.models.config import (
     CircuitConfig,
@@ -10,6 +11,7 @@ from app.models.config import (
     MeterConfig,
     RoomConfig,
     StorageConfig,
+    TrendDefinitionConfig,
 )
 
 api_router = APIRouter()
@@ -40,6 +42,15 @@ api_router.include_router(
     prefix="/circuits", tags=["Circuits"],
 )
 
+# Trend-Definitionen (gespeicherte Ansichten)
+api_router.include_router(
+    create_crud_router(TrendDefinitionConfig, "TrendDefinition"),
+    prefix="/trend-definitions", tags=["Trends"],
+)
+
+# Trend-Daten (Zeitreihen-Abfrage)
+api_router.include_router(trends.router, prefix="/trends", tags=["Trends"])
+
 # Einstellungen
 api_router.include_router(settings.router, prefix="/settings", tags=["Settings"])
 
@@ -48,6 +59,12 @@ api_router.include_router(seed.router, prefix="/data", tags=["Data"])
 
 # Simulator
 api_router.include_router(simulator.router, prefix="/simulator", tags=["Simulator"])
+
+# Data Acquisition
+api_router.include_router(data_acquisition.router, prefix="/daq", tags=["Data Acquisition"])
+
+# WebSocket (Echtzeit-Updates)
+api_router.include_router(ws_router)
 
 # Runtime-Endpoints nur bei PostgreSQL (brauchen alte Modelle mit Enum-Spalten)
 if not app_settings.database_url.startswith("sqlite"):

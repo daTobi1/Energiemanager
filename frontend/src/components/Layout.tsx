@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Settings, Gauge, Sun, Plug, Battery,
   Home, Waypoints, Monitor, Target,
   GitBranch, BarChart3, Zap, Wifi, WifiOff, PenTool,
-  Mountain, Activity,
+  Mountain, Activity, TrendingUp,
 } from 'lucide-react'
 import { useEnergyStore } from '../store/useEnergyStore'
 
@@ -25,6 +25,7 @@ const navGroups: NavGroup[] = [
       { to: '/hydraulic-schema', icon: PenTool, label: 'Hydraulikschema' },
       { to: '/electrical-schema', icon: Zap, label: 'Stromschema' },
       { to: '/energy-flow', icon: GitBranch, label: 'Energiefluss' },
+      { to: '/trends', icon: TrendingUp, label: 'Trends' },
       { to: '/sankey', icon: BarChart3, label: 'Sankey-Diagramm' },
     ],
   },

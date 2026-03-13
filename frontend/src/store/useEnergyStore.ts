@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Generator, Meter, Consumer, Storage, SystemSettings, Room, HeatingCoolingCircuit, Source, Sensor } from '../types'
+import type { Generator, Meter, Consumer, Storage, SystemSettings, Room, HeatingCoolingCircuit, Source, Sensor, TrendDefinition } from '../types'
 import { createDefaultSettings } from '../types'
 import { api } from '../api/client'
 
@@ -22,6 +22,7 @@ interface EnergyStore {
   circuits: HeatingCoolingCircuit[]
   sources: Source[]
   sensors: Sensor[]
+  trendDefinitions: TrendDefinition[]
   settings: SystemSettings
 
   /** True wenn das Backend erreichbar ist */
@@ -66,6 +67,10 @@ interface EnergyStore {
   updateSensor: (id: string, s: Sensor) => void
   removeSensor: (id: string) => void
 
+  addTrendDefinition: (t: TrendDefinition) => void
+  updateTrendDefinition: (id: string, t: TrendDefinition) => void
+  removeTrendDefinition: (id: string) => void
+
   updateSettings: (s: Partial<SystemSettings>) => void
 
   loadSeedData: (data: {
@@ -101,6 +106,7 @@ export const useEnergyStore = create<EnergyStore>()(
       circuits: [],
       sources: [],
       sensors: [],
+      trendDefinitions: [],
       settings: createDefaultSettings(),
 
       apiConnected: false,
@@ -228,6 +234,20 @@ export const useEnergyStore = create<EnergyStore>()(
         if (get().apiConnected) fire(api.sensors.remove(id))
       },
 
+      // --- Trend Definitions ---
+      addTrendDefinition: (t) => {
+        set((s) => ({ trendDefinitions: [...s.trendDefinitions, t] }))
+        if (get().apiConnected) fire(api.trendDefinitions.create(t))
+      },
+      updateTrendDefinition: (id, t) => {
+        set((s) => ({ trendDefinitions: s.trendDefinitions.map((td) => (td.id === id ? t : td)) }))
+        if (get().apiConnected) fire(api.trendDefinitions.update(id, t))
+      },
+      removeTrendDefinition: (id) => {
+        set((s) => ({ trendDefinitions: s.trendDefinitions.filter((td) => td.id !== id) }))
+        if (get().apiConnected) fire(api.trendDefinitions.remove(id))
+      },
+
       // --- Settings ---
       updateSettings: (partial) => {
         const merged = { ...get().settings, ...partial }
@@ -270,7 +290,7 @@ export const useEnergyStore = create<EnergyStore>()(
       syncFromApi: async () => {
         set({ syncing: true })
         try {
-          const [generators, meters, consumers, storages, rooms, circuits, settings] =
+          const [generators, meters, consumers, storages, rooms, circuits, trendDefinitions, settings] =
             await Promise.all([
               api.generators.list(),
               api.meters.list(),
@@ -278,6 +298,7 @@ export const useEnergyStore = create<EnergyStore>()(
               api.storages.list(),
               api.rooms.list(),
               api.circuits.list(),
+              api.trendDefinitions.list(),
               api.settings.get(),
             ])
 
@@ -288,6 +309,7 @@ export const useEnergyStore = create<EnergyStore>()(
             storages: storages || [],
             rooms: rooms || [],
             circuits: circuits || [],
+            trendDefinitions: trendDefinitions || [],
             settings: settings || get().settings,
             apiConnected: true,
             syncing: false,
@@ -311,6 +333,7 @@ export const useEnergyStore = create<EnergyStore>()(
         circuits: state.circuits,
         sources: state.sources,
         sensors: state.sensors,
+        trendDefinitions: state.trendDefinitions,
         settings: state.settings,
       }),
       merge: (persisted, current) => ({
@@ -320,6 +343,7 @@ export const useEnergyStore = create<EnergyStore>()(
         // falls ältere localStorage-Daten geladen werden
         sources: (persisted as any)?.sources ?? (current as any).sources ?? [],
         sensors: (persisted as any)?.sensors ?? (current as any).sensors ?? [],
+        trendDefinitions: (persisted as any)?.trendDefinitions ?? (current as any).trendDefinitions ?? [],
       }),
     },
   ),

@@ -15,7 +15,7 @@ import asyncio
 import logging
 import math
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -58,6 +58,7 @@ class Simulator:
         self._state = SimulatorState()
         self._config: dict[str, Any] = {}
         self._task: asyncio.Task | None = None
+        self._sim_time: datetime | None = None  # Simulierte Uhrzeit
 
     @property
     def is_running(self) -> bool:
@@ -65,10 +66,11 @@ class Simulator:
 
     @property
     def status(self) -> dict:
-        return {
+        result = {
             "running": self._running,
             "interval_seconds": self._interval_seconds,
             "speed_factor": self._speed_factor,
+            "sim_time": self._sim_time.isoformat() if self._sim_time else None,
             "state": {
                 "battery_soc_pct": round(self._state.battery_soc_pct, 1),
                 "heat_storage_temp_c": round(self._state.heat_storage_temp_c, 1),
@@ -77,7 +79,52 @@ class Simulator:
                 "total_import_kwh": round(self._state.total_energy_import_kwh, 1),
                 "total_export_kwh": round(self._state.total_energy_export_kwh, 1),
             },
+            "bus_connections": self._get_bus_connections(),
         }
+        return result
+
+    def _get_bus_connections(self) -> list[dict]:
+        """Simulierte Bus-Verbindungen aus der Anlagenkonfiguration."""
+        if not self._running:
+            return []
+        connections = []
+        for gen in self._config.get("generators", []):
+            comm = gen.get("communication", {})
+            if comm.get("enabled"):
+                connections.append({
+                    "source": gen.get("name", gen.get("type", "?")),
+                    "entity_type": "generator",
+                    "protocol": comm.get("protocol", "unknown"),
+                    "ip": comm.get("ipAddress", ""),
+                    "port": comm.get("port", 0),
+                    "status": "simulated",
+                    "interval": comm.get("pollingIntervalSeconds", 5),
+                })
+        for stor in self._config.get("storages", []):
+            comm = stor.get("communication", {})
+            if comm.get("enabled"):
+                connections.append({
+                    "source": stor.get("name", stor.get("type", "?")),
+                    "entity_type": "storage",
+                    "protocol": comm.get("protocol", "unknown"),
+                    "ip": comm.get("ipAddress", ""),
+                    "port": comm.get("port", 0),
+                    "status": "simulated",
+                    "interval": comm.get("pollingIntervalSeconds", 5),
+                })
+        for cons in self._config.get("consumers", []):
+            comm = cons.get("communication", {})
+            if comm.get("enabled"):
+                connections.append({
+                    "source": cons.get("name", cons.get("type", "?")),
+                    "entity_type": "consumer",
+                    "protocol": comm.get("protocol", "unknown"),
+                    "ip": comm.get("ipAddress", ""),
+                    "port": comm.get("port", 0),
+                    "status": "simulated",
+                    "interval": comm.get("pollingIntervalSeconds", 5),
+                })
+        return connections
 
     async def start(self, interval: int = 5, speed_factor: int = 1):
         if self._running:
@@ -86,6 +133,7 @@ class Simulator:
         self._speed_factor = speed_factor
         self._running = True
         self._state = SimulatorState()
+        self._sim_time = datetime.now(timezone.utc)
         await self._load_config()
         self._task = asyncio.create_task(self._run_loop())
         logger.info("Simulator gestartet (interval=%ds, speed=%dx)", interval, speed_factor)
@@ -136,11 +184,15 @@ class Simulator:
             pass
 
     async def _simulation_step(self):
-        now = datetime.now(timezone.utc)
+        # Simulierte Uhrzeit: pro Schritt um interval*speed Sekunden voranschreiten
+        sim_delta = timedelta(seconds=self._interval_seconds * self._speed_factor)
+        self._sim_time = self._sim_time + sim_delta  # type: ignore[operator]
+        now = self._sim_time  # type: ignore[assignment]
         hour = now.hour + now.minute / 60.0
 
         # Simulierte Außentemperatur (Tagesgang)
-        self._state.outdoor_temp_c = self._simulate_outdoor_temp(hour, now.month)
+        month = now.month
+        self._state.outdoor_temp_c = self._simulate_outdoor_temp(hour, month)
 
         # === PV-Erzeugung ===
         pv_power_kw = self._simulate_pv(hour)
@@ -271,8 +323,7 @@ class Simulator:
         cloud_factor = max(0.2, min(1.1, cloud_factor))
 
         # Saisonaler Faktor (max im Juni, min im Dezember)
-        now = datetime.now(timezone.utc)
-        day_of_year = now.timetuple().tm_yday
+        day_of_year = (self._sim_time or datetime.now(timezone.utc)).timetuple().tm_yday
         seasonal = 0.5 + 0.5 * math.sin((day_of_year - 80) / 365 * 2 * math.pi)
 
         power = total_peak_kwp * solar_factor * cloud_factor * seasonal * 0.85

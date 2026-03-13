@@ -3,7 +3,7 @@ import { useEnergyStore } from '../store/useEnergyStore'
 import { Link } from 'react-router-dom'
 import {
   Sun, Gauge, Plug, Battery, Home, Waypoints, GitBranch, Settings,
-  CheckCircle2, AlertCircle, ArrowRight, Database, Trash2,
+  CheckCircle2, AlertCircle, ArrowRight, Database, Trash2, TrendingUp,
 } from 'lucide-react'
 import LiveDashboard from '../components/LiveDashboard'
 import type { GeneratorType, GridGenerator } from '../types'
@@ -163,6 +163,17 @@ export default function DashboardPage() {
                   <p className="text-xs text-emerald-500/70">Interaktive Darstellung aller Energieflüsse</p>
                 </div>
                 <ArrowRight className="w-4 h-4 text-emerald-500/50 ml-auto" />
+              </Link>
+              <Link
+                to="/trends"
+                className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors border border-amber-500/20"
+              >
+                <TrendingUp className="w-5 h-5 text-amber-400" />
+                <div>
+                  <span className="text-sm font-medium text-amber-400">Trends & Aufzeichnung</span>
+                  <p className="text-xs text-amber-500/70">Historische Messdaten, Statistiken und CSV-Export</p>
+                </div>
+                <ArrowRight className="w-4 h-4 text-amber-500/50 ml-auto" />
               </Link>
               <Link
                 to="/sankey"

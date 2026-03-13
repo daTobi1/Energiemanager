@@ -2,7 +2,7 @@
 
 > **STATUS: IN ENTWICKLUNG / WORK IN PROGRESS**
 >
-> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 2a abgeschlossen).
+> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 2b — Trend-Erfassung abgeschlossen).
 > APIs, Datenmodelle und Schnittstellen koennen sich jederzeit aendern.
 > Beitraege und Feedback sind willkommen — siehe [Contributing](#contributing).
 
@@ -65,7 +65,7 @@ Das Frontend ist eine vollstaendige Konfigurationsoberflaeche fuer das Energiesy
 
 | Seite | Beschreibung |
 |---|---|
-| **Dashboard** | Uebersicht: Konfigurationsfortschritt, Schnellstatus, Testdaten laden |
+| **Dashboard** | Uebersicht: Konfigurationsfortschritt, Live-Daten, Bus-Status, Testdaten laden |
 | **Anlage & Standort** | Gebaeudedaten, Koordinaten, Tarife, Hausanschluss, Wetter-API |
 | **Erzeuger** | PV, BHKW, Waermepumpe (mit COP-Kennlinie), Heizkessel, Kaeltemaschine |
 | **Speicher** | Batterie (LFP/NMC/...), Waermespeicher, Kaeltespeicher mit Temperatursensoren |
@@ -77,6 +77,7 @@ Das Frontend ist eine vollstaendige Konfigurationsoberflaeche fuer das Energiesy
 | **Sankey-Diagramm** | Jahres-Energiebilanz (Plotly.js), geschaetzte Werte aus Nennleistungen |
 | **Hydraulikschema** | Interaktiver Schemaeditor (React Flow) — Kessel, WP, BHKW, Kaeltemaschine, Speicher, Heizkreise, Pumpen, Ventile |
 | **Stromschema** | Interaktiver Schemaeditor (React Flow) — Trafo, PV, Batterie, Generator, Motor-Lasten, Wallbox, Sammelschiene, UV |
+| **Trends** | Zeitreihen-Analyse: Plotly-Liniendiagramme, Crosshair, Auto-Intervall, Statistiken, CSV/PNG-Export, Trend-Verwaltung |
 | **Systemverwaltung** | Systemzeit, WLAN, Bluetooth, Updates, Neustart/Herunterfahren |
 
 ### Energiefluss — Interaktives 11-Spalten-Diagramm
@@ -144,6 +145,25 @@ Zwei dedizierte, interaktive Schema-Editoren ersetzen das klassische R&I-Fliesss
 - Sammelschiene/Weiche: Anzahl der Anschluesse konfigurierbar
 - Minimap zur Uebersicht
 - Legende fuer Leitungsfarben
+
+### Trend-Analyse & Datenerfassung
+
+**Trend-Seite** — Zeitreihen-Visualisierung und -Analyse:
+- **Plotly-Liniendiagramme:** Dual Y-Achse (kW links, %/°C rechts), Min/Max-Band, Hover-Tooltips
+- **Crosshair:** Vertikale/horizontale Spike-Linien bei Hover
+- **Zeitbereiche:** 1h, 6h, 24h, 7d, 30d + benutzerdefiniert (datetime-local)
+- **Auto-Intervall:** Intervall passt sich automatisch an Zeitbereich an (1h→raw, 6h→1min, 24h→5min, 7d→1h, 30d→1d)
+- **Statistik-Tabelle:** Min, Max, Durchschnitt, Summe, Messpunkte pro Serie mit Einheiten
+- **Export:** PNG-Screenshot (Plotly) + CSV-Download
+- **Vordefinierte Ansichten:** Stromuebersicht, Thermik, Batterie, Autarkie
+- **Trend-Verwaltung:** Eigene Ansichten erstellen/bearbeiten (Quellen, Farben, Y-Achsen-Zuordnung)
+- **Ad-hoc-Browser:** Alle verfuegbaren Quellen durchsuchen und direkt als Serie hinzufuegen
+
+**Datenerfassung (pro Geraet konfigurierbar):**
+- **Aufzeichnungsmodi:** Intervall-basiert, Aenderungs-basiert (Deadband), oder beides
+- **Intervall:** Konfigurierbarer Aufzeichnungstakt (1–3600 Sekunden)
+- **Deadband:** Schwellwert in Prozent — Wert wird nur aufgezeichnet wenn Aenderung > Schwelle
+- **Toggle:** Aufzeichnung pro Geraet ein-/ausschaltbar
 
 ### Zaehlerkategorien
 
@@ -227,7 +247,7 @@ Jedes Geraet und jeder Zaehler kann ueber eines von 10 Netzwerkprotokollen angeb
 | Framework | React 19, TypeScript, Vite |
 | Styling | Tailwind CSS (Dark Theme) |
 | State | Zustand + API-Sync (localStorage Fallback) |
-| Diagramme | Plotly.js (Sankey), SVG (Energiefluss), React Flow (Schemas) |
+| Diagramme | Plotly.js (Sankey, Trends), SVG (Energiefluss), React Flow (Schemas) |
 | Icons | Lucide React |
 
 ### Zielsystem
@@ -259,7 +279,8 @@ energiemanager/
 │   │   │   ├── router.py
 │   │   │   ├── crud.py                  # Generische CRUD-Router-Factory
 │   │   │   ├── endpoints/               # dashboard, generators, storage,
-│   │   │   │                            # charging, settings, seed, simulator
+│   │   │   │   ├── trends.py            # Trend-API (Zeitreihen, Statistiken, Quellen)
+│   │   │   │   └── data_acquisition.py  # DAQ-Endpoints
 │   │   │   └── websocket.py
 │   │   ├── models/                      # SQLAlchemy DB-Modelle
 │   │   │   ├── config.py               # JSONB-Konfigurationsmodelle (7 Entitaeten)
@@ -282,7 +303,13 @@ energiemanager/
 │       ├── App.tsx                      # Router (React Router v7)
 │       ├── components/
 │       │   ├── Layout.tsx               # Sidebar-Navigation
+│       │   ├── LiveDashboard.tsx        # Echtzeit-Metrikkarten (8 Karten)
 │       │   ├── ui/                      # FormField, CommunicationForm, ConfirmDelete
+│       │   ├── trends/                 # Trend-Komponenten
+│       │   │   ├── TrendChart.tsx       # Plotly-Liniendiagramm (Dual-Y, Min/Max-Band)
+│       │   │   ├── TrendToolbar.tsx     # Zeitbereich, Intervall, Auto-Intervall
+│       │   │   ├── TrendStatsCards.tsx  # Statistik-Tabelle (Min/Max/Avg/Sum)
+│       │   │   └── TrendManagementModal.tsx # Trend-Verwaltung (CRUD)
 │       │   ├── hydraulic/              # Hydraulikschema (React Flow)
 │       │   │   ├── nodes/              # 16 Node-Komponenten (Kessel, WP, Pumpe, ...)
 │       │   │   ├── edges/              # Thermisch, Gas, Quelle, Elektrisch
@@ -313,10 +340,12 @@ energiemanager/
 │       │   ├── SankeyPage.tsx           # Sankey-Diagramm (Plotly.js)
 │       │   ├── HydraulicSchemaPage.tsx  # Hydraulikschema (React Flow)
 │       │   ├── ElectricalSchemaPage.tsx # Stromschema (React Flow)
+│       │   ├── TrendsPage.tsx            # Trend-Analyse (Plotly-Zeitreihen)
 │       │   ├── OptimizerPage.tsx       # Optimierer-Ziele (Radar-Diagramm)
 │       │   └── SystemPage.tsx           # Systemverwaltung
 │       ├── hooks/
-│       │   └── useCreateNavigation.ts   # Seitenuebergreifende Erstellung + Flow-Edit
+│       │   ├── useCreateNavigation.ts   # Seitenuebergreifende Erstellung + Flow-Edit
+│       │   └── useTrendData.ts          # Trend-Daten-Hook (Fetch + Debounce)
 │       ├── api/
 │       │   └── client.ts               # API-Client (CRUD + Seed + Health)
 │       ├── store/
@@ -359,6 +388,7 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 | Phase 1b | Backend-Anbindung (JSONB + API + Alembic) | Abgeschlossen |
 | Phase 1c | Optimierer-UI (Radar-Diagramm, Gewichtungen) | Abgeschlossen |
 | Phase 2a | Simulator + Hydraulik-/Stromschema | Abgeschlossen |
+| Phase 2b | Trend-Erfassung & Zeitreihen-Analyse | Abgeschlossen |
 | Phase 2 | Kernlogik (Regelung, Prognosen, Optimierer v1) | Ausstehend |
 | Phase 3 | Intelligenz (Wetter-API, ML, MILP, Selbstlernen) | Ausstehend |
 | Phase 4 | Mobile App (Flutter) | Ausstehend |
@@ -367,7 +397,7 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 ### Bisherige Arbeiten
 
 **Erledigt (Phase 1):**
-- 14 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, Hydraulikschema, Stromschema, Optimierer, System)
+- 15 Frontend-Seiten komplett (Dashboard, Einstellungen, Erzeuger, Speicher, Heizkreise, Raeume, Verbraucher, Zaehler, Energiefluss, Sankey, Hydraulikschema, Stromschema, Optimierer, Trends, System)
 - Interaktives Energiefluss-Diagramm mit Drag-to-Connect und Click-to-Delete
 - Bidirektionale Batteriespeicher-Verbindungen (Laden/Entladen)
 - Smart-Meter-Logik (Durchverbindungen ueber Zaehler)
@@ -423,6 +453,17 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 - Pumpen ↔ Strom-Verbraucher Linking mit Inline-kW-Editor
 - Auto-Pump-Erzeugung beim Heizkreis-Drop
 - Minimap + Legende + Store-basierte Seed-Initialisierung
+
+**Erledigt (Trend-Erfassung):**
+- Trend-API: 3 Endpoints (sources, data mit Aggregation, statistics) + time-range
+- Plotly-Zeitreihen: Liniendiagramme mit Dual Y-Achse, Min/Max-Band, Crosshair
+- Auto-Intervall: Intelligente Intervall-Auswahl basierend auf Zeitbereich
+- Statistik-Tabelle: Min, Max, Durchschnitt, Summe, Messpunkte pro Serie
+- 4 vordefinierte Ansichten: Stromuebersicht, Thermik, Batterie, Autarkie
+- Trend-Verwaltung: Eigene Ansichten erstellen/bearbeiten/loeschen
+- Export: PNG-Screenshot + CSV-Download
+- Datenerfassungs-Konfiguration: Intervall/Aenderung/Beides pro Geraet, Deadband-Schwellwert
+- Trend-Definitionen: CRUD-API + Store-Integration + Alembic-Migration
 
 **Naechste Schritte:**
 - Phase 2: Prognosen, Optimierer-Kernlogik, Regelung

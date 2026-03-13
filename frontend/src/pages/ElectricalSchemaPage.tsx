@@ -9,6 +9,7 @@ import {
   useEdgesState,
   addEdge,
   reconnectEdge,
+  SelectionMode,
   type Connection,
   type Node,
   type Edge,
@@ -30,7 +31,7 @@ import ElectricalPalette from '../components/electrical/panels/ElectricalPalette
 import ElectricalPropertiesPanel from '../components/electrical/panels/ElectricalPropertiesPanel'
 import { GRID_SIZE } from '../components/electrical/constants'
 import { v4 as uuid } from 'uuid'
-import { Undo2, RotateCcw, Maximize, RotateCw } from 'lucide-react'
+import { Undo2, Redo2, RotateCcw, Maximize, RotateCw } from 'lucide-react'
 
 import type {
   Generator, PvGenerator, ChpGenerator, GridGenerator, WindTurbineGenerator,
@@ -42,6 +43,12 @@ import { isValidConnection as checkHandleCompat } from '../components/shared/por
 import CrossingArcsOverlay from '../components/shared/CrossingArcsOverlay'
 import { useAutoJunction, findNearestEdgeMath, findNearestOnPath, getVisiblePath } from '../components/shared/useAutoJunction'
 import { syncEdgeToStore, saveEdges, loadEdges } from '../components/shared/edgeSync'
+import { nextName } from '../components/shared/schemaUtils'
+import { useSchemaUndoRedo } from '../hooks/useSchemaUndoRedo'
+import { useSchemaKeyboard } from '../hooks/useSchemaKeyboard'
+import { useSchemaClipboard } from '../hooks/useSchemaClipboard'
+import InlineLabelEditor from '../components/shared/InlineLabelEditor'
+import SchemaContextMenu, { type ContextMenuState } from '../components/shared/SchemaContextMenu'
 
 export default function ElectricalSchemaPage() {
   const store = useEnergyStore()
@@ -66,7 +73,10 @@ export default function ElectricalSchemaPage() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
-  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+  const [selectedNodes, setSelectedNodes] = useState<Node[]>([])
+  const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null
+  const [editingLabel, setEditingLabel] = useState<{ nodeId: string; label: string; rect: { x: number; y: number; width: number; height: number } } | null>(null)
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null)
   const reactFlowWrapper = useRef<HTMLDivElement>(null)
   const location = useLocation()
 
@@ -83,26 +93,14 @@ export default function ElectricalSchemaPage() {
       })
       if (!targetNode) return
       setCenter(targetNode.position.x + 40, targetNode.position.y + 35, { zoom: 1.5, duration: 600 })
-      setSelectedNode(targetNode)
+      setSelectedNodes([targetNode])
     }, 300)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state])
 
-  // --- Undo ---
-  const undoStack = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([])
-  const pushUndo = useCallback(() => {
-    undoStack.current.push({ nodes: [...nodes], edges: [...edges] })
-    if (undoStack.current.length > 30) undoStack.current.shift()
-  }, [nodes, edges])
-
-  const undo = useCallback(() => {
-    const prev = undoStack.current.pop()
-    if (prev) {
-      setNodes(prev.nodes)
-      setEdges(prev.edges)
-    }
-  }, [setNodes, setEdges])
+  // --- Undo/Redo ---
+  const { pushUndo, undo, redo, canUndo, canRedo } = useSchemaUndoRedo(nodes, edges, setNodes, setEdges)
 
   // --- Persist edges ---
   useEffect(() => {
@@ -130,14 +128,14 @@ export default function ElectricalSchemaPage() {
         return { ...n, data: { ...n.data, rotation: next } }
       })
     )
-    setSelectedNode((prev) => {
-      if (!prev || prev.id !== nodeId) return prev
-      const current = ((prev.data as Record<string, unknown>).rotation as number) || 0
-      const next = direction === 'cw'
-        ? (current + 90) % 360
-        : (current - 90 + 360) % 360
-      return { ...prev, data: { ...prev.data, rotation: next } }
-    })
+    setSelectedNodes((prev) =>
+      prev.map((n) => {
+        if (n.id !== nodeId) return n
+        const current = ((n.data as Record<string, unknown>).rotation as number) || 0
+        const next2 = direction === 'cw' ? (current + 90) % 360 : (current - 90 + 360) % 360
+        return { ...n, data: { ...n.data, rotation: next2 } }
+      })
+    )
   }, [pushUndo, setNodes])
 
   // --- Node Data update (port counts etc.) ---
@@ -149,19 +147,23 @@ export default function ElectricalSchemaPage() {
         return { ...n, data: { ...n.data, ...patch } }
       })
     )
-    setSelectedNode((prev) => {
-      if (!prev || prev.id !== nodeId) return prev
-      return { ...prev, data: { ...prev.data, ...patch } }
-    })
+    setSelectedNodes((prev) =>
+      prev.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, ...patch } } : n)
+    )
   }, [pushUndo, setNodes])
 
   // --- Selection ---
+  const onSelectionChange = useCallback(({ nodes: sel }: { nodes: Node[] }) => {
+    setSelectedNodes(sel)
+  }, [])
+
   const onNodeClick = useCallback((_: unknown, node: Node) => {
-    setSelectedNode(node)
+    setSelectedNodes([node])
   }, [])
 
   const onPaneClick = useCallback(() => {
-    setSelectedNode(null)
+    setSelectedNodes([])
+    setContextMenu(null)
   }, [])
 
   // --- Edge-Typ ableiten ---
@@ -262,7 +264,7 @@ export default function ElectricalSchemaPage() {
       const entityId = (node.data as Record<string, unknown>).entityId as string | undefined
       deleteJunction(nodeId)
       if (entityId && node.type === 'elec_meter') removeMeter(entityId)
-      setSelectedNode(null)
+      setSelectedNodes([])
       return
     }
 
@@ -288,7 +290,7 @@ export default function ElectricalSchemaPage() {
 
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
-    setSelectedNode(null)
+    setSelectedNodes([])
   }, [nodes, edges, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeMeter, deleteJunction])
 
   // --- Drop from palette ---
@@ -500,22 +502,97 @@ export default function ElectricalSchemaPage() {
     }
   }, [screenToFlowPosition, pushUndo, setNodes, setEdges, nodes, edges, createEdgeProps, getInternalNode, addGenerator, addStorage, addConsumer, addMeter])
 
-  // --- Keyboard ---
-  const onKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-      e.preventDefault()
-      undo()
+  // --- Clipboard (Copy/Paste) ---
+  const createEntityForPaste = useCallback((type: string, data: Record<string, unknown>, _pos: { x: number; y: number }): string | null => {
+    const id = uuid()
+    const label = data.label as string || type
+    if (['transformer', 'pv_inverter', 'generator', 'wind_turbine', 'motor_load'].includes(type)) {
+      addGenerator({ id, name: label, type: 'grid' as any, communication: createDefaultCommunication(), assignedMeterIds: [], ports: [], connectedGeneratorIds: [] } as any)
+      return `egen-${id}`
     }
-    if (e.key === 'Delete' || e.key === 'Backspace') {
-      if (selectedNode) handleDeleteNode(selectedNode.id)
+    if (type === 'battery_system') {
+      addStorage({ id, name: label, type: 'battery', communication: createDefaultCommunication(), assignedMeterIds: [], ports: [], connectedGeneratorIds: [], connectedConsumerIds: [] } as any)
+      return `estor-${id}`
     }
-    if (e.key === 'r' || e.key === 'R') {
-      if (selectedNode) {
-        e.preventDefault()
-        rotateNode(selectedNode.id, e.shiftKey ? 'ccw' : 'cw')
+    if (['consumer_load', 'wallbox'].includes(type)) {
+      addConsumer({ id, name: label, type: 'household', communication: createDefaultCommunication(), ports: [], connectedSourceIds: [], assignedMeterIds: [] } as any)
+      return `econ-${id}`
+    }
+    if (['junction', 'elec_bus', 'sub_distribution', 'circuit_breaker', 'sun_source', 'wind_source'].includes(type)) {
+      return `eschema-${id}`
+    }
+    return null
+  }, [addGenerator, addStorage, addConsumer])
+
+  const { copy, paste, canPaste } = useSchemaClipboard({
+    nodes, setNodes, pushUndo,
+    createEntityForPaste,
+  })
+
+  const handleCopy = useCallback(() => copy(selectedNodes), [copy, selectedNodes])
+  const handlePaste = useCallback(() => {
+    const vp = reactFlowWrapper.current?.getBoundingClientRect()
+    if (!vp) return
+    const center = screenToFlowPosition({ x: vp.width / 2, y: vp.height / 2 })
+    paste(center)
+  }, [paste, screenToFlowPosition])
+
+  // --- Inline Label Editing ---
+  const handleNodeDoubleClick = useCallback((_: React.MouseEvent, node: Node) => {
+    const el = document.querySelector(`[data-id="${node.id}"]`)
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setEditingLabel({
+      nodeId: node.id,
+      label: (node.data as Record<string, unknown>).label as string || '',
+      rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+    })
+  }, [])
+
+  const handleLabelSave = useCallback((nodeId: string, newLabel: string) => {
+    pushUndo()
+    setNodes((nds) => nds.map((n) => n.id === nodeId ? { ...n, data: { ...n.data, label: newLabel } } : n))
+    const node = nodes.find((n) => n.id === nodeId)
+    if (node) {
+      const entityId = (node.data as Record<string, unknown>).entityId as string | undefined
+      if (entityId) {
+        const t = node.type || ''
+        if (['transformer', 'pv_inverter', 'generator', 'motor_load', 'wind_turbine'].includes(t)) {
+          const g = generators.find((g) => g.id === entityId)
+          if (g) store.updateGenerator(entityId, { ...g, name: newLabel })
+        } else if (t === 'battery_system') {
+          const s = storages.find((s) => s.id === entityId)
+          if (s) store.updateStorage(entityId, { ...s, name: newLabel } as any)
+        } else if (['consumer_load', 'wallbox'].includes(t)) {
+          const c = consumers.find((c) => c.id === entityId)
+          if (c) store.updateConsumer(entityId, { ...c, name: newLabel })
+        }
       }
     }
-  }, [undo, selectedNode, handleDeleteNode, rotateNode])
+    setEditingLabel(null)
+  }, [pushUndo, setNodes, nodes, generators, storages, consumers, store])
+
+  // --- Context Menu ---
+  const handleNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, type: 'node', nodeId: node.id })
+  }, [])
+
+  const handleEdgeContextMenu = useCallback((e: React.MouseEvent, edge: Edge) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, type: 'edge', edgeId: edge.id })
+  }, [])
+
+  const handlePaneContextMenu = useCallback((e: React.MouseEvent | MouseEvent) => {
+    e.preventDefault()
+    setContextMenu({ x: e.clientX, y: e.clientY, type: 'pane' })
+  }, [])
+
+  // --- Keyboard ---
+  const onKeyDown = useSchemaKeyboard({
+    undo, redo, selectedNodes, handleDeleteNode, rotateNode,
+    copy: handleCopy, paste: handlePaste,
+  })
 
   // --- Reset ---
   const resetPositions = useCallback(() => {
@@ -586,18 +663,25 @@ export default function ElectricalSchemaPage() {
           onEdgeDoubleClick={onEdgeDoubleClick}
           onNodeDragStop={onNodeDragStop}
           onNodeClick={onNodeClick}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          onNodeContextMenu={handleNodeContextMenu}
+          onEdgeContextMenu={handleEdgeContextMenu}
           onPaneClick={onPaneClick}
+          onPaneContextMenu={handlePaneContextMenu}
+          onSelectionChange={onSelectionChange}
           onDragOver={onDragOver}
           onDrop={onDrop}
           nodeTypes={elecNodeTypes}
           edgeTypes={elecEdgeTypes}
           connectionMode="loose"
+          selectionMode={SelectionMode.Partial}
+          multiSelectionKeyCode="Shift"
           isValidConnection={handleIsValidConnection}
           snapToGrid
           snapGrid={[GRID_SIZE, GRID_SIZE]}
           fitView
           fitViewOptions={{ padding: 0.15 }}
-          deleteKeyCode={['Delete', 'Backspace']}
+          deleteKeyCode={null}
           proOptions={{ hideAttribution: true }}
           defaultEdgeOptions={{ type: 'electrical', deletable: true }}
           colorMode="dark"
@@ -615,8 +699,11 @@ export default function ElectricalSchemaPage() {
           {/* Toolbar */}
           <Panel position="top-left">
             <div className="flex items-center gap-1 bg-dark-card border border-dark-border rounded-lg p-1 shadow-lg">
-              <button onClick={undo} className="btn-icon p-1.5" title="Rückgängig (Ctrl+Z)">
+              <button onClick={undo} disabled={!canUndo} className="btn-icon p-1.5 disabled:opacity-30 disabled:cursor-not-allowed" title="Rückgängig (Ctrl+Z)">
                 <Undo2 className="w-4 h-4" />
+              </button>
+              <button onClick={redo} disabled={!canRedo} className="btn-icon p-1.5 disabled:opacity-30 disabled:cursor-not-allowed" title="Wiederholen (Ctrl+Shift+Z)">
+                <Redo2 className="w-4 h-4" />
               </button>
               <div className="w-px h-5 bg-dark-border" />
               <button
@@ -665,21 +752,65 @@ export default function ElectricalSchemaPage() {
       {selectedNode && (
         <ElectricalPropertiesPanel
           node={selectedNode}
-          onClose={() => setSelectedNode(null)}
+          onClose={() => setSelectedNodes([])}
           onDelete={handleDeleteNode}
           onRotate={rotateNode}
           onUpdateData={updateNodeData}
         />
       )}
+      {selectedNodes.length > 1 && (
+        <div className="w-64 border-l border-dark-border bg-dark-card p-4">
+          <p className="text-sm text-dark-muted">{selectedNodes.length} Elemente ausgewählt</p>
+          <button onClick={() => selectedNodes.forEach((n) => handleDeleteNode(n.id))}
+            className="btn-danger mt-3 w-full text-sm">
+            Alle entfernen
+          </button>
+        </div>
+      )}
+
+      {/* Inline Label Editor */}
+      {editingLabel && (
+        <InlineLabelEditor
+          nodeId={editingLabel.nodeId}
+          initialLabel={editingLabel.label}
+          position={editingLabel.rect}
+          onSave={handleLabelSave}
+          onCancel={() => setEditingLabel(null)}
+        />
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <SchemaContextMenu
+          menu={contextMenu}
+          onClose={() => setContextMenu(null)}
+          onEdit={() => {
+            if (contextMenu.nodeId) {
+              const n = nodes.find((n) => n.id === contextMenu.nodeId)
+              if (n) setSelectedNodes([n])
+            }
+          }}
+          onDuplicate={() => {
+            if (contextMenu.nodeId) {
+              const n = nodes.find((n) => n.id === contextMenu.nodeId)
+              if (n) { copy([n]); const vp = reactFlowWrapper.current?.getBoundingClientRect(); if (vp) { const c = screenToFlowPosition({ x: vp.width / 2, y: vp.height / 2 }); paste(c) } }
+            }
+          }}
+          onRotateCw={() => { if (contextMenu.nodeId) rotateNode(contextMenu.nodeId, 'cw') }}
+          onRotateCcw={() => { if (contextMenu.nodeId) rotateNode(contextMenu.nodeId, 'ccw') }}
+          onDelete={() => { if (contextMenu.nodeId) handleDeleteNode(contextMenu.nodeId) }}
+          onDeleteEdge={() => {
+            if (contextMenu.edgeId) {
+              pushUndo()
+              const edge = edges.find((e) => e.id === contextMenu.edgeId)
+              if (edge) syncEdgeToStore(edge, nodes, 'remove')
+              setEdges((eds) => eds.filter((e) => e.id !== contextMenu.edgeId))
+            }
+          }}
+          onPaste={handlePaste}
+          canPaste={canPaste}
+        />
+      )}
     </div>
   )
-}
-
-/** Nächsten freien Namen ableiten: "Batterie", "Batterie 2", "Batterie 3", ... */
-function nextName(baseName: string, nodes: Node[]): string {
-  const existing = new Set(nodes.map((n) => (n.data as Record<string, unknown>).label as string))
-  if (!existing.has(baseName)) return baseName
-  let i = 2
-  while (existing.has(`${baseName} ${i}`)) i++
-  return `${baseName} ${i}`
 }

@@ -80,6 +80,15 @@
 .react-flow__node.selected {
   filter: drop-shadow(0 0 8px rgba(34,197,94,0.3));
 }
+.react-flow__node.selected .node-body {
+  stroke: #22c55e;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px rgba(34,197,94,0.3));
+}
+.react-flow__selectionpane .react-flow__selection {
+  border: 1px solid rgba(34,197,94,0.4) !important;
+  background: rgba(34,197,94,0.05) !important;
+}
 
 /* Hydraulik-Node Rotation: Text-Labels bleiben lesbar */
 .hydraulic-rotated {

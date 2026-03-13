@@ -23,7 +23,7 @@ async def lifespan(app: FastAPI):
             if t in (
                 "generator_configs", "meter_configs", "consumer_configs",
                 "storage_configs", "room_configs", "circuit_configs", "system_settings",
-                "measurements",
+                "measurements", "trend_definitions",
             )
         ]
         async with engine.begin() as conn:

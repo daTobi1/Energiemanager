@@ -112,6 +112,14 @@ export function createBavariaSeedData() {
 
     weatherProvider: 'brightsky',
     weatherApiKey: '',
+
+    optimizerWeights: {
+      co2Reduction: 50,
+      economy: 80,
+      comfort: 70,
+      selfConsumption: 60,
+      gridFriendly: 30,
+    },
   }
 
   // ============================================================
@@ -129,7 +137,22 @@ export function createBavariaSeedData() {
     commissioningDate: '',
     location: 'Zählerschrank Keller',
     notes: '55 kW Anschlussleistung, 3×63A Vorsicherung, Bayernwerk Netz.',
-    communication: createDefaultCommunication(),
+    communication: {
+      ...createDefaultCommunication(),
+      protocol: 'mqtt',
+      ipAddress: '192.168.1.70',
+      port: 1883,
+      pollingIntervalSeconds: 2,
+      enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 5,
+      mqtt: {
+        topic: 'energy/grid/power',
+        qos: 1,
+        payloadFormat: 'json',
+        valueJsonPath: '$.power_w',
+      },
+    },
     assignedMeterIds: [ids.hauptzaehlerStrom],
     ports: [
       { id: uuid(), side: 'left', energy: 'electricity', label: 'Netzbezug' },
@@ -163,6 +186,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 5,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 5,
       modbus: {
         unitId: 3,
         registerAddress: 40000,
@@ -209,6 +234,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 10,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 10,
       modbus: {
         unitId: 1,
         registerAddress: 0,
@@ -261,6 +288,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 10,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 10,
       modbus: {
         unitId: 1,
         registerAddress: 0,
@@ -304,6 +333,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 10,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 10,
       modbus: {
         unitId: 1,
         registerAddress: 100,
@@ -364,6 +395,8 @@ export function createBavariaSeedData() {
       port: 47808,
       pollingIntervalSeconds: 15,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 15,
     },
     assignedMeterIds: [ids.kaeltemaschinenZaehler],
     connectedGeneratorIds: [ids.hausanschluss],
@@ -440,6 +473,8 @@ export function createBavariaSeedData() {
       port: 502,
       pollingIntervalSeconds: 5,
       enabled: true,
+      trendEnabled: true,
+      trendIntervalSeconds: 5,
       modbus: {
         unitId: 1,
         registerAddress: 0,
@@ -905,6 +940,8 @@ export function createBavariaSeedData() {
         port: 9000,
         pollingIntervalSeconds: 5,
         enabled: true,
+        trendEnabled: true,
+        trendIntervalSeconds: 10,
       },
       connectedSourceIds: [ids.hausanschluss, ids.batterie],
       ports: [],
@@ -934,6 +971,8 @@ export function createBavariaSeedData() {
         port: 9000,
         pollingIntervalSeconds: 5,
         enabled: true,
+        trendEnabled: true,
+        trendIntervalSeconds: 10,
       },
       connectedSourceIds: [ids.hausanschluss, ids.batterie],
       ports: [],
