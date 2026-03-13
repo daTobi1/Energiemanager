@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 import CrossSchemaBadge from '../../shared/CrossSchemaBadge'
 
 export interface ConsumerNodeData {
@@ -27,6 +28,10 @@ export default memo(function ConsumerNode({ data, selected }: NodeProps) {
   const d = data as ConsumerNodeData
   const icon = typeIcons[d.consumerType] || typeIcons.other
 
+  const dd = data as Record<string, unknown>
+  const elecLeftCount = (dd.portsElecLeft as number) || 1
+  const elecLeftPos = handlePositions(elecLeftCount, 25, 65)
+
   return (
     <div className="relative">
       <CrossSchemaBadge entityId={d.entityId} currentSchema="hydraulic" />
@@ -49,8 +54,10 @@ export default memo(function ConsumerNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Strom links */}
-      <Handle type="source" position={Position.Left} id="elec-L1"
-        style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '40%' }} />
+      {elecLeftPos.map((pct, i) => (
+        <Handle key={`elec-L${i + 1}`} type="source" position={Position.Left} id={`elec-L${i + 1}`}
+          style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
       {/* Optional: Wärme (für HVAC/HotWater) */}
       {(d.consumerType === 'hvac' || d.consumerType === 'hot_water') && (
         <Handle type="source" position={Position.Top} id="heat-T1"

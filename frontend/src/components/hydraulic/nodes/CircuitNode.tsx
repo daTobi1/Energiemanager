@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface CircuitNodeData {
   label: string
@@ -26,6 +27,13 @@ export default memo(function CircuitNode({ data, selected }: NodeProps) {
   const isCooling = d.circuitType === 'cooling' || d.circuitType === 'combined'
   const primaryColor = isHeating ? ENERGY_COLORS.heat : ENERGY_COLORS.cold
   const distLabel = distLabels[d.distributionType || ''] || ''
+
+  const dd = data as Record<string, unknown>
+  const heatLeftCount = (dd.portsHeatLeft as number) || 1
+  const circuitRightCount = (dd.portsCircuitRight as number) || 1
+  const heatLeftPos = handlePositions(heatLeftCount, 15, 40)
+  const heatRetLeftPos = handlePositions(heatLeftCount, 50, 75)
+  const circuitRightPos = handlePositions(circuitRightCount, 25, 65)
 
   return (
     <div className="relative">
@@ -63,14 +71,20 @@ export default memo(function CircuitNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* VL links oben */}
-      <Handle type="source" position={Position.Left} id="heat-L1"
-        style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '28%' }} />
+      {heatLeftPos.map((pct, i) => (
+        <Handle key={`heat-L${i + 1}`} type="source" position={Position.Left} id={`heat-L${i + 1}`}
+          style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
       {/* RL links unten */}
-      <Handle type="source" position={Position.Left} id="heat-ret-L1"
-        style={{ background: isHeating ? ENERGY_COLORS.heat_return : ENERGY_COLORS.cold_return, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '58%' }} />
+      {heatRetLeftPos.map((pct, i) => (
+        <Handle key={`heat-ret-L${i + 1}`} type="source" position={Position.Left} id={`heat-ret-L${i + 1}`}
+          style={{ background: isHeating ? ENERGY_COLORS.heat_return : ENERGY_COLORS.cold_return, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
       {/* Weiter zu Räumen rechts */}
-      <Handle type="source" position={Position.Right} id="circuit-R1"
-        style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '43%' }} />
+      {circuitRightPos.map((pct, i) => (
+        <Handle key={`circuit-R${i + 1}`} type="source" position={Position.Right} id={`circuit-R${i + 1}`}
+          style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

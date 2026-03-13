@@ -1,10 +1,13 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Batteriespeicher-System — Batterie + Wechselrichter */
 export default memo(function BatterySystemNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
+  const elecRightCount = (d.portsElecRight as number) || 1
+  const elecRightPos = handlePositions(elecRightCount, 25, 65)
   return (
     <div className="relative">
       <svg width="120" height="90" viewBox="0 0 120 90">
@@ -40,9 +43,11 @@ export default memo(function BatterySystemNode({ data, selected }: NodeProps) {
           {d.label as string}
         </text>
       </svg>
-      {/* AC bidirektional rechts (1 Handle) */}
-      <Handle type="source" position={Position.Right} id="elec-R1"
-        style={{ background: ELEC_COLORS.storage, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '38%' }} />
+      {/* AC bidirektional rechts */}
+      {elecRightPos.map((pct, i) => (
+        <Handle key={`elec-R${i+1}`} type="source" position={Position.Right} id={`elec-R${i+1}`}
+          style={{ background: ELEC_COLORS.storage, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

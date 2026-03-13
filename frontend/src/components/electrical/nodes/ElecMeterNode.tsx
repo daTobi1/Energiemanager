@@ -1,12 +1,17 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Stromzähler — IEC: Kreis mit kWh */
 export default memo(function ElecMeterNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
   const direction = (d.direction as string) || 'consumption'
   const isBidi = direction === 'bidirectional'
+  const elecLeftCount = (d.portsElecLeft as number) || 1
+  const elecRightCount = (d.portsElecRight as number) || 1
+  const elecLeftPos = handlePositions(elecLeftCount, 25, 65)
+  const elecRightPos = handlePositions(elecRightCount, 25, 65)
 
   return (
     <div className="relative">
@@ -36,10 +41,14 @@ export default memo(function ElecMeterNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Durchgang */}
-      <Handle type="source" position={Position.Left} id="elec-L1"
-        style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '42%' }} />
-      <Handle type="source" position={Position.Right} id="elec-R1"
-        style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', right: -2, top: '42%' }} />
+      {elecLeftPos.map((pct, i) => (
+        <Handle key={`elec-L${i+1}`} type="source" position={Position.Left} id={`elec-L${i+1}`}
+          style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {elecRightPos.map((pct, i) => (
+        <Handle key={`elec-R${i+1}`} type="source" position={Position.Right} id={`elec-R${i+1}`}
+          style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

@@ -33,11 +33,14 @@ import type {
   ChpGenerator, ChillerGenerator,
   ThermalStorage,
   Consumer, HeatingCoolingCircuit, Room, Meter,
+  Source, Sensor,
 } from '../types'
 import {
   createDefaultCommunication,
   createDefaultCircuit,
   createDefaultRoom,
+  createDefaultSource,
+  createDefaultSensor,
 } from '../types'
 
 import {
@@ -47,14 +50,15 @@ import {
   isValidConnection as checkHandleCompat,
 } from '../components/shared/portUtils'
 import CrossingArcsOverlay from '../components/shared/CrossingArcsOverlay'
-import { useAutoJunction } from '../components/shared/useAutoJunction'
+import { useAutoJunction, findNearestEdgeMath, findNearestOnPath, getVisiblePath } from '../components/shared/useAutoJunction'
+import { syncEdgeToStore, saveEdges, loadEdges } from '../components/shared/edgeSync'
 
 export default function HydraulicSchemaPage() {
   const store = useEnergyStore()
   const {
-    generators, storages, consumers, circuits, rooms, meters,
-    addGenerator, addStorage, addConsumer, addCircuit, addRoom, addMeter,
-    removeGenerator, removeStorage, removeConsumer, removeCircuit, removeRoom, removeMeter,
+    generators, storages, consumers, circuits, rooms, meters, sources, sensors,
+    addGenerator, addStorage, addConsumer, addCircuit, addRoom, addMeter, addSource, addSensor,
+    removeGenerator, removeStorage, removeConsumer, removeCircuit, removeRoom, removeMeter, removeSource, removeSensor,
   } = store
 
   // Build initial nodes/edges from store
@@ -66,7 +70,7 @@ export default function HydraulicSchemaPage() {
     [] // only on mount
   )
   const initialEdges = useMemo(() =>
-    buildEdges({ generators, storages, consumers, circuits, rooms, meters }),
+    loadEdges('hydraulic-schema-edges') || buildEdges({ generators, storages, consumers, circuits, rooms, meters }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   )
@@ -111,6 +115,11 @@ export default function HydraulicSchemaPage() {
       setEdges(prev.edges)
     }
   }, [setNodes, setEdges])
+
+  // --- Persist edges ---
+  useEffect(() => {
+    saveEdges('hydraulic-schema-edges', edges)
+  }, [edges])
 
   // --- Persist positions on node drag ---
   const onNodeDragStop = useCallback((_: unknown, node: Node) => {
@@ -212,15 +221,21 @@ export default function HydraulicSchemaPage() {
         isReturn: isReturnHandle(src) || isReturnHandle(tgt),
       }
     }
-    setEdges((eds) =>
-      addEdge({
-        ...params,
-        type: edgeType,
-        data: edgeData,
-        deletable: true,
-      }, eds)
-    )
-  }, [setEdges, pushUndo, markConnectionMade])
+    const newEdge: Edge = {
+      id: `e-${uuid()}`,
+      ...params,
+      source: params.source!,
+      target: params.target!,
+      type: edgeType,
+      data: edgeData,
+      deletable: true,
+    }
+    setEdges((eds) => addEdge(newEdge, eds))
+    // Sync to store (nur Vorlauf-Verbindungen, nicht Rücklauf-Duplikate)
+    if (!edgeData?.isReturn) {
+      syncEdgeToStore(newEdge, nodes, 'add')
+    }
+  }, [setEdges, pushUndo, markConnectionMade, nodes])
 
   // --- Verbindungs-Validierung ---
   const handleIsValidConnection = useCallback((connection: Connection) => {
@@ -234,22 +249,76 @@ export default function HydraulicSchemaPage() {
   // --- Edge reconnect ---
   const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
     pushUndo()
+    // Remove old connection from store
+    if (!(oldEdge.data as Record<string, unknown>)?.isReturn) {
+      syncEdgeToStore(oldEdge, nodes, 'remove')
+    }
     setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds))
-  }, [setEdges, pushUndo])
+    // Add new connection to store
+    const reconnected: Edge = {
+      ...oldEdge,
+      source: newConnection.source!,
+      target: newConnection.target!,
+      sourceHandle: newConnection.sourceHandle,
+      targetHandle: newConnection.targetHandle,
+    }
+    if (!(reconnected.data as Record<string, unknown>)?.isReturn) {
+      syncEdgeToStore(reconnected, nodes, 'add')
+    }
+  }, [setEdges, pushUndo, nodes])
 
   // --- Edges löschen ---
-  const onEdgesDelete = useCallback(() => {
+  const onEdgesDelete = useCallback((deletedEdges: Edge[]) => {
     pushUndo()
-  }, [pushUndo])
+    for (const edge of deletedEdges) {
+      if (!(edge.data as Record<string, unknown>)?.isReturn) {
+        syncEdgeToStore(edge, nodes, 'remove')
+      }
+    }
+  }, [pushUndo, nodes])
+
+  // --- useReactFlow (muss vor Callbacks stehen die screenToFlowPosition nutzen) ---
+  const { screenToFlowPosition, setCenter, getInternalNode } = useReactFlow()
+
+  // --- Doppelklick auf Edge → Junction einfügen (Wegpunkt) ---
+  const onEdgeDoubleClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
+    const edgeEl = document.querySelector(`[data-testid="rf__edge-${edge.id}"]`)
+    if (!edgeEl) return
+    const visPath = getVisiblePath(edgeEl)
+    if (!visPath) return
+
+    const flowPos = screenToFlowPosition({ x: _event.clientX, y: _event.clientY })
+    const result = findNearestOnPath(visPath, flowPos)
+    pushUndo()
+
+    const splitProps = createEdgeProps(edge.sourceHandle || '', edge.targetHandle || '', edge)
+
+    const junctionId = `schema-${uuid()}`
+    setNodes((nds) => [
+      ...nds,
+      { id: junctionId, type: 'junction', position: { x: result.point.x - 5, y: result.point.y - 5 }, data: { label: 'Verbindung' } },
+    ])
+    setEdges((eds) => [
+      ...eds.filter((e) => e.id !== edge.id),
+      { id: `e-${uuid()}`, source: edge.source, sourceHandle: edge.sourceHandle, target: junctionId, targetHandle: 'junction-L1', type: splitProps.type, data: splitProps.data, deletable: true },
+      { id: `e-${uuid()}`, source: junctionId, sourceHandle: 'junction-R1', target: edge.target, targetHandle: edge.targetHandle, type: splitProps.type, data: splitProps.data, deletable: true },
+    ])
+  }, [screenToFlowPosition, pushUndo, setNodes, setEdges, createEdgeProps])
 
   // --- Nodes löschen ---
   const handleDeleteNode = useCallback((nodeId: string) => {
     const node = nodes.find((n) => n.id === nodeId)
     if (!node) return
 
-    // Junction: auto-reconnect gegenüberliegender Leitungen
-    if (node.type === 'junction') {
+    // Junction / Meter / Sensor: auto-reconnect gegenüberliegender Leitungen
+    const inlineTypes = ['junction', 'meter', 'sensor']
+    if (inlineTypes.includes(node.type || '')) {
+      const entityId = (node.data as Record<string, unknown>).entityId as string | undefined
       deleteJunction(nodeId)
+      if (entityId) {
+        if (node.type === 'meter') removeMeter(entityId)
+        if (node.type === 'sensor') removeSensor(entityId)
+      }
       setSelectedNode(null)
       return
     }
@@ -270,8 +339,16 @@ export default function HydraulicSchemaPage() {
         removeCircuit(entityId)
       } else if (type === 'room') {
         removeRoom(entityId)
-      } else if (type === 'meter') {
-        removeMeter(entityId)
+      } else if (['solar_thermal', 'ground_source', 'air_source', 'well_source'].includes(type)) {
+        removeSource(entityId)
+      }
+    }
+
+    // Sync edge removals to store before deleting
+    const affectedEdges = edges.filter((e) => e.source === nodeId || e.target === nodeId)
+    for (const edge of affectedEdges) {
+      if (!(edge.data as Record<string, unknown>)?.isReturn) {
+        syncEdgeToStore(edge, nodes, 'remove')
       }
     }
 
@@ -279,11 +356,9 @@ export default function HydraulicSchemaPage() {
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
     setSelectedNode(null)
-  }, [nodes, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeCircuit, removeRoom, removeMeter, deleteJunction])
+  }, [nodes, edges, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeCircuit, removeRoom, removeMeter, removeSource, removeSensor, deleteJunction])
 
   // --- Drop from palette ---
-  const { screenToFlowPosition, setCenter } = useReactFlow()
-
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
@@ -295,10 +370,12 @@ export default function HydraulicSchemaPage() {
     if (!raw) return
 
     const { type } = JSON.parse(raw) as { type: string }
-    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-    // Snap to grid
-    position.x = Math.round(position.x / GRID_SIZE) * GRID_SIZE
-    position.y = Math.round(position.y / GRID_SIZE) * GRID_SIZE
+    const rawPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+    // Snap to grid (für normale Nodes)
+    const position = {
+      x: Math.round(rawPosition.x / GRID_SIZE) * GRID_SIZE,
+      y: Math.round(rawPosition.y / GRID_SIZE) * GRID_SIZE,
+    }
 
     pushUndo()
     const id = uuid()
@@ -307,7 +384,7 @@ export default function HydraulicSchemaPage() {
     if (['boiler', 'heat_pump', 'chp', 'chiller'].includes(type)) {
       const base = {
         id,
-        name: typeLabel(type),
+        name: nextName(typeLabel(type), nodes),
         type: type as any,
         manufacturer: '', model: '', serialNumber: '',
         commissioningDate: '', location: '', notes: '',
@@ -339,8 +416,9 @@ export default function HydraulicSchemaPage() {
       }])
     } else if (type === 'thermal_heat' || type === 'thermal_cold') {
       const sType = type === 'thermal_cold' ? 'cold' as const : 'heat' as const
+      const storName = nextName(sType === 'cold' ? 'Kältespeicher' : 'Pufferspeicher', nodes)
       const s: ThermalStorage = {
-        id, name: sType === 'cold' ? 'Kältespeicher' : 'Pufferspeicher', type: sType,
+        id, name: storName, type: sType,
         volumeLiters: 500, heightMm: 1600, diameterMm: 650,
         maxTemperatureC: sType === 'cold' ? 20 : 90, minTemperatureC: sType === 'cold' ? 2 : 20,
         targetTemperatureC: sType === 'cold' ? 6 : 55, hysteresisK: 3,
@@ -357,7 +435,7 @@ export default function HydraulicSchemaPage() {
       setNodes((nds) => [...nds, { id: `stor-${id}`, type, position, data: { label: s.name, entityId: id, storageType: sType, volumeLiters: s.volumeLiters } }])
     } else if (type === 'consumer') {
       const c: Consumer = {
-        id, name: 'Verbraucher', type: 'household', nominalPowerKw: 1,
+        id, name: nextName('Verbraucher', nodes), type: 'household', nominalPowerKw: 1,
         annualConsumptionKwh: 3500, loadProfile: 'H0',
         controllable: false, sheddable: false, priority: 5,
         connectedSourceIds: [], assignedMeterIds: [],
@@ -368,14 +446,14 @@ export default function HydraulicSchemaPage() {
       addConsumer(c)
       setNodes((nds) => [...nds, { id: `con-${id}`, type: 'consumer', position, data: { label: c.name, entityId: id, consumerType: c.type } }])
     } else if (type === 'circuit') {
-      const c = { ...createDefaultCircuit(), id, name: 'Heizkreis' }
+      const c = { ...createDefaultCircuit(), id, name: nextName('Heizkreis', nodes) }
       addCircuit(c)
       // Heizkreis-Node
       const circNode = { id: `circ-${id}`, type: 'circuit', position, data: { label: c.name, entityId: id, circuitType: c.type, distributionType: c.distributionType, flowTempC: c.flowTemperatureC, returnTempC: c.returnTemperatureC } }
       // Automatisch Pumpe + verknüpften Verbraucher erstellen
       const pumpConsumerId = uuid()
       const pumpConsumer: Consumer = {
-        id: pumpConsumerId, name: 'HK-Pumpe (Strom)', type: 'hvac' as any, nominalPowerKw: 0.05,
+        id: pumpConsumerId, name: nextName('HK-Pumpe (Strom)', nodes), type: 'hvac' as any, nominalPowerKw: 0.05,
         annualConsumptionKwh: 200, loadProfile: 'G1',
         controllable: false, sheddable: false, priority: 3,
         connectedSourceIds: [], assignedMeterIds: [],
@@ -388,16 +466,16 @@ export default function HydraulicSchemaPage() {
       const pumpNode = {
         id: pumpNodeId, type: 'pump',
         position: { x: position.x - 80, y: position.y },
-        data: { label: 'HK-Pumpe', linkedConsumerId: pumpConsumerId },
+        data: { label: nextName('HK-Pumpe', nodes), linkedConsumerId: pumpConsumerId },
       }
       setNodes((nds) => [...nds, circNode, pumpNode])
     } else if (type === 'room') {
-      const r = { ...createDefaultRoom(), id, name: 'Raum' }
+      const r = { ...createDefaultRoom(), id, name: nextName('Raum', nodes) }
       addRoom(r)
       setNodes((nds) => [...nds, { id: `room-${id}`, type: 'room', position, data: { label: r.name, entityId: id, floor: r.floor, areaM2: r.areaM2, targetTempC: r.targetTemperatureC } }])
     } else if (type === 'meter') {
       const m: Meter = {
-        id, name: 'Zähler', type: 'electricity', meterNumber: '',
+        id, name: nextName('Zähler', nodes), type: 'electricity', meterNumber: '',
         direction: 'consumption', category: 'unassigned', parentMeterId: '',
         phases: 3, nominalCurrentA: 63, nominalVoltageV: 400,
         ctRatio: 1, vtRatio: 1, pulsesPerUnit: 0,
@@ -406,30 +484,63 @@ export default function HydraulicSchemaPage() {
         ports: [], notes: '',
       }
       addMeter(m)
-      setNodes((nds) => [...nds, { id: `meter-${id}`, type: 'meter', position, data: { label: m.name, entityId: id, meterType: m.type } }])
+      const nodeId = `meter-${id}`
+      const nodeData = { label: m.name, entityId: id, meterType: m.type }
+      const nearest = findNearestEdgeMath(rawPosition, edges, getInternalNode, 40)
+      if (nearest) {
+        // Exakte Position auf der Linie: Handles bei top:45% von 60px Höhe = 27px
+        const snappedPos = { x: nearest.point.x - 30, y: nearest.point.y - 27 }
+        const origEdge = nearest.edge
+        const splitProps = createEdgeProps(origEdge.sourceHandle || '', origEdge.targetHandle || '', origEdge)
+        setNodes((nds) => [...nds, { id: nodeId, type: 'meter', position: snappedPos, data: nodeData }])
+        setEdges((eds) => [
+          ...eds.filter((e) => e.id !== origEdge.id),
+          { id: `e-${uuid()}`, source: origEdge.source, sourceHandle: origEdge.sourceHandle, target: nodeId, targetHandle: 'meter-L1', type: splitProps.type, data: splitProps.data, deletable: true },
+          { id: `e-${uuid()}`, source: nodeId, sourceHandle: 'meter-R1', target: origEdge.target, targetHandle: origEdge.targetHandle, type: splitProps.type, data: splitProps.data, deletable: true },
+        ])
+      } else {
+        setNodes((nds) => [...nds, { id: nodeId, type: 'meter', position, data: nodeData }])
+      }
     } else if (type === 'junction') {
       const nodeId = `schema-${uuid()}`
       setNodes((nds) => [...nds, { id: nodeId, type: 'junction', position, data: { label: 'Verbindung' } }])
-    } else if (['hydraulic_separator', 'pump', 'mixer', 'solar_thermal', 'ground_source', 'air_source', 'well_source'].includes(type)) {
+    } else if (['solar_thermal', 'ground_source', 'air_source', 'well_source'].includes(type)) {
+      const sourceLabels: Record<string, string> = { solar_thermal: 'Solarthermie', ground_source: 'Erdsonde', air_source: 'Luft (Umgebung)', well_source: 'Brunnen' }
+      const s: Source = { ...createDefaultSource(type as any), id, name: nextName(sourceLabels[type] || type, nodes) }
+      addSource(s)
+      setNodes((nds) => [...nds, { id: `source-${id}`, type, position, data: { label: s.name, entityId: id, sourceType: s.type } }])
+    } else if (type === 'sensor') {
+      const s: Sensor = { ...createDefaultSensor(), id, name: nextName('Sensor', nodes) }
+      addSensor(s)
+      const nodeId = `sensor-${id}`
+      const nodeData = { label: s.name, entityId: id, sensorType: s.sensorType }
+      const nearest = findNearestEdgeMath(rawPosition, edges, getInternalNode, 40)
+      if (nearest) {
+        // Exakte Position auf der Linie: Handles bei top:41% von 54px Höhe ≈ 22px
+        const snappedPos = { x: nearest.point.x - 25, y: nearest.point.y - 22 }
+        const origEdge = nearest.edge
+        const splitProps = createEdgeProps(origEdge.sourceHandle || '', origEdge.targetHandle || '', origEdge)
+        setNodes((nds) => [...nds, { id: nodeId, type: 'sensor', position: snappedPos, data: nodeData }])
+        setEdges((eds) => [
+          ...eds.filter((e) => e.id !== origEdge.id),
+          { id: `e-${uuid()}`, source: origEdge.source, sourceHandle: origEdge.sourceHandle, target: nodeId, targetHandle: 'meter-L1', type: splitProps.type, data: splitProps.data, deletable: true },
+          { id: `e-${uuid()}`, source: nodeId, sourceHandle: 'meter-R1', target: origEdge.target, targetHandle: origEdge.targetHandle, type: splitProps.type, data: splitProps.data, deletable: true },
+        ])
+      } else {
+        setNodes((nds) => [...nds, { id: nodeId, type: 'sensor', position, data: nodeData }])
+      }
+    } else if (['hydraulic_separator', 'pump', 'mixer'].includes(type)) {
       // Reine Schema-Elemente (kein Store-Eintrag nötig)
       const nodeId = `schema-${uuid()}`
       let nodeData: Record<string, unknown> = {}
       if (type === 'hydraulic_separator') {
-        nodeData = { label: 'Hydr. Weiche', portsLeft: 1, portsRight: 3 }
-      } else if (type === 'solar_thermal') {
-        nodeData = { label: 'Solarthermie' }
-      } else if (type === 'ground_source') {
-        nodeData = { label: 'Erdsonde' }
-      } else if (type === 'air_source') {
-        nodeData = { label: 'Luft (Umgebung)' }
-      } else if (type === 'well_source') {
-        nodeData = { label: 'Brunnen' }
+        nodeData = { label: nextName('Hydr. Weiche', nodes), portsLeft: 1, portsRight: 3 }
       } else {
-        nodeData = { label: type === 'pump' ? 'Pumpe' : '3W-Mischer' }
+        nodeData = { label: nextName(type === 'pump' ? 'Pumpe' : '3W-Mischer', nodes) }
       }
       setNodes((nds) => [...nds, { id: nodeId, type, position, data: nodeData }])
     }
-  }, [screenToFlowPosition, pushUndo, setNodes, addGenerator, addStorage, addConsumer, addCircuit, addRoom, addMeter])
+  }, [screenToFlowPosition, pushUndo, setNodes, setEdges, nodes, edges, createEdgeProps, getInternalNode, addGenerator, addStorage, addConsumer, addCircuit, addRoom, addMeter, addSource, addSensor])
 
   // --- Keyboard shortcuts ---
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -497,6 +608,7 @@ export default function HydraulicSchemaPage() {
     if (t === 'ground_source') return '#16a34a'
     if (t === 'air_source') return '#60a5fa'
     if (t === 'well_source') return '#3b82f6'
+    if (t === 'sensor') return '#8b5cf6'
     if (t === 'junction') return '#8b949e'
     return '#30363d'
   }, [])
@@ -518,6 +630,7 @@ export default function HydraulicSchemaPage() {
           onConnectEnd={handleConnectEnd}
           onReconnect={onReconnect}
           onEdgesDelete={onEdgesDelete}
+          onEdgeDoubleClick={onEdgeDoubleClick}
           onNodeDragStop={onNodeDragStop}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
@@ -636,4 +749,13 @@ function typeLabel(type: string): string {
     chp: 'BHKW', chiller: 'Kältemaschine',
   }
   return map[type] || type
+}
+
+/** Nächsten freien Namen ableiten: "Kessel", "Kessel 2", "Kessel 3", ... */
+function nextName(baseName: string, nodes: Node[]): string {
+  const existing = new Set(nodes.map((n) => (n.data as Record<string, unknown>).label as string))
+  if (!existing.has(baseName)) return baseName
+  let i = 2
+  while (existing.has(`${baseName} ${i}`)) i++
+  return `${baseName} ${i}`
 }

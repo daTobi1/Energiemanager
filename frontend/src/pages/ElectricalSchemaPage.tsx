@@ -40,7 +40,8 @@ import type {
 import { createDefaultCommunication } from '../types'
 import { isValidConnection as checkHandleCompat } from '../components/shared/portUtils'
 import CrossingArcsOverlay from '../components/shared/CrossingArcsOverlay'
-import { useAutoJunction } from '../components/shared/useAutoJunction'
+import { useAutoJunction, findNearestEdgeMath, findNearestOnPath, getVisiblePath } from '../components/shared/useAutoJunction'
+import { syncEdgeToStore, saveEdges, loadEdges } from '../components/shared/edgeSync'
 
 export default function ElectricalSchemaPage() {
   const store = useEnergyStore()
@@ -58,7 +59,7 @@ export default function ElectricalSchemaPage() {
     []
   )
   const initialEdges = useMemo(() =>
-    buildEdges({ generators, storages, consumers, meters }),
+    loadEdges('electrical-schema-edges') || buildEdges({ generators, storages, consumers, meters }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   )
@@ -102,6 +103,11 @@ export default function ElectricalSchemaPage() {
       setEdges(prev.edges)
     }
   }, [setNodes, setEdges])
+
+  // --- Persist edges ---
+  useEffect(() => {
+    saveEdges('electrical-schema-edges', edges)
+  }, [edges])
 
   // --- Persist positions ---
   const onNodeDragStop = useCallback((_: unknown, node: Node) => {
@@ -176,14 +182,17 @@ export default function ElectricalSchemaPage() {
   const onConnect = useCallback((params: Connection) => {
     markConnectionMade()
     pushUndo()
-    setEdges((eds) =>
-      addEdge({
-        ...params,
-        type: 'electrical',
-        deletable: true,
-      }, eds)
-    )
-  }, [setEdges, pushUndo, markConnectionMade])
+    const newEdge: Edge = {
+      id: `e-${uuid()}`,
+      ...params,
+      source: params.source!,
+      target: params.target!,
+      type: 'electrical',
+      deletable: true,
+    }
+    setEdges((eds) => addEdge(newEdge, eds))
+    syncEdgeToStore(newEdge, nodes, 'add')
+  }, [setEdges, pushUndo, markConnectionMade, nodes])
 
   // --- Verbindungs-Validierung ---
   const handleIsValidConnection = useCallback((connection: Connection) => {
@@ -195,21 +204,64 @@ export default function ElectricalSchemaPage() {
 
   const onReconnect = useCallback((oldEdge: Edge, newConnection: Connection) => {
     pushUndo()
+    syncEdgeToStore(oldEdge, nodes, 'remove')
     setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds))
-  }, [setEdges, pushUndo])
+    const reconnected: Edge = {
+      ...oldEdge,
+      source: newConnection.source!,
+      target: newConnection.target!,
+      sourceHandle: newConnection.sourceHandle,
+      targetHandle: newConnection.targetHandle,
+    }
+    syncEdgeToStore(reconnected, nodes, 'add')
+  }, [setEdges, pushUndo, nodes])
 
-  const onEdgesDelete = useCallback(() => {
+  const onEdgesDelete = useCallback((deletedEdges: Edge[]) => {
     pushUndo()
-  }, [pushUndo])
+    for (const edge of deletedEdges) {
+      syncEdgeToStore(edge, nodes, 'remove')
+    }
+  }, [pushUndo, nodes])
+
+  // --- useReactFlow (muss vor Callbacks stehen die screenToFlowPosition nutzen) ---
+  const { screenToFlowPosition, setCenter, getInternalNode } = useReactFlow()
+
+  // --- Doppelklick auf Edge → Junction einfügen (Wegpunkt) ---
+  const onEdgeDoubleClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
+    const edgeEl = document.querySelector(`[data-testid="rf__edge-${edge.id}"]`)
+    if (!edgeEl) return
+    const visPath = getVisiblePath(edgeEl)
+    if (!visPath) return
+
+    const flowPos = screenToFlowPosition({ x: _event.clientX, y: _event.clientY })
+    const result = findNearestOnPath(visPath, flowPos)
+    pushUndo()
+
+    const splitProps = createEdgeProps(edge.sourceHandle || '', edge.targetHandle || '', edge)
+
+    const junctionId = `eschema-${uuid()}`
+    setNodes((nds) => [
+      ...nds,
+      { id: junctionId, type: 'junction', position: { x: result.point.x - 5, y: result.point.y - 5 }, data: { label: 'Verbindung' } },
+    ])
+    setEdges((eds) => [
+      ...eds.filter((e) => e.id !== edge.id),
+      { id: `e-${uuid()}`, source: edge.source, sourceHandle: edge.sourceHandle, target: junctionId, targetHandle: 'junction-L1', type: splitProps.type, data: splitProps.data, deletable: true },
+      { id: `e-${uuid()}`, source: junctionId, sourceHandle: 'junction-R1', target: edge.target, targetHandle: edge.targetHandle, type: splitProps.type, data: splitProps.data, deletable: true },
+    ])
+  }, [screenToFlowPosition, pushUndo, setNodes, setEdges, createEdgeProps])
 
   // --- Delete node ---
   const handleDeleteNode = useCallback((nodeId: string) => {
     const node = nodes.find((n) => n.id === nodeId)
     if (!node) return
 
-    // Junction: auto-reconnect gegenüberliegender Leitungen
-    if (node.type === 'junction') {
+    // Junction / Meter: auto-reconnect gegenüberliegender Leitungen
+    const inlineTypes = ['junction', 'elec_meter', 'circuit_breaker']
+    if (inlineTypes.includes(node.type || '')) {
+      const entityId = (node.data as Record<string, unknown>).entityId as string | undefined
       deleteJunction(nodeId)
+      if (entityId && node.type === 'elec_meter') removeMeter(entityId)
       setSelectedNode(null)
       return
     }
@@ -225,19 +277,21 @@ export default function ElectricalSchemaPage() {
         removeStorage(entityId)
       } else if (['consumer_load', 'wallbox'].includes(type)) {
         removeConsumer(entityId)
-      } else if (type === 'elec_meter') {
-        removeMeter(entityId)
       }
+    }
+
+    // Sync edge removals to store before deleting
+    const affectedEdges = edges.filter((e) => e.source === nodeId || e.target === nodeId)
+    for (const edge of affectedEdges) {
+      syncEdgeToStore(edge, nodes, 'remove')
     }
 
     setNodes((nds) => nds.filter((n) => n.id !== nodeId))
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId))
     setSelectedNode(null)
-  }, [nodes, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeMeter, deleteJunction])
+  }, [nodes, edges, setNodes, setEdges, pushUndo, removeGenerator, removeStorage, removeConsumer, removeMeter, deleteJunction])
 
   // --- Drop from palette ---
-  const { screenToFlowPosition, setCenter } = useReactFlow()
-
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault()
     event.dataTransfer.dropEffect = 'move'
@@ -249,16 +303,18 @@ export default function ElectricalSchemaPage() {
     if (!raw) return
 
     const { type } = JSON.parse(raw) as { type: string }
-    const position = screenToFlowPosition({ x: event.clientX, y: event.clientY })
-    position.x = Math.round(position.x / GRID_SIZE) * GRID_SIZE
-    position.y = Math.round(position.y / GRID_SIZE) * GRID_SIZE
+    const rawPosition = screenToFlowPosition({ x: event.clientX, y: event.clientY })
+    const position = {
+      x: Math.round(rawPosition.x / GRID_SIZE) * GRID_SIZE,
+      y: Math.round(rawPosition.y / GRID_SIZE) * GRID_SIZE,
+    }
 
     pushUndo()
     const id = uuid()
 
     if (type === 'transformer') {
       const gen: GridGenerator = {
-        id, name: 'Hausanschluss', type: 'grid', energyForm: 'electricity',
+        id, name: nextName('Hausanschluss', nodes), type: 'grid', energyForm: 'electricity',
         manufacturer: '', model: '', serialNumber: '',
         commissioningDate: '', location: '', notes: '',
         communication: createDefaultCommunication(),
@@ -274,7 +330,7 @@ export default function ElectricalSchemaPage() {
       }])
     } else if (type === 'pv_inverter') {
       const gen: PvGenerator = {
-        id, name: 'PV-Anlage', type: 'pv', energyForm: 'electricity',
+        id, name: nextName('PV-Anlage', nodes), type: 'pv', energyForm: 'electricity',
         manufacturer: '', model: '', serialNumber: '',
         commissioningDate: '', location: '', notes: '',
         communication: createDefaultCommunication(),
@@ -292,7 +348,7 @@ export default function ElectricalSchemaPage() {
       }])
     } else if (type === 'generator') {
       const gen: ChpGenerator = {
-        id, name: 'BHKW', type: 'chp', energyForm: 'electricity_heat',
+        id, name: nextName('BHKW', nodes), type: 'chp', energyForm: 'electricity_heat',
         manufacturer: '', model: '', serialNumber: '',
         commissioningDate: '', location: '', notes: '',
         communication: createDefaultCommunication(),
@@ -313,7 +369,7 @@ export default function ElectricalSchemaPage() {
       }])
     } else if (type === 'wind_turbine') {
       const gen: WindTurbineGenerator = {
-        id, name: 'Windrad', type: 'wind_turbine', energyForm: 'electricity',
+        id, name: nextName('Windrad', nodes), type: 'wind_turbine', energyForm: 'electricity',
         manufacturer: '', model: '', serialNumber: '',
         commissioningDate: '', location: '', notes: '',
         communication: createDefaultCommunication(),
@@ -329,7 +385,7 @@ export default function ElectricalSchemaPage() {
       }])
     } else if (type === 'battery_system') {
       const s: BatteryStorage = {
-        id, name: 'Batterie', type: 'battery', manufacturer: '', model: '',
+        id, name: nextName('Batterie', nodes), type: 'battery', manufacturer: '', model: '',
         technology: 'lfp', capacityKwh: 10, usableCapacityKwh: 9.5,
         maxChargePowerKw: 5, maxDischargePowerKw: 5, chargeEfficiency: 0.97,
         dischargeEfficiency: 0.97, roundTripEfficiency: 0.94,
@@ -348,7 +404,7 @@ export default function ElectricalSchemaPage() {
     } else if (type === 'motor_load') {
       // Create a heat pump as default motor load
       const gen = {
-        id, name: 'Wärmepumpe', type: 'heat_pump' as const, energyForm: 'heat' as const,
+        id, name: nextName('Wärmepumpe', nodes), type: 'heat_pump' as const, energyForm: 'heat' as const,
         manufacturer: '', model: '', serialNumber: '',
         commissioningDate: '', location: '', notes: '',
         communication: createDefaultCommunication(),
@@ -366,7 +422,7 @@ export default function ElectricalSchemaPage() {
       }])
     } else if (type === 'wallbox') {
       const c: Consumer = {
-        id, name: 'Wallbox', type: 'ev_charger' as any, nominalPowerKw: 11,
+        id, name: nextName('Wallbox', nodes), type: 'ev_charger' as any, nominalPowerKw: 11,
         annualConsumptionKwh: 3000, loadProfile: 'E0',
         controllable: true, sheddable: true, priority: 7,
         connectedSourceIds: [], assignedMeterIds: [],
@@ -381,7 +437,7 @@ export default function ElectricalSchemaPage() {
       }])
     } else if (type === 'consumer_load') {
       const c: Consumer = {
-        id, name: 'Verbraucher', type: 'household', nominalPowerKw: 1,
+        id, name: nextName('Verbraucher', nodes), type: 'household', nominalPowerKw: 1,
         annualConsumptionKwh: 3500, loadProfile: 'H0',
         controllable: false, sheddable: false, priority: 5,
         connectedSourceIds: [], assignedMeterIds: [],
@@ -396,7 +452,7 @@ export default function ElectricalSchemaPage() {
       }])
     } else if (type === 'elec_meter') {
       const m: Meter = {
-        id, name: 'Stromzähler', type: 'electricity', meterNumber: '',
+        id, name: nextName('Stromzähler', nodes), type: 'electricity', meterNumber: '',
         direction: 'consumption', category: 'unassigned', parentMeterId: '',
         phases: 3, nominalCurrentA: 63, nominalVoltageV: 400,
         ctRatio: 1, vtRatio: 1, pulsesPerUnit: 0,
@@ -405,10 +461,23 @@ export default function ElectricalSchemaPage() {
         ports: [], notes: '',
       }
       addMeter(m)
-      setNodes((nds) => [...nds, {
-        id: `emeter-${id}`, type: 'elec_meter', position,
-        data: { label: m.name, entityId: id, direction: m.direction },
-      }])
+      const nodeId = `emeter-${id}`
+      const nodeData = { label: m.name, entityId: id, direction: m.direction }
+      const nearest = findNearestEdgeMath(rawPosition, edges, getInternalNode, 40)
+      if (nearest) {
+        // Exakte Position auf der Linie: Handles bei top:42% von 70px Höhe ≈ 29px
+        const snappedPos = { x: nearest.point.x - 30, y: nearest.point.y - 29 }
+        const origEdge = nearest.edge
+        const splitProps = createEdgeProps(origEdge.sourceHandle || '', origEdge.targetHandle || '', origEdge)
+        setNodes((nds) => [...nds, { id: nodeId, type: 'elec_meter', position: snappedPos, data: nodeData }])
+        setEdges((eds) => [
+          ...eds.filter((e) => e.id !== origEdge.id),
+          { id: `e-${uuid()}`, source: origEdge.source, sourceHandle: origEdge.sourceHandle, target: nodeId, targetHandle: 'elec-L1', type: splitProps.type, data: splitProps.data, deletable: true },
+          { id: `e-${uuid()}`, source: nodeId, sourceHandle: 'elec-R1', target: origEdge.target, targetHandle: origEdge.targetHandle, type: splitProps.type, data: splitProps.data, deletable: true },
+        ])
+      } else {
+        setNodes((nds) => [...nds, { id: nodeId, type: 'elec_meter', position, data: nodeData }])
+      }
     } else if (type === 'junction') {
       const nodeId = `eschema-${uuid()}`
       setNodes((nds) => [...nds, { id: nodeId, type: 'junction', position, data: { label: 'Verbindung' } }])
@@ -417,19 +486,19 @@ export default function ElectricalSchemaPage() {
       const nodeId = `eschema-${uuid()}`
       let nodeData: Record<string, unknown> = {}
       if (type === 'elec_bus') {
-        nodeData = { label: 'Sammelschiene', portsTop: 3, portsBottom: 4 }
+        nodeData = { label: nextName('Sammelschiene', nodes), portsTop: 3, portsBottom: 4 }
       } else if (type === 'sub_distribution') {
-        nodeData = { label: 'Unterverteilung', outputs: 4 }
+        nodeData = { label: nextName('Unterverteilung', nodes), outputs: 4 }
       } else if (type === 'sun_source') {
-        nodeData = { label: 'Sonne' }
+        nodeData = { label: nextName('Sonne', nodes) }
       } else if (type === 'wind_source') {
-        nodeData = { label: 'Wind' }
+        nodeData = { label: nextName('Wind', nodes) }
       } else {
-        nodeData = { label: 'LS-Schalter' }
+        nodeData = { label: nextName('LS-Schalter', nodes) }
       }
       setNodes((nds) => [...nds, { id: nodeId, type, position, data: nodeData }])
     }
-  }, [screenToFlowPosition, pushUndo, setNodes, addGenerator, addStorage, addConsumer, addMeter])
+  }, [screenToFlowPosition, pushUndo, setNodes, setEdges, nodes, edges, createEdgeProps, getInternalNode, addGenerator, addStorage, addConsumer, addMeter])
 
   // --- Keyboard ---
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -514,6 +583,7 @@ export default function ElectricalSchemaPage() {
           onConnectEnd={handleConnectEnd}
           onReconnect={onReconnect}
           onEdgesDelete={onEdgesDelete}
+          onEdgeDoubleClick={onEdgeDoubleClick}
           onNodeDragStop={onNodeDragStop}
           onNodeClick={onNodeClick}
           onPaneClick={onPaneClick}
@@ -603,4 +673,13 @@ export default function ElectricalSchemaPage() {
       )}
     </div>
   )
+}
+
+/** Nächsten freien Namen ableiten: "Batterie", "Batterie 2", "Batterie 3", ... */
+function nextName(baseName: string, nodes: Node[]): string {
+  const existing = new Set(nodes.map((n) => (n.data as Record<string, unknown>).label as string))
+  if (!existing.has(baseName)) return baseName
+  let i = 2
+  while (existing.has(`${baseName} ${i}`)) i++
+  return `${baseName} ${i}`
 }

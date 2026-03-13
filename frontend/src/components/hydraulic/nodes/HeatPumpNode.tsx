@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
 import CrossSchemaBadge from '../../shared/CrossSchemaBadge'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface HeatPumpNodeData {
   label: string
@@ -12,6 +13,16 @@ export interface HeatPumpNodeData {
 
 export default memo(function HeatPumpNode({ data, selected }: NodeProps) {
   const d = data as HeatPumpNodeData
+
+  const elecLeftCount = (d.portsElecLeft as number) || 1
+  const sourceLeftCount = (d.portsSourceLeft as number) || 1
+  const heatRightCount = (d.portsHeatRight as number) || 1
+
+  const elecLeftPos = handlePositions(elecLeftCount, 15, 38)
+  const sourceLeftPos = handlePositions(sourceLeftCount, 48, 72)
+  const heatRightVlPos = handlePositions(heatRightCount, 15, 42)
+  const heatRightRlPos = handlePositions(heatRightCount, 55, 78)
+
   return (
     <div className="relative">
       <CrossSchemaBadge entityId={d.entityId} currentSchema="hydraulic" />
@@ -31,18 +42,26 @@ export default memo(function HeatPumpNode({ data, selected }: NodeProps) {
           {d.label}
         </text>
       </svg>
-      {/* Strom links oben */}
-      <Handle type="source" position={Position.Left} id="elec-L1"
-        style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '25%' }} />
-      {/* Quelle links unten */}
-      <Handle type="source" position={Position.Left} id="source-L1"
-        style={{ background: ENERGY_COLORS.source, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '55%' }} />
-      {/* Vorlauf rechts oben */}
-      <Handle type="source" position={Position.Right} id="heat-R1"
-        style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '25%' }} />
-      {/* Rücklauf rechts unten */}
-      <Handle type="source" position={Position.Right} id="heat-ret-R1"
-        style={{ background: ENERGY_COLORS.heat_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '55%' }} />
+      {/* Strom links */}
+      {elecLeftPos.map((pct, i) => (
+        <Handle key={`elec-L${i+1}`} type="source" position={Position.Left} id={`elec-L${i+1}`}
+          style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {/* Quelle links */}
+      {sourceLeftPos.map((pct, i) => (
+        <Handle key={`source-L${i+1}`} type="source" position={Position.Left} id={`source-L${i+1}`}
+          style={{ background: ENERGY_COLORS.source, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {/* Vorlauf rechts */}
+      {heatRightVlPos.map((pct, i) => (
+        <Handle key={`heat-R${i+1}`} type="source" position={Position.Right} id={`heat-R${i+1}`}
+          style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
+      {/* Rücklauf rechts */}
+      {heatRightRlPos.map((pct, i) => (
+        <Handle key={`heat-ret-R${i+1}`} type="source" position={Position.Right} id={`heat-ret-R${i+1}`}
+          style={{ background: ENERGY_COLORS.heat_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

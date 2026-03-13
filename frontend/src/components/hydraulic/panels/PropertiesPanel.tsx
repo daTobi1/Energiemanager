@@ -7,6 +7,7 @@ import { isDualSchemaHydraulicNode } from '../../shared/crossSchemaUtils'
 import type { HeatPumpGenerator, ChpGenerator, ChillerGenerator, Consumer } from '../../../types'
 import { createDefaultCommunication } from '../../../types'
 import { v4 as uuid } from 'uuid'
+import { hydraulicPortConfigs } from '../../shared/portStepperConfigs'
 
 interface Props {
   node: Node | null
@@ -34,6 +35,7 @@ const typeLabels: Record<string, string> = {
   ground_source: 'Erdsonde / Erdkollektor',
   air_source: 'Luft (Umgebung)',
   well_source: 'Brunnen / Grundwasser',
+  sensor: 'Sensor / Fühler',
   junction: 'Verbindungspunkt',
 }
 
@@ -48,6 +50,11 @@ const typeRoutes: Record<string, string> = {
   room: '/rooms',
   consumer: '/consumers',
   meter: '/meters',
+  sensor: '/sensors',
+  solar_thermal: '/sources',
+  ground_source: '/sources',
+  air_source: '/sources',
+  well_source: '/sources',
 }
 
 /** +/- Stepper für Anschlussanzahl */
@@ -96,7 +103,7 @@ export default memo(function PropertiesPanel({ node, onClose, onDelete, onRotate
   const rotation = (data.rotation as number) || 0
   const route = typeRoutes[nodeType]
 
-  const isSeparator = nodeType === 'hydraulic_separator'
+  const portConfigs = hydraulicPortConfigs[nodeType]
 
   const handleEdit = () => {
     if (route && entityId) {
@@ -147,31 +154,21 @@ export default memo(function PropertiesPanel({ node, onClose, onDelete, onRotate
           </div>
         </div>
 
-        {/* === Hydraulische Weiche: Anschlüsse editieren === */}
-        {isSeparator && (
+        {/* === Anschlüsse konfigurieren === */}
+        {portConfigs && portConfigs.length > 0 && (
           <div>
             <p className="text-[10px] font-semibold text-dark-faded tracking-wider uppercase mb-2">Anschlüsse</p>
             <div className="space-y-2">
-              <PortStepper
-                label="Erzeuger (links)"
-                value={(data.portsLeft as number) || 1}
-                min={1} max={6}
-                onChange={(v) => onUpdateData(node.id, { portsLeft: v })}
-              />
-              <PortStepper
-                label="Verbraucher (rechts)"
-                value={(data.portsRight as number) || 3}
-                min={1} max={6}
-                onChange={(v) => onUpdateData(node.id, { portsRight: v })}
-              />
+              {portConfigs.map((cfg) => (
+                <PortStepper
+                  key={cfg.key}
+                  label={cfg.label}
+                  value={(data[cfg.key] as number) || cfg.default}
+                  min={cfg.min} max={cfg.max}
+                  onChange={(v) => onUpdateData(node.id, { [cfg.key]: v })}
+                />
+              ))}
             </div>
-            <p className="text-[9px] text-dark-faded mt-2">
-              Jeder Anschluss hat VL + RL Paar.
-              <br />
-              Links: Kessel, WP etc.
-              <br />
-              Rechts: Heizkreise, WW etc.
-            </p>
           </div>
         )}
 

@@ -1,10 +1,15 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Netzeinspeisung / Trafo — IEC Symbol: Zwei Kreise (Spulen) */
 export default memo(function TransformerNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
+  const elecTopCount = (d.portsElecTop as number) || 1
+  const elecBottomCount = (d.portsElecBottom as number) || 1
+  const elecTopPos = handlePositions(elecTopCount, 25, 75)
+  const elecBottomPos = handlePositions(elecBottomCount, 25, 75)
   return (
     <div className="relative">
       <svg width="100" height="100" viewBox="0 0 100 100">
@@ -29,11 +34,15 @@ export default memo(function TransformerNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Netz oben */}
-      <Handle type="source" position={Position.Top} id="elec-T1"
-        style={{ background: ELEC_COLORS.grid, width: 10, height: 10, border: '2px solid #30363d', top: -2 }} />
+      {elecTopPos.map((pct, i) => (
+        <Handle key={`elec-T${i+1}`} type="source" position={Position.Top} id={`elec-T${i+1}`}
+          style={{ background: ELEC_COLORS.grid, width: 10, height: 10, border: '2px solid #30363d', top: -2, left: `${pct}%` }} />
+      ))}
       {/* Ausgang unten */}
-      <Handle type="source" position={Position.Bottom} id="elec-B1"
-        style={{ background: ELEC_COLORS.phase, width: 10, height: 10, border: '2px solid #30363d', bottom: 2 }} />
+      {elecBottomPos.map((pct, i) => (
+        <Handle key={`elec-B${i+1}`} type="source" position={Position.Bottom} id={`elec-B${i+1}`}
+          style={{ background: ELEC_COLORS.phase, width: 10, height: 10, border: '2px solid #30363d', bottom: 2, left: `${pct}%` }} />
+      ))}
     </div>
   )
 })

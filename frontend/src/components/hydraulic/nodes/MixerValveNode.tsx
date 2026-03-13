@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface MixerValveNodeData {
   label: string
@@ -10,6 +11,15 @@ export interface MixerValveNodeData {
 
 export default memo(function MixerValveNode({ data, selected }: NodeProps) {
   const d = data as MixerValveNodeData
+
+  const dd = data as Record<string, unknown>
+  const heatLeftCount = (dd.portsHeatLeft as number) || 1
+  const returnBottomCount = (dd.portsReturnBottom as number) || 1
+  const flowRightCount = (dd.portsFlowRight as number) || 1
+  const heatLeftPos = handlePositions(heatLeftCount, 25, 65)
+  const returnBottomPos = handlePositions(returnBottomCount, 25, 65)
+  const flowRightPos = handlePositions(flowRightCount, 25, 65)
+
   return (
     <div className="relative">
       <svg width="60" height="70" viewBox="0 0 60 70">
@@ -28,14 +38,20 @@ export default memo(function MixerValveNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* VL links */}
-      <Handle type="source" position={Position.Left} id="heat-L1"
-        style={{ background: ENERGY_COLORS.heat, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '43%' }} />
+      {heatLeftPos.map((pct, i) => (
+        <Handle key={`heat-L${i + 1}`} type="source" position={Position.Left} id={`heat-L${i + 1}`}
+          style={{ background: ENERGY_COLORS.heat, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
       {/* RL unten */}
-      <Handle type="source" position={Position.Bottom} id="heat-ret-B1"
-        style={{ background: ENERGY_COLORS.heat_return, width: 8, height: 8, border: '2px solid #30363d', bottom: 14, left: '46%' }} />
+      {returnBottomPos.map((pct, i) => (
+        <Handle key={`heat-ret-B${i + 1}`} type="source" position={Position.Bottom} id={`heat-ret-B${i + 1}`}
+          style={{ background: ENERGY_COLORS.heat_return, width: 8, height: 8, border: '2px solid #30363d', bottom: 14, left: `${pct}%` }} />
+      ))}
       {/* Gemischt rechts */}
-      <Handle type="source" position={Position.Right} id="flow-R1"
-        style={{ background: '#f97316', width: 8, height: 8, border: '2px solid #30363d', right: -2, top: '43%' }} />
+      {flowRightPos.map((pct, i) => (
+        <Handle key={`flow-R${i + 1}`} type="source" position={Position.Right} id={`flow-R${i + 1}`}
+          style={{ background: '#f97316', width: 8, height: 8, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

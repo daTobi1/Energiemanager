@@ -461,6 +461,75 @@ export interface HeatingCoolingCircuit {
 }
 
 // ============================================================
+// Quellen (Natural Energy Sources)
+// ============================================================
+
+export type SourceType = 'solar_thermal' | 'ground_source' | 'air_source' | 'well_source'
+
+export interface Source {
+  id: string
+  name: string
+  type: SourceType
+  location: string
+  notes: string
+  assignedMeterIds: string[]
+  assignedSensorIds: string[]
+  communication: CommunicationConfig
+  // Solarthermie
+  collectorAreaM2: number
+  collectorCount: number
+  azimuthDeg: number
+  tiltDeg: number
+  opticalEfficiency: number
+  // Erdsonde / Erdkollektor
+  boreholeDepthM: number
+  boreholeCount: number
+  probeType: 'single_u' | 'double_u' | 'coaxial'
+  soilThermalConductivity: number // W/(m·K)
+  // Brunnen
+  flowRateM3PerH: number
+  temperatureC: number
+  wellDepthM: number
+}
+
+// ============================================================
+// Sensoren (Sensors)
+// ============================================================
+
+export type SensorType =
+  | 'temperature' | 'pressure' | 'flow' | 'level'
+  | 'power' | 'energy' | 'humidity' | 'radiation'
+  | 'wind_speed' | 'wind_direction' | 'outdoor_temp'
+
+export type SensorSignalType =
+  | 'analog_0_10v' | 'analog_4_20ma' | 'pt100' | 'pt1000'
+  | 'ntc' | 'kty' | 'digital' | '1_wire' | 'bus'
+
+export type SensorMeasurement =
+  | 'vorlauf_temp' | 'ruecklauf_temp' | 'aussen_temp' | 'raum_temp'
+  | 'speicher_temp' | 'kollektor_temp' | 'sole_temp' | 'brunnenwasser_temp'
+  | 'druck' | 'differenzdruck' | 'volumenstrom' | 'fuellstand'
+  | 'leistung' | 'energie' | 'luftfeuchtigkeit'
+  | 'globalstrahlung' | 'windgeschwindigkeit' | 'windrichtung'
+  | 'sonstige'
+
+export interface Sensor {
+  id: string
+  name: string
+  sensorType: SensorType
+  measurement: SensorMeasurement
+  unit: string
+  signalType: SensorSignalType
+  rangeMin: number
+  rangeMax: number
+  accuracy: number
+  location: string
+  assignedSourceId: string
+  notes: string
+  communication: CommunicationConfig
+}
+
+// ============================================================
 // Systemeinstellungen
 // ============================================================
 
@@ -680,6 +749,49 @@ export function createDefaultSettings(): SystemSettings {
     weatherProvider: 'openweathermap',
     weatherApiKey: '',
     optimizerWeights: createDefaultOptimizerWeights(),
+  }
+}
+
+export function createDefaultSource(type: SourceType = 'solar_thermal'): Source {
+  return {
+    id: '',
+    name: '',
+    type,
+    location: '',
+    notes: '',
+    assignedMeterIds: [],
+    assignedSensorIds: [],
+    communication: createDefaultCommunication(),
+    collectorAreaM2: 10,
+    collectorCount: 4,
+    azimuthDeg: 180,
+    tiltDeg: 45,
+    opticalEfficiency: 0.8,
+    boreholeDepthM: 100,
+    boreholeCount: 2,
+    probeType: 'double_u',
+    soilThermalConductivity: 2.0,
+    flowRateM3PerH: 3,
+    temperatureC: 10,
+    wellDepthM: 15,
+  }
+}
+
+export function createDefaultSensor(): Sensor {
+  return {
+    id: '',
+    name: '',
+    sensorType: 'temperature',
+    measurement: 'vorlauf_temp',
+    unit: '°C',
+    signalType: 'pt1000',
+    rangeMin: -20,
+    rangeMax: 120,
+    accuracy: 0.5,
+    location: '',
+    assignedSourceId: '',
+    notes: '',
+    communication: createDefaultCommunication(),
   }
 }
 

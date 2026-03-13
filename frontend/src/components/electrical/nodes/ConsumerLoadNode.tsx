@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
 import CrossSchemaBadge from '../../shared/CrossSchemaBadge'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Verbraucher-Last — IEC: Dreieck nach unten (Last-Symbol) */
 
@@ -21,6 +22,8 @@ export default memo(function ConsumerLoadNode({ data, selected }: NodeProps) {
   const cfg = subTypeConfig[(d.consumerType as string) || 'household'] || subTypeConfig.household
 
   const entityId = d.entityId as string | undefined
+  const elecTopCount = (d.portsElecTop as number) || 1
+  const elecTopPos = handlePositions(elecTopCount, 25, 75)
   return (
     <div className="relative">
       {entityId && <CrossSchemaBadge entityId={entityId} currentSchema="electrical" />}
@@ -43,8 +46,10 @@ export default memo(function ConsumerLoadNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* oben */}
-      <Handle type="source" position={Position.Top} id="elec-T1"
-        style={{ background: cfg.color, width: 10, height: 10, border: '2px solid #30363d', top: -2 }} />
+      {elecTopPos.map((pct, i) => (
+        <Handle key={`elec-T${i+1}`} type="source" position={Position.Top} id={`elec-T${i+1}`}
+          style={{ background: cfg.color, width: 10, height: 10, border: '2px solid #30363d', top: -2, left: `${pct}%` }} />
+      ))}
     </div>
   )
 })

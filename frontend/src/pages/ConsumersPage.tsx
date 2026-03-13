@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
 import { Plus, Edit2, Plug, X, Copy, Home, Factory, Lightbulb, Wind, Car, Droplets, ArrowLeft } from 'lucide-react'
+
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { Consumer, ConsumerType, LoadProfile, EnergyPort, PortEnergy } from '../types'
+import type { Consumer, ConsumerType, LoadProfile, EnergyPort } from '../types'
 import { createDefaultCommunication } from '../types'
-import { PortEditor, mkPort } from '../components/ui/PortEditor'
+import { mkPort } from '../components/ui/PortEditor'
 
 const consumerTypeOptions = [
   { value: 'household', label: 'Haushalt' },
@@ -81,12 +82,6 @@ function createDefaultConsumerPorts(type: ConsumerType): EnergyPort[] {
   }
 }
 
-const consumerNodeColors: Record<ConsumerType, string> = {
-  household: '#dcfce7', commercial: '#f3e8ff', production: '#ffedd5',
-  lighting: '#fef9c3', hvac: '#dbeafe', ventilation: '#cffafe',
-  wallbox: '#d1fae5', hot_water: '#fee2e2', other: '#f3f4f6',
-}
-
 function createDefaultConsumer(type: ConsumerType): Consumer {
   return {
     id: uuid(),
@@ -113,16 +108,14 @@ function createDefaultConsumer(type: ConsumerType): Consumer {
 }
 
 export default function ConsumersPage() {
-  const { consumers, rooms, meters, storages, addConsumer, updateConsumer, removeConsumer, updateRoom } = useEnergyStore()
+  const { consumers, addConsumer, updateConsumer, removeConsumer } = useEnergyStore()
   const [editing, setEditing] = useState<Consumer | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [selectedRoomId, setSelectedRoomId] = useState('')
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, returnFromFlow } = useCreateNavigation()
 
-  const startAdd = (type: ConsumerType) => { setEditing(createDefaultConsumer(type)); setSelectedRoomId(''); setShowForm(true) }
+  const startAdd = (type: ConsumerType) => { setEditing(createDefaultConsumer(type)); setShowForm(true) }
   const startEdit = (c: Consumer) => {
     setEditing({ ...c })
-    setSelectedRoomId(rooms.find((r) => r.consumerIds.includes(c.id))?.id || '')
     setShowForm(true)
   }
 
@@ -151,22 +144,14 @@ export default function ConsumersPage() {
   // Handle return from other pages with a created entity
   useEffect(() => {
     if (pendingReturn) {
-      if (pendingReturn.assignField === 'selectedRoomId') {
-        setSelectedRoomId(pendingReturn.createdEntityId!)
-        setEditing({ ...pendingReturn.draft } as Consumer)
+      const draft = { ...pendingReturn.draft } as Consumer
+      if (pendingReturn.assignMode === 'single') {
+        (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
       } else {
-        const draft = { ...pendingReturn.draft } as Consumer
-        if (pendingReturn.assignMode === 'single') {
-          (draft as any)[pendingReturn.assignField] = pendingReturn.createdEntityId
-        } else {
-          (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
-        }
-        setEditing(draft)
+        (draft as any)[pendingReturn.assignField] = [...((draft as any)[pendingReturn.assignField] || []), pendingReturn.createdEntityId]
       }
+      setEditing(draft)
       setShowForm(true)
-      if (pendingReturn.extraState?.selectedRoomId !== undefined) {
-        setSelectedRoomId(pendingReturn.extraState.selectedRoomId)
-      }
       clearPendingCreation()
     }
   }, [pendingReturn])
@@ -175,18 +160,6 @@ export default function ConsumersPage() {
     if (!editing) return
     if (consumers.find((c) => c.id === editing.id)) updateConsumer(editing.id, editing)
     else addConsumer(editing)
-
-    // Raumzuordnung aktualisieren
-    const currentRoom = rooms.find((r) => r.consumerIds.includes(editing.id))
-    if (currentRoom && currentRoom.id !== selectedRoomId) {
-      updateRoom(currentRoom.id, { ...currentRoom, consumerIds: currentRoom.consumerIds.filter((id) => id !== editing.id) })
-    }
-    if (selectedRoomId && (!currentRoom || currentRoom.id !== selectedRoomId)) {
-      const newRoom = rooms.find((r) => r.id === selectedRoomId)
-      if (newRoom) {
-        updateRoom(newRoom.id, { ...newRoom, consumerIds: [...newRoom.consumerIds, editing.id] })
-      }
-    }
 
     // If we are a creation target, save and navigate back
     if (isCreationTarget) {
@@ -209,9 +182,6 @@ export default function ConsumersPage() {
   const update = <K extends keyof Consumer>(key: K, value: Consumer[K]) => {
     if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
   }
-
-  const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
-  const roomOptions = [{ value: '', label: '— Kein Raum —' }, ...rooms.map((r) => ({ value: r.id, label: r.name || 'Unbenannt' }))]
 
   if (showForm && editing) {
     return (
@@ -244,98 +214,6 @@ export default function ConsumersPage() {
               <InputField label="Nennleistung" value={editing.nominalPowerKw} onChange={(v) => update('nominalPowerKw', Number(v))} type="number" unit="kW" step="0.1" />
               <InputField label="Jahresverbrauch" value={editing.annualConsumptionKwh} onChange={(v) => update('annualConsumptionKwh', Number(v))} type="number" unit="kWh" hint="Geschätzter Jahresverbrauch" />
               <SelectField label="Lastprofil" value={editing.loadProfile} onChange={(v) => update('loadProfile', v as LoadProfile)} options={loadProfileOptions} hint="Standardlastprofil BDEW" />
-            </div>
-            {meterOptions.length > 0 ? (
-              <div>
-                <SelectField
-                  label="Zugeordneter Zähler"
-                  value={editing.assignedMeterIds[0] || ''}
-                  onChange={(v) => update('assignedMeterIds', v ? [v] : [])}
-                  options={meterOptions}
-                />
-                <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing, extraState: { selectedRoomId } })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Zähler anlegen</button>
-              </div>
-            ) : (
-              <div>
-                <label className="label">Zugeordneter Zähler</label>
-                <button
-                  onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing, extraState: { selectedRoomId } })}
-                  className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm">Zähler jetzt anlegen</span>
-                </button>
-              </div>
-            )}
-            {rooms.length > 0 ? (
-              <div>
-                <SelectField
-                  label="Zugeordneter Raum"
-                  value={selectedRoomId}
-                  onChange={(v) => setSelectedRoomId(v)}
-                  options={roomOptions}
-                  hint="Optional — in welchem Raum befindet sich der Verbraucher?"
-                />
-                <button onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'selectedRoomId', assignMode: 'single', draft: editing, extraState: { selectedRoomId } })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Raum anlegen</button>
-              </div>
-            ) : (
-              <div>
-                <label className="label">Zugeordneter Raum</label>
-                <button
-                  onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'selectedRoomId', assignMode: 'single', draft: editing, extraState: { selectedRoomId } })}
-                  className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm">Raum jetzt anlegen</span>
-                </button>
-              </div>
-            )}
-          </Section>
-
-          <PortEditor
-            ports={editing.ports || []}
-            onChange={(ports) => update('ports', ports)}
-            onReset={() => update('ports', createDefaultConsumerPorts(editing.type))}
-            nodeName={editing.name || typeLabels[editing.type]}
-            nodeColor={consumerNodeColors[editing.type]}
-          />
-
-          <Section title="Energiequellen" defaultOpen={true}>
-            <p className="text-sm text-dark-faded mb-3">Von welchen Quellen wird dieser Verbraucher versorgt?</p>
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={(editing.connectedSourceIds || []).includes('grid')}
-                  onChange={(e) => {
-                    const ids = e.target.checked
-                      ? [...(editing.connectedSourceIds || []), 'grid']
-                      : (editing.connectedSourceIds || []).filter((id) => id !== 'grid')
-                    update('connectedSourceIds', ids)
-                  }}
-                  className="w-4 h-4 text-emerald-600 rounded"
-                />
-                Netz (Hausanschluss)
-              </label>
-              {storages.map((s) => {
-                const storLabel = s.type === 'battery' ? 'Batteriespeicher' : s.type === 'heat' ? 'Wärmespeicher' : 'Kältespeicher'
-                return (
-                  <label key={s.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={(editing.connectedSourceIds || []).includes(s.id)}
-                      onChange={(e) => {
-                        const ids = e.target.checked
-                          ? [...(editing.connectedSourceIds || []), s.id]
-                          : (editing.connectedSourceIds || []).filter((id) => id !== s.id)
-                        update('connectedSourceIds', ids)
-                      }}
-                      className="w-4 h-4 text-emerald-600 rounded"
-                    />
-                    {s.name || storLabel}
-                  </label>
-                )
-              })}
             </div>
           </Section>
 

@@ -8,7 +8,7 @@
 
 import type {
   Generator, Meter, Consumer, Storage,
-  Room, HeatingCoolingCircuit, SystemSettings,
+  Room, HeatingCoolingCircuit, Source, Sensor, SystemSettings,
 } from '../types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
@@ -49,6 +49,8 @@ export const api = {
   storages: crudFor<Storage>('/storages'),
   rooms: crudFor<Room>('/rooms'),
   circuits: crudFor<HeatingCoolingCircuit>('/circuits'),
+  sources: crudFor<Source>('/sources'),
+  sensors: crudFor<Sensor>('/sensors'),
 
   settings: {
     get: () => request<SystemSettings | null>('/settings'),

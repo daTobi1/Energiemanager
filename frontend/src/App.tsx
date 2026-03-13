@@ -15,6 +15,8 @@ import ElectricalSchemaPageWrapper from './pages/ElectricalSchemaPageWrapper'
 import SankeyPage from './pages/SankeyPage'
 import OptimizerPage from './pages/OptimizerPage'
 import SettingsPage from './pages/SettingsPage'
+import SourcesPage from './pages/SourcesPage'
+import SensorsPage from './pages/SensorsPage'
 import SystemPage from './pages/SystemPage'
 
 export default function App() {
@@ -30,6 +32,8 @@ export default function App() {
         <Route index element={<DashboardPage />} />
         <Route path="/generators" element={<GeneratorsPage />} />
         <Route path="/meters" element={<MetersPage />} />
+        <Route path="/sources" element={<SourcesPage />} />
+        <Route path="/sensors" element={<SensorsPage />} />
         <Route path="/consumers" element={<ConsumersPage />} />
         <Route path="/storage" element={<StoragePage />} />
         <Route path="/rooms" element={<RoomsPage />} />

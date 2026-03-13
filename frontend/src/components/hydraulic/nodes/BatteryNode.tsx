@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface BatteryNodeData {
   label: string
@@ -11,6 +12,10 @@ export interface BatteryNodeData {
 
 export default memo(function BatteryNode({ data, selected }: NodeProps) {
   const d = data as BatteryNodeData
+
+  const elecLeftCount = (d.portsElecLeft as number) || 1
+  const elecLeftPos = handlePositions(elecLeftCount, 25, 65)
+
   return (
     <div className="relative">
       <svg width="100" height="80" viewBox="0 0 100 80">
@@ -35,9 +40,11 @@ export default memo(function BatteryNode({ data, selected }: NodeProps) {
           {d.label}
         </text>
       </svg>
-      {/* Bidirektional: Strom links (1 Handle) */}
-      <Handle type="source" position={Position.Left} id="elec-L1"
-        style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '44%' }} />
+      {/* Bidirektional: Strom links */}
+      {elecLeftPos.map((pct, i) => (
+        <Handle key={`elec-L${i+1}`} type="source" position={Position.Left} id={`elec-L${i+1}`}
+          style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

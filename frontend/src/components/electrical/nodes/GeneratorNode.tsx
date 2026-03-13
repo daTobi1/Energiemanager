@@ -2,11 +2,14 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
 import CrossSchemaBadge from '../../shared/CrossSchemaBadge'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Generator (BHKW) — IEC: Kreis mit G */
 export default memo(function GeneratorNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
   const entityId = d.entityId as string | undefined
+  const elecRightCount = (d.portsElecRight as number) || 1
+  const elecRightPos = handlePositions(elecRightCount, 25, 65)
   return (
     <div className="relative">
       {entityId && <CrossSchemaBadge entityId={entityId} currentSchema="electrical" />}
@@ -23,8 +26,10 @@ export default memo(function GeneratorNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* rechts */}
-      <Handle type="source" position={Position.Right} id="elec-R1"
-        style={{ background: ELEC_COLORS.generation, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '44%' }} />
+      {elecRightPos.map((pct, i) => (
+        <Handle key={`elec-R${i+1}`} type="source" position={Position.Right} id={`elec-R${i+1}`}
+          style={{ background: ELEC_COLORS.generation, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

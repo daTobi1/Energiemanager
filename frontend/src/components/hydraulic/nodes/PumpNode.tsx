@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface PumpNodeData {
   label: string
@@ -11,6 +12,13 @@ export interface PumpNodeData {
 
 export default memo(function PumpNode({ data, selected }: NodeProps) {
   const d = data as PumpNodeData
+
+  const dd = data as Record<string, unknown>
+  const flowLeftCount = (dd.portsFlowLeft as number) || 1
+  const flowRightCount = (dd.portsFlowRight as number) || 1
+  const flowLeftPos = handlePositions(flowLeftCount, 25, 65)
+  const flowRightPos = handlePositions(flowRightCount, 25, 65)
+
   return (
     <div className="relative">
       <svg width="60" height="70" viewBox="0 0 60 70">
@@ -25,11 +33,15 @@ export default memo(function PumpNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* links */}
-      <Handle type="source" position={Position.Left} id="flow-L1"
-        style={{ background: ENERGY_COLORS.heat, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '43%' }} />
+      {flowLeftPos.map((pct, i) => (
+        <Handle key={`flow-L${i + 1}`} type="source" position={Position.Left} id={`flow-L${i + 1}`}
+          style={{ background: ENERGY_COLORS.heat, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
       {/* rechts */}
-      <Handle type="source" position={Position.Right} id="flow-R1"
-        style={{ background: ENERGY_COLORS.heat, width: 8, height: 8, border: '2px solid #30363d', right: -2, top: '43%' }} />
+      {flowRightPos.map((pct, i) => (
+        <Handle key={`flow-R${i + 1}`} type="source" position={Position.Right} id={`flow-R${i + 1}`}
+          style={{ background: ENERGY_COLORS.heat, width: 8, height: 8, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

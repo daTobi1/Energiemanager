@@ -6,8 +6,8 @@
  */
 
 import { useCallback, useRef } from 'react'
-import type { Node, Edge } from '@xyflow/react'
-import { useReactFlow } from '@xyflow/react'
+import type { Node, Edge, InternalNode } from '@xyflow/react'
+import { Position, useReactFlow } from '@xyflow/react'
 import { v4 as uuid } from 'uuid'
 
 interface AutoJunctionConfig {
@@ -26,10 +26,10 @@ interface AutoJunctionConfig {
 
 /* ── Nächsten Punkt auf einem SVG-Pfad finden ──────────── */
 
-function findNearestOnPath(
+export function findNearestOnPath(
   pathEl: SVGPathElement,
   target: { x: number; y: number },
-): { point: { x: number; y: number }; dist: number; isHorizontal: boolean } {
+): { point: { x: number; y: number }; dist: number; isHorizontal: boolean; len: number } {
   const totalLen = pathEl.getTotalLength()
   let bestDist = Infinity
   let bestLen = 0
@@ -59,12 +59,56 @@ function findNearestOnPath(
   const p2 = pathEl.getPointAtLength(Math.min(totalLen, bestLen + 5))
   const isHorizontal = Math.abs(p2.x - p1.x) > Math.abs(p2.y - p1.y)
 
-  return { point: { x: pt.x, y: pt.y }, dist: bestDist, isHorizontal }
+  return { point: { x: pt.x, y: pt.y }, dist: bestDist, isHorizontal, len: bestLen }
+}
+
+/* ── Segment-Grenzen entlang eines Pfads finden ────────── */
+
+/**
+ * Findet Start- und Endpunkt eines geraden Segments (horizontal oder vertikal)
+ * auf einem SVG-Pfad, ausgehend von einem Punkt in der Nähe.
+ */
+export function findSegmentBounds(
+  pathEl: SVGPathElement,
+  nearLength: number,
+  isHorizontal: boolean,
+): { start: { x: number; y: number }; end: { x: number; y: number } } {
+  const totalLen = pathEl.getTotalLength()
+  const step = 2
+  const sample = 4
+
+  // Rückwärts suchen bis Richtung wechselt
+  let startLen = nearLength
+  for (let d = nearLength; d >= 0; d -= step) {
+    const p1 = pathEl.getPointAtLength(d)
+    const p2 = pathEl.getPointAtLength(Math.max(0, d - sample))
+    const dx = Math.abs(p1.x - p2.x)
+    const dy = Math.abs(p1.y - p2.y)
+    if (dx + dy < 0.5) continue
+    if ((dx > dy) !== isHorizontal) break
+    startLen = d
+  }
+
+  // Vorwärts suchen bis Richtung wechselt
+  let endLen = nearLength
+  for (let d = nearLength; d <= totalLen; d += step) {
+    const p1 = pathEl.getPointAtLength(d)
+    const p2 = pathEl.getPointAtLength(Math.min(totalLen, d + sample))
+    const dx = Math.abs(p1.x - p2.x)
+    const dy = Math.abs(p1.y - p2.y)
+    if (dx + dy < 0.5) continue
+    if ((dx > dy) !== isHorizontal) break
+    endLen = d
+  }
+
+  const sp = pathEl.getPointAtLength(startLen)
+  const ep = pathEl.getPointAtLength(endLen)
+  return { start: { x: sp.x, y: sp.y }, end: { x: ep.x, y: ep.y } }
 }
 
 /* ── Sichtbaren Edge-Path aus dem DOM holen ────────────── */
 
-function getVisiblePath(edgeEl: Element): SVGPathElement | null {
+export function getVisiblePath(edgeEl: Element): SVGPathElement | null {
   const paths = edgeEl.querySelectorAll('path')
   // Letzten nicht-transparenten Pfad nehmen (der sichtbare)
   for (let i = paths.length - 1; i >= 0; i--) {
@@ -72,6 +116,135 @@ function getVisiblePath(edgeEl: Element): SVGPathElement | null {
     if (!style.includes('transparent')) return paths[i] as SVGPathElement
   }
   return (paths[0] as SVGPathElement) || null
+}
+
+/* ── Nächste Edge an einem Punkt finden (für Drop-on-Edge) ── */
+
+export function findNearestEdgeAtPoint(
+  point: { x: number; y: number },
+  edges: Edge[],
+  excludeNodeIds: string[] = [],
+  threshold = 20,
+): { edge: Edge; point: { x: number; y: number }; dist: number } | null {
+  const edgeEls = document.querySelectorAll('.react-flow__edge')
+  let bestEdge: Edge | null = null
+  let bestPoint = { x: 0, y: 0 }
+  let bestDist = Infinity
+
+  edgeEls.forEach((el) => {
+    const testId = el.getAttribute('data-testid') || ''
+    const edgeId = testId.replace('rf__edge-', '')
+    const edge = edges.find((e) => e.id === edgeId)
+    if (!edge) return
+    if (excludeNodeIds.includes(edge.source) || excludeNodeIds.includes(edge.target)) return
+
+    const pathEl = getVisiblePath(el)
+    if (!pathEl) return
+
+    const result = findNearestOnPath(pathEl, point)
+    if (result.dist < bestDist) {
+      bestDist = result.dist
+      bestPoint = result.point
+      bestEdge = edge
+    }
+  })
+
+  if (!bestEdge || bestDist > threshold) return null
+  return { edge: bestEdge, point: bestPoint, dist: bestDist }
+}
+
+/* ── Mathematische Edge-Erkennung (kein DOM nötig) ───── */
+
+/** Kürzester Abstand von Punkt zu Liniensegment + nächster Punkt */
+function distToSeg(
+  px: number, py: number,
+  x1: number, y1: number, x2: number, y2: number,
+): { dist: number; point: { x: number; y: number } } {
+  const dx = x2 - x1, dy = y2 - y1
+  const len2 = dx * dx + dy * dy
+  if (len2 === 0) return { dist: Math.hypot(px - x1, py - y1), point: { x: x1, y: y1 } }
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2))
+  const projX = x1 + t * dx, projY = y1 + t * dy
+  return { dist: Math.hypot(px - projX, py - projY), point: { x: projX, y: projY } }
+}
+
+/** Handle-Position in Flow-Koordinaten aus InternalNode lesen */
+function getHandlePos(
+  node: InternalNode,
+  handleId: string,
+): { x: number; y: number; position: Position } | null {
+  const bounds = (node as any).internals?.handleBounds
+  if (!bounds) return null
+  const allHandles = [...(bounds.source || []), ...(bounds.target || [])]
+  const h = allHandles.find((hh: any) => hh.id === handleId)
+  if (!h) return null
+  return {
+    x: node.position.x + h.x + h.width / 2,
+    y: node.position.y + h.y + h.height / 2,
+    position: h.position,
+  }
+}
+
+/**
+ * Findet die nächste Edge an einem Flow-Punkt — rein mathematisch,
+ * ohne DOM-Queries oder getPointAtLength(). Berechnet den Step-Edge-Pfad
+ * aus den Handle-Positionen der Quell-/Zielknoten.
+ */
+export function findNearestEdgeMath(
+  point: { x: number; y: number },
+  edges: Edge[],
+  getInternalNode: (id: string) => InternalNode | undefined,
+  threshold = 40,
+): { edge: Edge; point: { x: number; y: number }; dist: number } | null {
+  let bestEdge: Edge | null = null
+  let bestPoint = { x: 0, y: 0 }
+  let bestDist = Infinity
+
+  for (const edge of edges) {
+    const srcNode = getInternalNode(edge.source)
+    const tgtNode = getInternalNode(edge.target)
+    if (!srcNode || !tgtNode) continue
+
+    const srcH = edge.sourceHandle ? getHandlePos(srcNode, edge.sourceHandle) : null
+    const tgtH = edge.targetHandle ? getHandlePos(tgtNode, edge.targetHandle) : null
+    if (!srcH || !tgtH) continue
+
+    const offsetX = ((edge.data as Record<string, unknown>)?.offsetX as number) || 0
+
+    // Step-Edge-Pfad: 3 Segmente
+    const isVerticalRoute =
+      (srcH.position === Position.Top || srcH.position === Position.Bottom) &&
+      (tgtH.position === Position.Top || tgtH.position === Position.Bottom)
+
+    let segments: Array<[number, number, number, number]>
+    if (isVerticalRoute) {
+      const cy = (srcH.y + tgtH.y) / 2
+      segments = [
+        [srcH.x, srcH.y, srcH.x, cy],
+        [srcH.x, cy, tgtH.x, cy],
+        [tgtH.x, cy, tgtH.x, tgtH.y],
+      ]
+    } else {
+      const cx = (srcH.x + tgtH.x) / 2 + offsetX
+      segments = [
+        [srcH.x, srcH.y, cx, srcH.y],
+        [cx, srcH.y, cx, tgtH.y],
+        [cx, tgtH.y, tgtH.x, tgtH.y],
+      ]
+    }
+
+    for (const [x1, y1, x2, y2] of segments) {
+      const result = distToSeg(point.x, point.y, x1, y1, x2, y2)
+      if (result.dist < bestDist) {
+        bestDist = result.dist
+        bestPoint = result.point
+        bestEdge = edge
+      }
+    }
+  }
+
+  if (!bestEdge || bestDist > threshold) return null
+  return { edge: bestEdge, point: bestPoint, dist: bestDist }
 }
 
 /* ── Hook ──────────────────────────────────────────────── */
@@ -153,10 +326,8 @@ export function useAutoJunction({
       const origEdge = bestEdge as Edge
       const junctionId = `schema-${uuid()}`
 
-      // Auf Grid snappen, Junction zentrieren (10×10px)
-      const snappedX = Math.round(bestResult.point.x / gridSize) * gridSize
-      const snappedY = Math.round(bestResult.point.y / gridSize) * gridSize
-      const junctionPos = { x: snappedX - 5, y: snappedY - 5 }
+      // Junction exakt auf der Linie platzieren (10×10px, Handle in der Mitte)
+      const junctionPos = { x: bestResult.point.x - 5, y: bestResult.point.y - 5 }
 
       // Handles für den Split bestimmen
       let splitA: string, splitB: string, connHandle: string
@@ -263,6 +434,14 @@ export function useAutoJunction({
         'junction-B1': 'junction-T1',
         'junction-L1': 'junction-R1',
         'junction-R1': 'junction-L1',
+        // Meter/Sensor Handles (Hydraulik)
+        'meter-L1': 'meter-R1',
+        'meter-R1': 'meter-L1',
+        // Elec-Meter Handles (Strom)
+        'elec-L1': 'elec-R1',
+        'elec-R1': 'elec-L1',
+        'elec-T1': 'elec-B1',
+        'elec-B1': 'elec-T1',
       }
 
       const reconnected: Edge[] = []

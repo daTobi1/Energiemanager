@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus, Trash2, Edit2, X, Copy, Waypoints, Flame, Snowflake, ArrowLeft } from 'lucide-react'
+import { Plus, Edit2, X, Copy, Waypoints, Flame, Snowflake, ArrowLeft } from 'lucide-react'
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
 import { CommunicationForm } from '../components/ui/CommunicationForm'
 import { useCreateNavigation } from '../hooks/useCreateNavigation'
-import type { HeatingCoolingCircuit, CircuitType, DistributionType, PumpType, ControllableComponent, CommunicationConfig, EnergyPort, PortEnergy } from '../types'
+import type { HeatingCoolingCircuit, CircuitType, DistributionType, PumpType, ControllableComponent, CommunicationConfig, EnergyPort } from '../types'
 import { createDefaultCircuit, createDefaultControllableComponent } from '../types'
-import { PortEditor, mkPort } from '../components/ui/PortEditor'
+import { mkPort } from '../components/ui/PortEditor'
 
 const circuitTypeOptions = [
   { value: 'heating', label: 'Heizkreis' },
@@ -46,12 +46,6 @@ function createDefaultCircuitPorts(type: CircuitType): EnergyPort[] {
     case 'cooling':  return [mkPort('input', 'cold', 'Kälte'), mkPort('output', 'cold', 'Kälteabgabe')]
     case 'combined': return [mkPort('input', 'heat', 'Wärme'), mkPort('input', 'cold', 'Kälte'), mkPort('output', 'heat', 'Wärmeabgabe'), mkPort('output', 'cold', 'Kälteabgabe')]
   }
-}
-
-const circuitNodeColors: Record<CircuitType, string> = {
-  heating: '#fee2e2',
-  cooling: '#dbeafe',
-  combined: '#f3e8ff',
 }
 
 const distributionLabels: Record<DistributionType, string> = {
@@ -103,10 +97,10 @@ function ControllableBlock({
 }
 
 export default function CircuitsPage() {
-  const { circuits, generators, storages, rooms, meters, addCircuit, updateCircuit, removeCircuit } = useEnergyStore()
+  const { circuits, rooms, addCircuit, updateCircuit, removeCircuit } = useEnergyStore()
   const [editing, setEditing] = useState<HeatingCoolingCircuit | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
 
   const startAdd = (type: CircuitType = 'heating') => {
     setEditing({ ...createDefaultCircuit(), id: uuid(), type, ports: createDefaultCircuitPorts(type) })
@@ -181,10 +175,6 @@ export default function CircuitsPage() {
     if (editing) setEditing((prev) => prev ? { ...prev, [key]: value } : prev)
   }
 
-  const thermalStorageOptions = storages.filter((s) => s.type === 'heat' || s.type === 'cold').map((s) => ({ value: s.id, label: s.name || 'Unbenannt' }))
-  const generatorOptions = generators.map((g) => ({ value: g.id, label: g.name || 'Unbenannt' }))
-  const roomOptions = rooms.map((r) => ({ value: r.id, label: r.name || 'Unbenannt' }))
-  const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || '-'})` }))
 
   // Count active components
   const countActive = (c: HeatingCoolingCircuit) => {
@@ -242,14 +232,6 @@ export default function CircuitsPage() {
               setEditing((prev) => prev ? { ...prev, ...updates } : prev)
             }} options={distributionOptions} info="Art der Wärme-/Kälteabgabe im Raum. Temperaturen und Heizkurve werden automatisch vorbelegt." />
           </Section>
-
-          <PortEditor
-            ports={editing.ports || []}
-            onChange={(ports) => update('ports', ports)}
-            onReset={() => update('ports', createDefaultCircuitPorts(editing.type))}
-            nodeName={editing.name || typeLabels[editing.type]}
-            nodeColor={circuitNodeColors[editing.type]}
-          />
 
           <Section title="Regelung" defaultOpen={true} badge={editing.controllable ? `${countActive(editing)} Komponenten` : undefined}>
             <CheckboxField
@@ -325,159 +307,6 @@ export default function CircuitsPage() {
             <div className="grid grid-cols-2 gap-4">
               <SelectField label="Pumpentyp" value={editing.pumpType} onChange={(v) => update('pumpType', v as PumpType)} options={pumpTypeOptions} info="Hocheffizienzpumpen sparen bis zu 80% Pumpenstrom" />
               <InputField label="Pumpenleistung" value={editing.pumpPowerW} onChange={(v) => update('pumpPowerW', Number(v))} type="number" unit="W" info="Elektrische Leistungsaufnahme der Umwälzpumpe" />
-            </div>
-          </Section>
-
-          <Section title="Versorgung & Zuordnungen" defaultOpen={true}>
-            <div>
-              <label className="label">Gespeist aus Speicher</label>
-              <p className="text-xs text-dark-faded mb-1">Wird der Kreis aus einem Puffer-/Kältespeicher versorgt?</p>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {thermalStorageOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      const ids = editing.supplyStorageIds.includes(opt.value)
-                        ? editing.supplyStorageIds.filter((id) => id !== opt.value)
-                        : [...editing.supplyStorageIds, opt.value]
-                      update('supplyStorageIds', ids)
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                      editing.supplyStorageIds.includes(opt.value)
-                        ? 'bg-red-600/20 border-red-500/40 text-red-400'
-                        : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                {thermalStorageOptions.length === 0 && (
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'supplyStorageIds', assignMode: 'append', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-red-500/50 hover:text-red-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Thermischen Speicher jetzt anlegen</span>
-                  </button>
-                )}
-                {thermalStorageOptions.length > 0 && (
-                  <button onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'supplyStorageIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-red-500/50 hover:bg-red-500/5 text-dark-faded hover:text-red-400 transition-colors">
-                    <Plus className="w-3 h-3" /> Neuen Speicher anlegen
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="mt-3">
-              <label className="label">Direkt angeschlossene Erzeuger</label>
-              <p className="text-xs text-dark-faded mb-1">Nur wenn kein Speicher dazwischen — Erzeuger speist direkt in den Kreis</p>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {generatorOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      const ids = editing.generatorIds.includes(opt.value)
-                        ? editing.generatorIds.filter((id) => id !== opt.value)
-                        : [...editing.generatorIds, opt.value]
-                      update('generatorIds', ids)
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                      editing.generatorIds.includes(opt.value)
-                        ? 'bg-amber-600/20 border-amber-500/40 text-amber-400'
-                        : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                {generatorOptions.length === 0 && (
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'generatorIds', assignMode: 'append', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-amber-500/50 hover:text-amber-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Erzeuger jetzt anlegen</span>
-                  </button>
-                )}
-                {generatorOptions.length > 0 && (
-                  <button onClick={() => navigateToCreate({ targetPath: '/generators', assignField: 'generatorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-amber-500/50 hover:bg-amber-500/5 text-dark-faded hover:text-amber-400 transition-colors">
-                    <Plus className="w-3 h-3" /> Neuen Erzeuger anlegen
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="mt-3">
-              <label className="label">Zugeordnete Räume</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {roomOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      const ids = editing.roomIds.includes(opt.value)
-                        ? editing.roomIds.filter((id) => id !== opt.value)
-                        : [...editing.roomIds, opt.value]
-                      update('roomIds', ids)
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                      editing.roomIds.includes(opt.value)
-                        ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
-                        : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                {roomOptions.length === 0 && (
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'roomIds', assignMode: 'append', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Raum jetzt anlegen</span>
-                  </button>
-                )}
-                {roomOptions.length > 0 && (
-                  <button onClick={() => navigateToCreate({ targetPath: '/rooms', assignField: 'roomIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-emerald-500/50 hover:bg-emerald-500/5 text-dark-faded hover:text-emerald-400 transition-colors">
-                    <Plus className="w-3 h-3" /> Neuen Raum anlegen
-                  </button>
-                )}
-              </div>
-            </div>
-            <div className="mt-3">
-              <label className="label">Zugeordnete Zähler</label>
-              <div className="flex flex-wrap gap-2 mt-1">
-                {meterOptions.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      const ids = editing.meterIds.includes(opt.value)
-                        ? editing.meterIds.filter((id) => id !== opt.value)
-                        : [...editing.meterIds, opt.value]
-                      update('meterIds', ids)
-                    }}
-                    className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                      editing.meterIds.includes(opt.value)
-                        ? 'bg-yellow-600/20 border-yellow-500/40 text-yellow-400'
-                        : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-                {meterOptions.length === 0 && (
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'meterIds', assignMode: 'append', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-yellow-500/50 hover:text-yellow-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Zähler jetzt anlegen</span>
-                  </button>
-                )}
-                {meterOptions.length > 0 && (
-                  <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'meterIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-yellow-500/50 hover:bg-yellow-500/5 text-dark-faded hover:text-yellow-400 transition-colors">
-                    <Plus className="w-3 h-3" /> Neuen Zähler anlegen
-                  </button>
-                )}
-              </div>
             </div>
           </Section>
 

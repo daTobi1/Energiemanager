@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface RoomNodeData {
   label: string
@@ -13,6 +14,13 @@ export interface RoomNodeData {
 
 export default memo(function RoomNode({ data, selected }: NodeProps) {
   const d = data as RoomNodeData
+
+  const dd = data as Record<string, unknown>
+  const circuitLeftCount = (dd.portsCircuitLeft as number) || 1
+  const elecRightCount = (dd.portsElecRight as number) || 1
+  const circuitLeftPos = handlePositions(circuitLeftCount, 25, 65)
+  const elecRightPos = handlePositions(elecRightCount, 25, 65)
+
   return (
     <div className="relative">
       <svg width="100" height="70" viewBox="0 0 100 70">
@@ -44,11 +52,15 @@ export default memo(function RoomNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Heizkreis links */}
-      <Handle type="source" position={Position.Left} id="circuit-L1"
-        style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '46%' }} />
+      {circuitLeftPos.map((pct, i) => (
+        <Handle key={`circuit-L${i + 1}`} type="source" position={Position.Left} id={`circuit-L${i + 1}`}
+          style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
       {/* Verbraucher rechts */}
-      <Handle type="source" position={Position.Right} id="elec-R1"
-        style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '46%' }} />
+      {elecRightPos.map((pct, i) => (
+        <Handle key={`elec-R${i + 1}`} type="source" position={Position.Right} id={`elec-R${i + 1}`}
+          style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

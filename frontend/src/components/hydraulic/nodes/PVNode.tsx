@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface PVNodeData {
   label: string
@@ -11,6 +12,10 @@ export interface PVNodeData {
 
 export default memo(function PVNode({ data, selected }: NodeProps) {
   const d = data as PVNodeData
+
+  const elecRightCount = (d.portsElecRight as number) || 1
+  const elecRightPos = handlePositions(elecRightCount, 25, 65)
+
   return (
     <div className="relative">
       <svg width="120" height="80" viewBox="0 0 120 80">
@@ -31,8 +36,10 @@ export default memo(function PVNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Strom rechts */}
-      <Handle type="source" position={Position.Right} id="elec-R1"
-        style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '44%' }} />
+      {elecRightPos.map((pct, i) => (
+        <Handle key={`elec-R${i+1}`} type="source" position={Position.Right} id={`elec-R${i+1}`}
+          style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

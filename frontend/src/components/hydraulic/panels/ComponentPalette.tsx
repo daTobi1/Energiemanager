@@ -1,5 +1,5 @@
 import { memo, type DragEvent } from 'react'
-import { Flame, Thermometer, Snowflake, Zap, Plug, Home, Waypoints, Gauge, ArrowLeftRight, Sun, Mountain, Wind, Droplets, CircleDot } from 'lucide-react'
+import { Flame, Thermometer, Snowflake, Zap, Plug, Home, Waypoints, Gauge, ArrowLeftRight, Sun, Mountain, Wind, Droplets, CircleDot, Activity } from 'lucide-react'
 
 interface PaletteItem {
   type: string
@@ -33,6 +33,7 @@ const items: PaletteItem[] = [
   { type: 'consumer', label: 'Verbraucher', icon: Plug, color: '#16a34a', group: 'Verteilung' },
   // Messtechnik
   { type: 'meter', label: 'Zähler', icon: Gauge, color: '#0891b2', group: 'Messtechnik' },
+  { type: 'sensor', label: 'Sensor', icon: Activity, color: '#8b5cf6', group: 'Messtechnik' },
   // Verbindungen
   { type: 'junction', label: 'Verbindungspunkt', icon: CircleDot, color: '#8b949e', group: 'Verbindungen' },
 ]

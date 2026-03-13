@@ -2,11 +2,14 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
 import CrossSchemaBadge from '../../shared/CrossSchemaBadge'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Wallbox / Ladestation — Stecker-Symbol mit Auto */
 export default memo(function WallboxNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
   const entityId = d.entityId as string | undefined
+  const elecLeftCount = (d.portsElecLeft as number) || 1
+  const elecLeftPos = handlePositions(elecLeftCount, 25, 65)
   return (
     <div className="relative">
       {entityId && <CrossSchemaBadge entityId={entityId} currentSchema="electrical" />}
@@ -30,8 +33,10 @@ export default memo(function WallboxNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* links */}
-      <Handle type="source" position={Position.Left} id="elec-L1"
-        style={{ background: '#059669', width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '40%' }} />
+      {elecLeftPos.map((pct, i) => (
+        <Handle key={`elec-L${i+1}`} type="source" position={Position.Left} id={`elec-L${i+1}`}
+          style={{ background: '#059669', width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

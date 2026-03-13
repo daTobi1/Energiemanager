@@ -1,10 +1,14 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Solarthermie-Kollektor — Sonne + Flachkollektor mit Wärme-Handles */
 export default memo(function SolarThermalNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
+  const heatRightCount = (d.portsHeatRight as number) || 1
+  const heatRightVlPos = handlePositions(heatRightCount, 28, 50)
+  const heatRightRlPos = handlePositions(heatRightCount, 55, 78)
   return (
     <div className="relative">
       <svg width="110" height="90" viewBox="0 0 110 90">
@@ -40,15 +44,19 @@ export default memo(function SolarThermalNode({ data, selected }: NodeProps) {
           {d.label as string}
         </text>
       </svg>
-      {/* Messstelle links (Pyranometer, Kollektorfühler) */}
+      {/* Messstelle links */}
       <Handle type="source" position={Position.Left} id="meter-L1"
         style={{ background: '#0891b2', width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '50%' }} />
-      {/* Vorlauf rechts oben */}
-      <Handle type="source" position={Position.Right} id="heat-R1"
-        style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '42%' }} />
-      {/* Rücklauf rechts unten */}
-      <Handle type="source" position={Position.Right} id="heat-ret-R1"
-        style={{ background: ENERGY_COLORS.heat_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '62%' }} />
+      {/* Vorlauf rechts */}
+      {heatRightVlPos.map((pct, i) => (
+        <Handle key={`heat-R${i+1}`} type="source" position={Position.Right} id={`heat-R${i+1}`}
+          style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
+      {/* Rücklauf rechts */}
+      {heatRightRlPos.map((pct, i) => (
+        <Handle key={`heat-ret-R${i+1}`} type="source" position={Position.Right} id={`heat-ret-R${i+1}`}
+          style={{ background: ENERGY_COLORS.heat_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

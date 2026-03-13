@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface ThermalStorageNodeData {
   label: string
@@ -15,6 +16,14 @@ export default memo(function ThermalStorageNode({ data, selected }: NodeProps) {
   const isHeat = d.storageType !== 'cold'
   const primaryColor = isHeat ? ENERGY_COLORS.heat : ENERGY_COLORS.cold
   const returnColor = isHeat ? ENERGY_COLORS.heat_return : ENERGY_COLORS.cold_return
+
+  const heatLeftCount = (d.portsHeatLeft as number) || 1
+  const heatRightCount = (d.portsHeatRight as number) || 1
+
+  const heatLeftVlPos = handlePositions(heatLeftCount, 12, 38)
+  const heatLeftRlPos = handlePositions(heatLeftCount, 58, 82)
+  const heatRightVlPos = handlePositions(heatRightCount, 12, 38)
+  const heatRightRlPos = handlePositions(heatRightCount, 58, 82)
 
   return (
     <div className="relative">
@@ -44,18 +53,26 @@ export default memo(function ThermalStorageNode({ data, selected }: NodeProps) {
           {d.label}
         </text>
       </svg>
-      {/* VL links oben */}
-      <Handle type="source" position={Position.Left} id="heat-L1"
-        style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '20%' }} />
-      {/* RL links unten */}
-      <Handle type="source" position={Position.Left} id="heat-ret-L1"
-        style={{ background: returnColor, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '70%' }} />
-      {/* VL rechts oben */}
-      <Handle type="source" position={Position.Right} id="heat-R1"
-        style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '20%' }} />
-      {/* RL rechts unten */}
-      <Handle type="source" position={Position.Right} id="heat-ret-R1"
-        style={{ background: returnColor, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '70%' }} />
+      {/* VL links */}
+      {heatLeftVlPos.map((pct, i) => (
+        <Handle key={`heat-L${i+1}`} type="source" position={Position.Left} id={`heat-L${i+1}`}
+          style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {/* RL links */}
+      {heatLeftRlPos.map((pct, i) => (
+        <Handle key={`heat-ret-L${i+1}`} type="source" position={Position.Left} id={`heat-ret-L${i+1}`}
+          style={{ background: returnColor, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {/* VL rechts */}
+      {heatRightVlPos.map((pct, i) => (
+        <Handle key={`heat-R${i+1}`} type="source" position={Position.Right} id={`heat-R${i+1}`}
+          style={{ background: primaryColor, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
+      {/* RL rechts */}
+      {heatRightRlPos.map((pct, i) => (
+        <Handle key={`heat-ret-R${i+1}`} type="source" position={Position.Right} id={`heat-ret-R${i+1}`}
+          style={{ background: returnColor, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

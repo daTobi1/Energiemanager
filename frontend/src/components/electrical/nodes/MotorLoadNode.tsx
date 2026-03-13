@@ -3,6 +3,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
 import CrossSchemaBadge from '../../shared/CrossSchemaBadge'
 import { isDualSchemaElectricalNode } from '../../shared/crossSchemaUtils'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Motor-Last (WP, Kältemaschine, Lüftung) — IEC: Kreis mit M */
 export default memo(function MotorLoadNode({ data, selected }: NodeProps) {
@@ -10,6 +11,8 @@ export default memo(function MotorLoadNode({ data, selected }: NodeProps) {
   const powerKw = d.nominalPowerKw as number | undefined
   const entityId = d.entityId as string | undefined
   const motorType = d.motorType as string | undefined
+  const elecLeftCount = (d.portsElecLeft as number) || 1
+  const elecLeftPos = handlePositions(elecLeftCount, 25, 65)
   return (
     <div className="relative">
       {entityId && isDualSchemaElectricalNode('motor_load', motorType) && (
@@ -31,8 +34,10 @@ export default memo(function MotorLoadNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* links */}
-      <Handle type="source" position={Position.Left} id="elec-L1"
-        style={{ background: ELEC_COLORS.consumption, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '44%' }} />
+      {elecLeftPos.map((pct, i) => (
+        <Handle key={`elec-L${i+1}`} type="source" position={Position.Left} id={`elec-L${i+1}`}
+          style={{ background: ELEC_COLORS.consumption, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

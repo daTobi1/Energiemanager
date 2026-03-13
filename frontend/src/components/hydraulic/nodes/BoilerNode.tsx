@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface BoilerNodeData {
   label: string
@@ -11,6 +12,14 @@ export interface BoilerNodeData {
 
 export default memo(function BoilerNode({ data, selected }: NodeProps) {
   const d = data as BoilerNodeData
+
+  const gasLeftCount = (d.portsGasLeft as number) || 1
+  const heatRightCount = (d.portsHeatRight as number) || 1
+
+  const gasLeftPos = handlePositions(gasLeftCount, 25, 65)
+  const heatRightVlPos = handlePositions(heatRightCount, 15, 42)
+  const heatRightRlPos = handlePositions(heatRightCount, 55, 78)
+
   return (
     <div className="relative">
       <svg width="120" height="80" viewBox="0 0 120 80">
@@ -27,14 +36,20 @@ export default memo(function BoilerNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Gas links */}
-      <Handle type="source" position={Position.Left} id="gas-L1"
-        style={{ background: ENERGY_COLORS.gas, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '44%' }} />
-      {/* Vorlauf rechts oben */}
-      <Handle type="source" position={Position.Right} id="heat-R1"
-        style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '30%' }} />
-      {/* Rücklauf rechts unten */}
-      <Handle type="source" position={Position.Right} id="heat-ret-R1"
-        style={{ background: ENERGY_COLORS.heat_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '58%' }} />
+      {gasLeftPos.map((pct, i) => (
+        <Handle key={`gas-L${i+1}`} type="source" position={Position.Left} id={`gas-L${i+1}`}
+          style={{ background: ENERGY_COLORS.gas, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {/* Vorlauf rechts */}
+      {heatRightVlPos.map((pct, i) => (
+        <Handle key={`heat-R${i+1}`} type="source" position={Position.Right} id={`heat-R${i+1}`}
+          style={{ background: ENERGY_COLORS.heat, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
+      {/* Rücklauf rechts */}
+      {heatRightRlPos.map((pct, i) => (
+        <Handle key={`heat-ret-R${i+1}`} type="source" position={Position.Right} id={`heat-ret-R${i+1}`}
+          style={{ background: ENERGY_COLORS.heat_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

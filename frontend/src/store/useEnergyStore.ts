@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Generator, Meter, Consumer, Storage, SystemSettings, Room, HeatingCoolingCircuit } from '../types'
+import type { Generator, Meter, Consumer, Storage, SystemSettings, Room, HeatingCoolingCircuit, Source, Sensor } from '../types'
 import { createDefaultSettings } from '../types'
 import { api } from '../api/client'
 
@@ -20,6 +20,8 @@ interface EnergyStore {
   storages: Storage[]
   rooms: Room[]
   circuits: HeatingCoolingCircuit[]
+  sources: Source[]
+  sensors: Sensor[]
   settings: SystemSettings
 
   /** True wenn das Backend erreichbar ist */
@@ -56,6 +58,14 @@ interface EnergyStore {
   updateCircuit: (id: string, c: HeatingCoolingCircuit) => void
   removeCircuit: (id: string) => void
 
+  addSource: (s: Source) => void
+  updateSource: (id: string, s: Source) => void
+  removeSource: (id: string) => void
+
+  addSensor: (s: Sensor) => void
+  updateSensor: (id: string, s: Sensor) => void
+  removeSensor: (id: string) => void
+
   updateSettings: (s: Partial<SystemSettings>) => void
 
   loadSeedData: (data: {
@@ -65,6 +75,8 @@ interface EnergyStore {
     storages: Storage[]
     rooms: Room[]
     circuits: HeatingCoolingCircuit[]
+    sources?: Source[]
+    sensors?: Sensor[]
     settings: SystemSettings
   }) => void
   clearAll: () => void
@@ -87,6 +99,8 @@ export const useEnergyStore = create<EnergyStore>()(
       storages: [],
       rooms: [],
       circuits: [],
+      sources: [],
+      sensors: [],
       settings: createDefaultSettings(),
 
       apiConnected: false,
@@ -186,6 +200,34 @@ export const useEnergyStore = create<EnergyStore>()(
         if (get().apiConnected) fire(api.circuits.remove(id))
       },
 
+      // --- Sources ---
+      addSource: (s_) => {
+        set((s) => ({ sources: [...s.sources, s_] }))
+        if (get().apiConnected) fire(api.sources.create(s_))
+      },
+      updateSource: (id, s_) => {
+        set((s) => ({ sources: s.sources.map((src) => (src.id === id ? s_ : src)) }))
+        if (get().apiConnected) fire(api.sources.update(id, s_))
+      },
+      removeSource: (id) => {
+        set((s) => ({ sources: s.sources.filter((src) => src.id !== id) }))
+        if (get().apiConnected) fire(api.sources.remove(id))
+      },
+
+      // --- Sensors ---
+      addSensor: (s_) => {
+        set((s) => ({ sensors: [...s.sensors, s_] }))
+        if (get().apiConnected) fire(api.sensors.create(s_))
+      },
+      updateSensor: (id, s_) => {
+        set((s) => ({ sensors: s.sensors.map((sen) => (sen.id === id ? s_ : sen)) }))
+        if (get().apiConnected) fire(api.sensors.update(id, s_))
+      },
+      removeSensor: (id) => {
+        set((s) => ({ sensors: s.sensors.filter((sen) => sen.id !== id) }))
+        if (get().apiConnected) fire(api.sensors.remove(id))
+      },
+
       // --- Settings ---
       updateSettings: (partial) => {
         const merged = { ...get().settings, ...partial }
@@ -202,6 +244,8 @@ export const useEnergyStore = create<EnergyStore>()(
           storages: data.storages,
           rooms: data.rooms,
           circuits: data.circuits,
+          sources: data.sources || [],
+          sensors: data.sensors || [],
           settings: data.settings,
         }))
         if (get().apiConnected) fire(api.data.seed(data))
@@ -215,6 +259,8 @@ export const useEnergyStore = create<EnergyStore>()(
           storages: [],
           rooms: [],
           circuits: [],
+          sources: [],
+          sensors: [],
           settings: createDefaultSettings(),
         }))
         if (get().apiConnected) fire(api.data.clearAll())
@@ -263,7 +309,17 @@ export const useEnergyStore = create<EnergyStore>()(
         storages: state.storages,
         rooms: state.rooms,
         circuits: state.circuits,
+        sources: state.sources,
+        sensors: state.sensors,
         settings: state.settings,
+      }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as object),
+        // Sicherstellen, dass neue Felder mit Defaults belegt sind,
+        // falls ältere localStorage-Daten geladen werden
+        sources: (persisted as any)?.sources ?? (current as any).sources ?? [],
+        sensors: (persisted as any)?.sensors ?? (current as any).sensors ?? [],
       }),
     },
   ),

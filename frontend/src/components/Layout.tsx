@@ -3,6 +3,7 @@ import {
   LayoutDashboard, Settings, Gauge, Sun, Plug, Battery,
   Home, Waypoints, Monitor, Target,
   GitBranch, BarChart3, Zap, Wifi, WifiOff, PenTool,
+  Mountain, Activity,
 } from 'lucide-react'
 import { useEnergyStore } from '../store/useEnergyStore'
 
@@ -43,6 +44,8 @@ const navGroups: NavGroup[] = [
       { to: '/rooms', icon: Home, label: 'Räume' },
       { to: '/consumers', icon: Plug, label: 'Verbraucher' },
       { to: '/meters', icon: Gauge, label: 'Zähler' },
+      { to: '/sources', icon: Mountain, label: 'Quellen' },
+      { to: '/sensors', icon: Activity, label: 'Sensoren' },
     ],
   },
   {

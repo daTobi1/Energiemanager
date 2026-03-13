@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { v4 as uuid } from 'uuid'
-import { Plus, Edit2, Sun, Flame, Thermometer, Snowflake, Zap, X, Copy, ArrowLeft } from 'lucide-react'
+import { Edit2, Sun, Flame, Thermometer, Snowflake, Zap, X, Copy, ArrowLeft, Plus } from 'lucide-react'
 import { ConfirmDelete } from '../components/ui/ConfirmDelete'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { InputField, SelectField, CheckboxField, TextareaField, Section } from '../components/ui/FormField'
@@ -9,10 +9,10 @@ import { useCreateNavigation } from '../hooks/useCreateNavigation'
 import type {
   Generator, GeneratorType, PvGenerator, ChpGenerator,
   HeatPumpGenerator, BoilerGenerator, ChillerGenerator, GridGenerator,
-  EnergyPort, PortEnergy,
+  EnergyPort,
 } from '../types'
 import { createDefaultCommunication } from '../types'
-import { PortEditor, mkPort } from '../components/ui/PortEditor'
+import { mkPort } from '../components/ui/PortEditor'
 
 const typeOptions = [
   { value: 'grid', label: 'Hausanschluss (Netzanschluss)' },
@@ -63,10 +63,6 @@ const typeLabels: Record<GeneratorType, string> = {
   heat_pump: 'Wärmepumpe',
   boiler: 'Heizkessel',
   chiller: 'Kältemaschine',
-}
-
-const genNodeColors: Record<GeneratorType, string> = {
-  grid: '#dbeafe', pv: '#fef3c7', chp: '#ffedd5', heat_pump: '#fee2e2', boiler: '#fee2e2', chiller: '#dbeafe',
 }
 
 function createDefaultPorts(type: GeneratorType, coolingCapable = false): EnergyPort[] {
@@ -172,10 +168,10 @@ function getGeneratorSummary(g: Generator): string {
 }
 
 export default function GeneratorsPage() {
-  const { generators, meters, storages, circuits, addGenerator, updateGenerator, removeGenerator, updateStorage, updateCircuit } = useEnergyStore()
+  const { generators, addGenerator, updateGenerator, removeGenerator } = useEnergyStore()
   const [editing, setEditing] = useState<Generator | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const { navigateToCreate, isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, flowInitialValues, returnFromFlow } = useCreateNavigation()
+  const { isCreationTarget, saveAndReturn, cancelAndReturn, pendingReturn, clearPendingCreation, flowEditId, isFlowEdit, flowCreateNew, returnFromFlow } = useCreateNavigation()
 
   const startAdd = (type: GeneratorType) => {
     setEditing(createDefaultGenerator(type))
@@ -268,50 +264,6 @@ export default function GeneratorsPage() {
     setEditing((prev) => prev ? { ...prev, [key]: value } as Generator : prev)
   }
 
-  const meterOptions = meters.map((m) => ({ value: m.id, label: `${m.name} (${m.meterNumber || 'ohne Nr.'})` }))
-  const storageOptions = storages.map((s) => ({ value: s.id, label: s.name || 'Unbenannt' }))
-  const circuitOptions = circuits.map((c) => ({ value: c.id, label: c.name || 'Unbenannt' }))
-  // Andere Erzeuger (ohne sich selbst und ohne Grid) als Quell-Verbindungsoptionen
-  const otherGenOptions = generators.filter((g) => editing && g.id !== editing.id && g.type !== 'grid').map((g) => ({ value: g.id, label: g.name || g.type }))
-
-  // Welche Speicher haben diesen Erzeuger in connectedGeneratorIds?
-  const connectedStorageIds = storages.filter((s) => editing && s.connectedGeneratorIds.includes(editing.id)).map((s) => s.id)
-  // Welche Kreise haben diesen Erzeuger in generatorIds?
-  const connectedCircuitIds = circuits.filter((c) => editing && c.generatorIds.includes(editing.id)).map((c) => c.id)
-  // Welche Erzeuger versorgen diesen Erzeuger? (connectedGeneratorIds auf diesem Erzeuger)
-  const sourceGenIds: string[] = editing?.connectedGeneratorIds || []
-
-  const toggleSourceGenConnection = (sourceGenId: string) => {
-    if (!editing) return
-    const has = (editing.connectedGeneratorIds || []).includes(sourceGenId)
-    const ids = has
-      ? (editing.connectedGeneratorIds || []).filter((id) => id !== sourceGenId)
-      : [...(editing.connectedGeneratorIds || []), sourceGenId]
-    updateField('connectedGeneratorIds' as keyof Generator, ids as never)
-  }
-
-  const toggleStorageConnection = (storageId: string) => {
-    if (!editing) return
-    const stor = storages.find((s) => s.id === storageId)
-    if (!stor) return
-    const has = stor.connectedGeneratorIds.includes(editing.id)
-    const ids = has
-      ? stor.connectedGeneratorIds.filter((id) => id !== editing.id)
-      : [...stor.connectedGeneratorIds, editing.id]
-    updateStorage(storageId, { ...stor, connectedGeneratorIds: ids })
-  }
-
-  const toggleCircuitConnection = (circuitId: string) => {
-    if (!editing) return
-    const circ = circuits.find((c) => c.id === circuitId)
-    if (!circ) return
-    const has = circ.generatorIds.includes(editing.id)
-    const ids = has
-      ? circ.generatorIds.filter((id) => id !== editing.id)
-      : [...circ.generatorIds, editing.id]
-    updateCircuit(circuitId, { ...circ, generatorIds: ids })
-  }
-
   if (showForm && editing) {
     return (
       <div className="p-6 max-w-4xl mx-auto">
@@ -355,31 +307,9 @@ export default function GeneratorsPage() {
               <InputField label="Modell" value={editing.model} onChange={(v) => updateField('model', v)} />
               <InputField label="Seriennummer" value={editing.serialNumber} onChange={(v) => updateField('serialNumber', v)} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <InputField label="Inbetriebnahme" value={editing.commissioningDate} onChange={(v) => updateField('commissioningDate', v)} type="date" />
               <InputField label="Standort / Position" value={editing.location} onChange={(v) => updateField('location', v)} placeholder="z.B. Dach Gebäude A" />
-              {meterOptions.length > 0 ? (
-                <div>
-                  <SelectField
-                    label="Zugeordnete Zähler"
-                    value={editing.assignedMeterIds[0] || ''}
-                    onChange={(v) => updateField('assignedMeterIds', v ? [v] : [])}
-                    options={meterOptions}
-                  />
-                  <button onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 text-xs text-dark-faded hover:text-emerald-400 transition-colors mt-1"><Plus className="w-3 h-3" /> Neuen Zähler anlegen</button>
-                </div>
-              ) : (
-                <div>
-                  <label className="label">Zugeordnete Zähler</label>
-                  <button
-                    onClick={() => navigateToCreate({ targetPath: '/meters', assignField: 'assignedMeterIds', assignMode: 'append', draft: editing })}
-                    className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-emerald-500/50 hover:text-emerald-400 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="text-sm">Zähler jetzt anlegen</span>
-                  </button>
-                </div>
-              )}
             </div>
           </Section>
 
@@ -594,108 +524,6 @@ export default function GeneratorsPage() {
               </div>
             </Section>
           )}
-
-          {/* Energie-Ports */}
-          <PortEditor
-            ports={editing.ports || []}
-            onChange={(ports) => updateField('ports' as keyof Generator, ports as never)}
-            onReset={() => updateField('ports' as keyof Generator, createDefaultPorts(editing.type, 'coolingCapable' in editing ? (editing as HeatPumpGenerator).coolingCapable : false) as never)}
-            nodeName={editing.name || typeLabels[editing.type]}
-            nodeColor={genNodeColors[editing.type]}
-          />
-
-          {/* Zuordnungen */}
-          <Section title="Zuordnungen" defaultOpen={true}>
-            <div className="space-y-4">
-              <div>
-                <label className="label">Verbundene Speicher</label>
-                <p className="text-xs text-dark-faded mb-1">Welche Speicher werden von diesem Erzeuger geladen?</p>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {storageOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => toggleStorageConnection(opt.value)}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                        connectedStorageIds.includes(opt.value)
-                          ? 'bg-purple-600/20 border-purple-500/40 text-purple-400'
-                          : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                  {storageOptions.length === 0 && (
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-purple-500/50 hover:text-purple-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Speicher jetzt anlegen</span>
-                    </button>
-                  )}
-                  {storageOptions.length > 0 && (
-                    <button onClick={() => navigateToCreate({ targetPath: '/storage', assignField: 'connectedGeneratorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-purple-500/50 hover:bg-purple-500/5 text-dark-faded hover:text-purple-400 transition-colors">
-                      <Plus className="w-3 h-3" /> Neuen Speicher anlegen
-                    </button>
-                  )}
-                </div>
-              </div>
-              {editing.type !== 'grid' && otherGenOptions.length > 0 && (
-              <div>
-                <label className="label">Quell-Erzeuger</label>
-                <p className="text-xs text-dark-faded mb-1">Welche Erzeuger versorgen diesen Erzeuger mit Energie? (z.B. PV liefert Strom an Wärmepumpe)</p>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {otherGenOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => toggleSourceGenConnection(opt.value)}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                        sourceGenIds.includes(opt.value)
-                          ? 'bg-amber-600/20 border-amber-500/40 text-amber-400'
-                          : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              )}
-              <div>
-                <label className="label">Verbundene Heiz-/Kältekreise</label>
-                <p className="text-xs text-dark-faded mb-1">In welche Kreise speist dieser Erzeuger direkt ein (ohne Speicher dazwischen)?</p>
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {circuitOptions.map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => toggleCircuitConnection(opt.value)}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                        connectedCircuitIds.includes(opt.value)
-                          ? 'bg-red-600/20 border-red-500/40 text-red-400'
-                          : 'bg-dark-hover border-dark-border text-dark-faded hover:text-dark-muted'
-                      }`}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                  {circuitOptions.length === 0 && (
-                    <button
-                      onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'generatorIds', assignMode: 'append', draft: editing })}
-                      className="w-full flex items-center justify-center gap-2 p-3 border border-dashed border-dark-border rounded-lg text-dark-faded hover:border-red-500/50 hover:text-red-400 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span className="text-sm">Heiz-/Kältekreis jetzt anlegen</span>
-                    </button>
-                  )}
-                  {circuitOptions.length > 0 && (
-                    <button onClick={() => navigateToCreate({ targetPath: '/circuits', assignField: 'generatorIds', assignMode: 'append', draft: editing })} className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border border-dashed border-dark-border hover:border-red-500/50 hover:bg-red-500/5 text-dark-faded hover:text-red-400 transition-colors">
-                      <Plus className="w-3 h-3" /> Neuen Kreis anlegen
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Section>
 
           {/* Kommunikation */}
           <CommunicationForm

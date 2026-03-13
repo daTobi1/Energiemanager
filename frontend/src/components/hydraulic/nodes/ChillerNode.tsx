@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
 import CrossSchemaBadge from '../../shared/CrossSchemaBadge'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface ChillerNodeData {
   label: string
@@ -11,6 +12,14 @@ export interface ChillerNodeData {
 
 export default memo(function ChillerNode({ data, selected }: NodeProps) {
   const d = data as ChillerNodeData
+
+  const elecLeftCount = (d.portsElecLeft as number) || 1
+  const coldRightCount = (d.portsColdRight as number) || 1
+
+  const elecLeftPos = handlePositions(elecLeftCount, 25, 65)
+  const coldRightVlPos = handlePositions(coldRightCount, 15, 42)
+  const coldRightRlPos = handlePositions(coldRightCount, 55, 78)
+
   return (
     <div className="relative">
       <CrossSchemaBadge entityId={d.entityId} currentSchema="hydraulic" />
@@ -32,14 +41,20 @@ export default memo(function ChillerNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Strom links */}
-      <Handle type="source" position={Position.Left} id="elec-L1"
-        style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: '44%' }} />
-      {/* Kälte-Vorlauf rechts oben */}
-      <Handle type="source" position={Position.Right} id="cold-R1"
-        style={{ background: ENERGY_COLORS.cold, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '30%' }} />
-      {/* Kälte-Rücklauf rechts unten */}
-      <Handle type="source" position={Position.Right} id="cold-ret-R1"
-        style={{ background: ENERGY_COLORS.cold_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '58%' }} />
+      {elecLeftPos.map((pct, i) => (
+        <Handle key={`elec-L${i+1}`} type="source" position={Position.Left} id={`elec-L${i+1}`}
+          style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {/* Kälte-Vorlauf rechts */}
+      {coldRightVlPos.map((pct, i) => (
+        <Handle key={`cold-R${i+1}`} type="source" position={Position.Right} id={`cold-R${i+1}`}
+          style={{ background: ENERGY_COLORS.cold, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
+      {/* Kälte-Rücklauf rechts */}
+      {coldRightRlPos.map((pct, i) => (
+        <Handle key={`cold-ret-R${i+1}`} type="source" position={Position.Right} id={`cold-ret-R${i+1}`}
+          style={{ background: ENERGY_COLORS.cold_return, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

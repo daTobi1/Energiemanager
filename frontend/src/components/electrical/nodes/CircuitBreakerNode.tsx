@@ -1,10 +1,15 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Leitungsschutzschalter (LS) — IEC-Symbol */
 export default memo(function CircuitBreakerNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
+  const elecTopCount = (d.portsElecTop as number) || 1
+  const elecBottomCount = (d.portsElecBottom as number) || 1
+  const elecTopPos = handlePositions(elecTopCount, 25, 75)
+  const elecBottomPos = handlePositions(elecBottomCount, 25, 75)
   return (
     <div className="relative">
       <svg width="50" height="70" viewBox="0 0 50 70">
@@ -26,11 +31,15 @@ export default memo(function CircuitBreakerNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* oben */}
-      <Handle type="source" position={Position.Top} id="elec-T1"
-        style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', top: -2 }} />
+      {elecTopPos.map((pct, i) => (
+        <Handle key={`elec-T${i+1}`} type="source" position={Position.Top} id={`elec-T${i+1}`}
+          style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', top: -2, left: `${pct}%` }} />
+      ))}
       {/* unten */}
-      <Handle type="source" position={Position.Bottom} id="elec-B1"
-        style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', bottom: 6 }} />
+      {elecBottomPos.map((pct, i) => (
+        <Handle key={`elec-B${i+1}`} type="source" position={Position.Bottom} id={`elec-B${i+1}`}
+          style={{ background: ELEC_COLORS.phase, width: 8, height: 8, border: '2px solid #30363d', bottom: 6, left: `${pct}%` }} />
+      ))}
     </div>
   )
 })

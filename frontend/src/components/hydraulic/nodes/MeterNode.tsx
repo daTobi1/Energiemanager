@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface MeterNodeData {
   label: string
@@ -23,6 +24,12 @@ export default memo(function MeterNode({ data, selected }: NodeProps) {
   const d = data as MeterNodeData
   const color = meterTypeColors[d.meterType] || '#8b949e'
 
+  const dd = data as Record<string, unknown>
+  const meterLeftCount = (dd.portsMeterLeft as number) || 1
+  const meterRightCount = (dd.portsMeterRight as number) || 1
+  const meterLeftPos = handlePositions(meterLeftCount, 25, 65)
+  const meterRightPos = handlePositions(meterRightCount, 25, 65)
+
   return (
     <div className="relative">
       <svg width="60" height="60" viewBox="0 0 60 60">
@@ -44,10 +51,14 @@ export default memo(function MeterNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Durchgangs-Handles */}
-      <Handle type="source" position={Position.Left} id="meter-L1"
-        style={{ background: color, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '45%' }} />
-      <Handle type="source" position={Position.Right} id="meter-R1"
-        style={{ background: color, width: 8, height: 8, border: '2px solid #30363d', right: -2, top: '45%' }} />
+      {meterLeftPos.map((pct, i) => (
+        <Handle key={`meter-L${i + 1}`} type="source" position={Position.Left} id={`meter-L${i + 1}`}
+          style={{ background: color, width: 8, height: 8, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
+      {meterRightPos.map((pct, i) => (
+        <Handle key={`meter-R${i + 1}`} type="source" position={Position.Right} id={`meter-R${i + 1}`}
+          style={{ background: color, width: 8, height: 8, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

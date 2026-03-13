@@ -1,10 +1,15 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ELEC_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 /** Windrad — Windkraftanlage als Stromquelle */
 export default memo(function WindTurbineNode({ data, selected }: NodeProps) {
   const d = data as Record<string, unknown>
+  const meterLeftCount = (d.portsMeterLeft as number) || 1
+  const elecRightCount = (d.portsElecRight as number) || 1
+  const meterLeftPos = handlePositions(meterLeftCount, 20, 55)
+  const elecRightPos = handlePositions(elecRightCount, 20, 55)
   return (
     <div className="relative">
       <svg width="80" height="95" viewBox="0 0 80 95">
@@ -40,11 +45,15 @@ export default memo(function WindTurbineNode({ data, selected }: NodeProps) {
         </text>
       </svg>
       {/* Messstelle links (Anemometer etc.) */}
-      <Handle type="source" position={Position.Left} id="meter-L1"
-        style={{ background: '#0891b2', width: 8, height: 8, border: '2px solid #30363d', left: -2, top: '36%' }} />
+      {meterLeftPos.map((pct, i) => (
+        <Handle key={`meter-L${i+1}`} type="source" position={Position.Left} id={`meter-L${i+1}`}
+          style={{ background: '#0891b2', width: 8, height: 8, border: '2px solid #30363d', left: -2, top: `${pct}%` }} />
+      ))}
       {/* Strom rechts */}
-      <Handle type="source" position={Position.Right} id="elec-R1"
-        style={{ background: ELEC_COLORS.generation, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '36%' }} />
+      {elecRightPos.map((pct, i) => (
+        <Handle key={`elec-R${i+1}`} type="source" position={Position.Right} id={`elec-R${i+1}`}
+          style={{ background: ELEC_COLORS.generation, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

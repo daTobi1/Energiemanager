@@ -16,6 +16,7 @@ import SolarThermalNode from './nodes/SolarThermalNode'
 import GroundSourceNode from './nodes/GroundSourceNode'
 import AirSourceNode from './nodes/AirSourceNode'
 import WellSourceNode from './nodes/WellSourceNode'
+import SensorNode from './nodes/SensorNode'
 import JunctionNode from '../shared/JunctionNode'
 
 export const nodeTypes = {
@@ -36,5 +37,6 @@ export const nodeTypes = {
   ground_source: withRotation(GroundSourceNode),
   air_source: withRotation(AirSourceNode),
   well_source: withRotation(WellSourceNode),
+  sensor: withRotation(SensorNode),
   junction: JunctionNode,
 } as const

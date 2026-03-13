@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import { ENERGY_COLORS } from '../constants'
+import { handlePositions } from '../../shared/handlePositions'
 
 export interface GridNodeData {
   label: string
@@ -10,6 +11,10 @@ export interface GridNodeData {
 
 export default memo(function GridNode({ data, selected }: NodeProps) {
   const d = data as GridNodeData
+
+  const elecRightCount = (d.portsElecRight as number) || 1
+  const elecRightPos = handlePositions(elecRightCount, 25, 65)
+
   return (
     <div className="relative">
       <svg width="100" height="90" viewBox="0 0 100 90">
@@ -32,9 +37,11 @@ export default memo(function GridNode({ data, selected }: NodeProps) {
           {d.label}
         </text>
       </svg>
-      {/* Bidirektional: Strom rechts (1 Handle) */}
-      <Handle type="source" position={Position.Right} id="elec-R1"
-        style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: '44%' }} />
+      {/* Bidirektional: Strom rechts */}
+      {elecRightPos.map((pct, i) => (
+        <Handle key={`elec-R${i+1}`} type="source" position={Position.Right} id={`elec-R${i+1}`}
+          style={{ background: ENERGY_COLORS.electricity, width: 10, height: 10, border: '2px solid #30363d', right: -2, top: `${pct}%` }} />
+      ))}
     </div>
   )
 })

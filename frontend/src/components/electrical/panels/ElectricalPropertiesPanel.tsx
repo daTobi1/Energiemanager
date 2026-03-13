@@ -5,6 +5,7 @@ import type { Node } from '@xyflow/react'
 import { useEnergyStore } from '../../../store/useEnergyStore'
 import { isDualSchemaElectricalNode } from '../../shared/crossSchemaUtils'
 import type { HeatPumpGenerator, ChpGenerator, ChillerGenerator } from '../../../types'
+import { electricalPortConfigs } from '../../shared/portStepperConfigs'
 
 interface Props {
   node: Node | null
@@ -87,8 +88,7 @@ export default memo(function ElectricalPropertiesPanel({ node, onClose, onDelete
   const rotation = (data.rotation as number) || 0
   const route = typeRoutes[nodeType]
 
-  const isBus = nodeType === 'elec_bus'
-  const isSubDist = nodeType === 'sub_distribution'
+  const portConfigs = electricalPortConfigs[nodeType]
 
   const handleEdit = () => {
     if (route && entityId) {
@@ -139,38 +139,20 @@ export default memo(function ElectricalPropertiesPanel({ node, onClose, onDelete
           </div>
         </div>
 
-        {/* Sammelschiene: Anschlüsse */}
-        {isBus && (
+        {/* Anschlüsse konfigurieren */}
+        {portConfigs && portConfigs.length > 0 && (
           <div>
             <p className="text-[10px] font-semibold text-dark-faded tracking-wider uppercase mb-2">Anschlüsse</p>
             <div className="space-y-2">
-              <PortStepper
-                label="Eingänge (oben)"
-                value={(data.portsTop as number) || 3}
-                min={1} max={12}
-                onChange={(v) => onUpdateData(node.id, { portsTop: v })}
-              />
-              <PortStepper
-                label="Abgänge (unten)"
-                value={(data.portsBottom as number) || 4}
-                min={1} max={12}
-                onChange={(v) => onUpdateData(node.id, { portsBottom: v })}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Unterverteilung: Abgänge */}
-        {isSubDist && (
-          <div>
-            <p className="text-[10px] font-semibold text-dark-faded tracking-wider uppercase mb-2">Abgänge</p>
-            <div className="space-y-2">
-              <PortStepper
-                label="Anzahl LS-Abgänge"
-                value={(data.outputs as number) || 4}
-                min={1} max={12}
-                onChange={(v) => onUpdateData(node.id, { outputs: v })}
-              />
+              {portConfigs.map((cfg) => (
+                <PortStepper
+                  key={cfg.key}
+                  label={cfg.label}
+                  value={(data[cfg.key] as number) || cfg.default}
+                  min={cfg.min} max={cfg.max}
+                  onChange={(v) => onUpdateData(node.id, { [cfg.key]: v })}
+                />
+              ))}
             </div>
           </div>
         )}
