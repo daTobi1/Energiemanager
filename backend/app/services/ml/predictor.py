@@ -25,6 +25,8 @@ class MLPredictor:
         self._lower_models: dict = {}  # forecast_type -> quantile model
         self._upper_models: dict = {}  # forecast_type -> quantile model
         self._loaded = False
+        self._activation_modes: dict[str, str] = {}  # forecast_type -> "passive"|"active"|"off"
+        self._last_passive_correction: dict[str, float] = {}  # forecast_type -> letzte Korrektur
 
     def _ensure_loaded(self):
         """Laedt Modelle beim ersten Zugriff."""
@@ -85,6 +87,12 @@ class MLPredictor:
         if forecast_type not in self._models:
             return 0.0, 0.0, 0.0
 
+        # Activation-Gate: "off" → kein Modell nutzen
+        mode = self._activation_modes.get(forecast_type, "passive")
+        if mode == "off":
+            self._last_passive_correction[forecast_type] = 0.0
+            return 0.0, 0.0, 0.0
+
         try:
             feature_names = FEATURE_SETS.get(forecast_type, [])
             X = [[features.get(f, 0.0) for f in feature_names]]
@@ -99,6 +107,11 @@ class MLPredictor:
             if forecast_type in self._upper_models:
                 upper = float(self._upper_models[forecast_type].predict(X)[0])
 
+            # Activation-Gate: "passive" → berechnen + speichern, aber nicht anwenden
+            if mode != "active":
+                self._last_passive_correction[forecast_type] = correction
+                return 0.0, 0.0, 0.0
+
             return correction, lower, upper
 
         except Exception as e:
@@ -110,6 +123,18 @@ class MLPredictor:
         """Liste der geladenen Modell-Typen."""
         self._ensure_loaded()
         return list(self._models.keys())
+
+    def set_activation_mode(self, forecast_type: str, mode: str):
+        """Setzt den Aktivierungsmodus fuer einen Modelltyp."""
+        self._activation_modes[forecast_type] = mode
+
+    def get_activation_mode(self, forecast_type: str) -> str:
+        """Gibt den aktuellen Aktivierungsmodus zurueck."""
+        return self._activation_modes.get(forecast_type, "passive")
+
+    def get_passive_correction(self, forecast_type: str) -> float:
+        """Letzte passive Korrektur (was ML korrigieren wuerde)."""
+        return self._last_passive_correction.get(forecast_type, 0.0)
 
 
 # Singleton

@@ -1,0 +1,55 @@
+{
+  "id": "byd_hvs",
+  "manufacturer": "BYD",
+  "model": "Battery-Box Premium HVS/HVM",
+  "category": "battery",
+  "protocol": "modbus_tcp",
+  "version": "1.0",
+  "description": "BYD Battery-Box Premium HVS/HVM Hochvoltbatterie. Wird ueber den kompatiblen Wechselrichter (Fronius, SMA, Kostal) oder BMU angesprochen.",
+  "defaults": {
+    "port": 502,
+    "unitId": 1,
+    "timeout": 10,
+    "pollingIntervalSeconds": 10
+  },
+  "register_groups": [
+    {
+      "name": "battery",
+      "base_address": 0,
+      "source": "battery",
+      "registers": [
+        { "offset": 0, "metric": "soc_pct", "unit": "%", "scale": 0.1, "data_type": "uint16" },
+        { "offset": 1, "metric": "voltage_v", "unit": "V", "scale": 0.1, "data_type": "uint16" },
+        { "offset": 2, "metric": "current_a", "unit": "A", "scale": 0.1, "data_type": "int16" },
+        { "offset": 3, "metric": "power_w", "unit": "W", "scale": 1, "data_type": "int16" },
+        { "offset": 4, "metric": "temperature_c", "unit": "°C", "scale": 0.1, "data_type": "int16" },
+        { "offset": 5, "metric": "status", "unit": "", "scale": 1, "data_type": "uint16" },
+        { "offset": 6, "metric": "max_charge_power_w", "unit": "W", "scale": 1, "data_type": "uint16" },
+        { "offset": 7, "metric": "max_discharge_power_w", "unit": "W", "scale": 1, "data_type": "uint16" },
+        { "offset": 10, "metric": "cycles", "unit": "", "scale": 1, "data_type": "uint16" },
+        { "offset": 12, "metric": "total_charged_kwh", "unit": "kWh", "scale": 0.1, "data_type": "uint32" },
+        { "offset": 14, "metric": "total_discharged_kwh", "unit": "kWh", "scale": 0.1, "data_type": "uint32" }
+      ]
+    }
+  ],
+  "write_map": {
+    "charge_power_w": { "address": 100, "scale": 1.0, "data_type": "int16" },
+    "discharge_power_w": { "address": 101, "scale": 1.0, "data_type": "int16" }
+  },
+  "setpoint_routing": {
+    "battery_charge_kw": { "target": "charge_power_w", "transform": "value * 1000" },
+    "battery_discharge_kw": { "target": "discharge_power_w", "transform": "value * 1000" }
+  },
+  "computed_values": [
+    { "metric": "power_kw", "source_metric": "power_w", "transform": "value / 1000" }
+  ],
+  "state_maps": {
+    "status": {
+      "0": "Standby",
+      "1": "Laden",
+      "2": "Entladen",
+      "3": "Fehler",
+      "4": "Offline"
+    }
+  }
+}

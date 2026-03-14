@@ -11,7 +11,11 @@ from app.models.base import Base
 # Config-Modelle importieren damit sie bei create_all registriert sind
 from app.models import config as _config_models  # noqa: F401
 from app.models import ml_status as _ml_models  # noqa: F401
+from app.models import thermal_params as _thermal_models  # noqa: F401
 from app.models import weather as _weather_models  # noqa: F401
+from app.models import alarm as _alarm_models  # noqa: F401
+from app.models import charging as _charging_models  # noqa: F401
+from app.models import user as _user_models  # noqa: F401
 
 
 @asynccontextmanager
@@ -26,6 +30,9 @@ async def lifespan(app: FastAPI):
                 "generator_configs", "meter_configs", "consumer_configs",
                 "storage_configs", "room_configs", "circuit_configs", "system_settings",
                 "measurements", "trend_definitions", "weather_cache", "ml_model_status",
+                "thermal_learned_params",
+                "alarm_configs", "alarm_events", "users",
+                "vehicles", "wallboxes", "charging_sessions",
             )
         ]
         async with engine.begin() as conn:

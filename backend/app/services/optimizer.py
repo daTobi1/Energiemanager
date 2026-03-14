@@ -23,6 +23,7 @@ from sqlalchemy import select
 
 from app.core.database import async_session
 from app.models.config import (
+    CircuitConfig,
     GeneratorConfig,
     StorageConfig,
     SystemSettingsConfig,
@@ -104,7 +105,10 @@ class EnergyOptimizer:
             stor_r = await db.execute(select(StorageConfig))
             storages = [r.data for r in stor_r.scalars()]
 
-        return {"settings": settings, "generators": generators, "storages": storages}
+            circ_r = await db.execute(select(CircuitConfig))
+            circuits = [r.data for r in circ_r.scalars()]
+
+        return {"settings": settings, "generators": generators, "storages": storages, "circuits": circuits}
 
     def _get_tariff_ct(self, settings: dict, hour: int, weekday: int) -> float:
         """Strompreis in ct/kWh fuer eine Stunde (Tarif-abhaengig)."""
@@ -239,7 +243,7 @@ class EnergyOptimizer:
 
     async def _create_schedule_milp(self, config: dict, hours: int) -> dict | None:
         """MILP-basierte Optimierung mit PuLP/CBC."""
-        from app.services.optimizer_milp import MilpParams, solve_milp
+        from app.services.optimizer_milp import CircuitMilpParams, MilpParams, solve_milp
 
         settings = config["settings"]
         weights = settings.get("optimizerWeights", {
@@ -308,6 +312,35 @@ class EnergyOptimizer:
             cop_list.append(th.get("hp_cop", 3.5))
             tariff_list.append(self._get_tariff_ct(settings, dt.hour, dt.weekday()))
 
+        # Pro-Kreis Parameter aufbauen
+        circuit_milp_params = []
+        circuits_hourly = thermal_fc.get("circuits_hourly", {})
+        for circuit in config.get("circuits", []):
+            cid = circuit.get("id", "")
+            if cid not in circuits_hourly:
+                continue
+            c_hourly = circuits_hourly[cid]
+            dist_type = circuit.get("distributionType", "radiator")
+
+            # Flow-Temp Grenzen je nach Verteilsystem
+            if dist_type == "floor_heating":
+                min_ft, max_ft = 22.0, 45.0
+            elif dist_type in ("radiator", "mixed"):
+                min_ft, max_ft = 30.0, 70.0
+            else:
+                min_ft, max_ft = 20.0, 65.0
+
+            circuit_milp_params.append(CircuitMilpParams(
+                circuit_id=cid,
+                circuit_name=circuit.get("name", ""),
+                distribution_type=dist_type,
+                design_flow_temp_c=circuit.get("flowTemperatureC", 55),
+                min_flow_temp_c=min_ft,
+                max_flow_temp_c=max_ft,
+                demand_kw=[h.get("thermal_demand_kw", 0) for h in c_hourly[:hours]],
+                optimal_flow_temp_c=[h.get("flow_temp_c", 45) for h in c_hourly[:hours]],
+            ))
+
         # MILP loesen
         params = MilpParams(
             hours=hours,
@@ -334,6 +367,7 @@ class EnergyOptimizer:
             storage_temp_initial=storage_target,
             storage_temp_target=storage_target,
             storage_loss_w_per_k=storage_loss,
+            circuits=circuit_milp_params,
             w_economy=weights.get("economy", 80),
             w_co2=weights.get("co2Reduction", 50),
             w_comfort=weights.get("comfort", 70),
@@ -372,6 +406,22 @@ class EnergyOptimizer:
             self_consumed = min(pv, load + hp_elec + max(0, bat_net))
             sc_pct = (self_consumed / pv * 100) if pv > 0.01 else 0
 
+            # Pro-Kreis Setpoints
+            circuit_setpoints_hour = []
+            for cr in result.circuit_results:
+                if t < len(cr.flow_temp_c):
+                    circuit_setpoints_hour.append({
+                        "circuit_id": cr.circuit_id,
+                        "flow_temp_c": cr.flow_temp_c[t],
+                        "demand_kw": cr.demand_kw[t] if t < len(cr.demand_kw) else 0,
+                    })
+
+            # Globale flow_temp = max aller Kreise (fuer Pufferspeicher)
+            if circuit_setpoints_hour:
+                flow_temp_global = max(cs["flow_temp_c"] for cs in circuit_setpoints_hour)
+            else:
+                flow_temp_global = therm_h.get(time_strs[t], {}).get("flow_temp_c", 35)
+
             result_hourly.append({
                 "time": time_strs[t],
                 "pv_forecast_kw": round(pv, 2),
@@ -389,6 +439,8 @@ class EnergyOptimizer:
                 "co2_kg": round(co2, 4),
                 "self_consumption_pct": round(sc_pct, 1),
                 "tariff_ct": round(tariff, 1),
+                "flow_temp_c": round(flow_temp_global, 1),
+                "circuit_setpoints": circuit_setpoints_hour,
                 "strategy": "MILP-optimiert",
             })
 

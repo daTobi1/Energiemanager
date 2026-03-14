@@ -4,12 +4,12 @@ Scheduler — Periodische Optimierung, Fahrplan-Ausfuehrung und ML-Retraining.
 Kernaufgaben:
 1. Optimierer aufrufen (Fahrplan erstellen)
 2. Fahrplan an Controller uebergeben
-3. Aktuelle Stellgroessen an Lambda Bridge weiterleiten (falls verbunden)
+3. Aktuelle Stellgroessen an DeviceManager weiterleiten
 4. ML-Modelle periodisch nachtrainieren
 
 Zyklen:
 - Optimierung: alle 15 Minuten (konfigurierbar)
-- Lambda-Sync: alle 60 Sekunden (aktuelle Stellgroessen anwenden)
+- Device-Sync: alle 60 Sekunden (aktuelle Stellgroessen anwenden)
 - ML-Retrain: alle 24 Stunden
 """
 
@@ -25,8 +25,29 @@ logger = logging.getLogger(__name__)
 
 # Defaults (Sekunden)
 OPTIMIZATION_INTERVAL = 15 * 60   # 15 Minuten
-LAMBDA_SYNC_INTERVAL = 60         # 1 Minute
+DEVICE_SYNC_INTERVAL = 60         # 1 Minute
 ML_RETRAIN_INTERVAL = 24 * 3600   # 24 Stunden
+
+
+@dataclass
+class SchedulerHistoryEntry:
+    """Ein Eintrag im Scheduler-Optimierungslog."""
+    timestamp: str
+    duration_ms: float
+    hours: int
+    solver: str
+    strategy: str
+    success: bool
+    error: str | None = None
+    net_cost_ct: float = 0
+    total_co2_kg: float = 0
+    avg_self_consumption_pct: float = 0
+    peak_grid_import_kw: float = 0
+    total_pv_kwh: float = 0
+    total_grid_import_kwh: float = 0
+
+
+MAX_HISTORY_ENTRIES = 200  # ~50h bei 15min-Intervall
 
 
 @dataclass
@@ -34,7 +55,7 @@ class SchedulerStats:
     """Laufzeit-Statistiken des Schedulers."""
     optimization_runs: int = 0
     optimization_errors: int = 0
-    lambda_syncs: int = 0
+    device_syncs: int = 0
     ml_retrains: int = 0
     last_optimization_at: str | None = None
     last_optimization_duration_ms: float = 0
@@ -51,9 +72,10 @@ class Scheduler:
     def __init__(self):
         self._running = False
         self._optimization_interval = OPTIMIZATION_INTERVAL
-        self._lambda_sync_interval = LAMBDA_SYNC_INTERVAL
+        self._device_sync_interval = DEVICE_SYNC_INTERVAL
         self._ml_retrain_interval = ML_RETRAIN_INTERVAL
         self._stats = SchedulerStats()
+        self._history: list[SchedulerHistoryEntry] = []
         self._tasks: list[asyncio.Task] = []
 
     @property
@@ -66,14 +88,14 @@ class Scheduler:
             "running": self._running,
             "intervals": {
                 "optimization_s": self._optimization_interval,
-                "lambda_sync_s": self._lambda_sync_interval,
+                "device_sync_s": self._device_sync_interval,
                 "ml_retrain_s": self._ml_retrain_interval,
             },
             "controller_mode": controller.mode,
             "stats": {
                 "optimization_runs": self._stats.optimization_runs,
                 "optimization_errors": self._stats.optimization_errors,
-                "lambda_syncs": self._stats.lambda_syncs,
+                "device_syncs": self._stats.device_syncs,
                 "ml_retrains": self._stats.ml_retrains,
                 "last_optimization_at": self._stats.last_optimization_at,
                 "last_optimization_duration_ms": self._stats.last_optimization_duration_ms,
@@ -84,6 +106,28 @@ class Scheduler:
                 "last_error_at": self._stats.last_error_at,
             },
         }
+
+    @property
+    def history(self) -> list[dict]:
+        """Optimierungs-Historie als Liste von Dicts."""
+        return [
+            {
+                "timestamp": e.timestamp,
+                "duration_ms": e.duration_ms,
+                "hours": e.hours,
+                "solver": e.solver,
+                "strategy": e.strategy,
+                "success": e.success,
+                "error": e.error,
+                "net_cost_ct": e.net_cost_ct,
+                "total_co2_kg": e.total_co2_kg,
+                "avg_self_consumption_pct": e.avg_self_consumption_pct,
+                "peak_grid_import_kw": e.peak_grid_import_kw,
+                "total_pv_kwh": e.total_pv_kwh,
+                "total_grid_import_kwh": e.total_grid_import_kwh,
+            }
+            for e in self._history
+        ]
 
     async def start(
         self,
@@ -110,17 +154,22 @@ class Scheduler:
         except Exception:
             logger.exception("Fehler bei initialer Optimierung")
 
+        # AlarmManager starten
+        from app.services.alarm_manager import alarm_manager
+        if not alarm_manager.is_running:
+            await alarm_manager.start(interval=30)
+
         # Periodische Tasks starten
         self._tasks = [
             asyncio.create_task(self._optimization_loop()),
-            asyncio.create_task(self._lambda_sync_loop()),
+            asyncio.create_task(self._device_sync_loop()),
             asyncio.create_task(self._ml_retrain_loop()),
         ]
 
         logger.info(
-            "Scheduler gestartet (Optimierung alle %ds, Lambda-Sync alle %ds)",
+            "Scheduler gestartet (Optimierung alle %ds, Device-Sync alle %ds)",
             self._optimization_interval,
-            self._lambda_sync_interval,
+            self._device_sync_interval,
         )
 
     async def stop(self):
@@ -129,6 +178,11 @@ class Scheduler:
         for task in self._tasks:
             task.cancel()
         self._tasks.clear()
+
+        from app.services.alarm_manager import alarm_manager
+        if alarm_manager.is_running:
+            await alarm_manager.stop()
+
         logger.info("Scheduler gestoppt")
 
     async def trigger_optimization(self, hours: int = 24, solver: str = "auto") -> dict:
@@ -151,17 +205,17 @@ class Scheduler:
         except asyncio.CancelledError:
             pass
 
-    async def _lambda_sync_loop(self):
-        """Periodisch aktuelle Controller-Stellgroessen an Lambda Bridge senden."""
+    async def _device_sync_loop(self):
+        """Periodisch aktuelle Controller-Stellgroessen an Geraete senden."""
         try:
             while self._running:
-                await asyncio.sleep(self._lambda_sync_interval)
+                await asyncio.sleep(self._device_sync_interval)
                 if not self._running:
                     break
                 try:
-                    await self._sync_lambda_bridge()
+                    await self._sync_devices()
                 except Exception:
-                    logger.exception("Fehler beim Lambda-Sync")
+                    logger.exception("Fehler beim Device-Sync")
         except asyncio.CancelledError:
             pass
 
@@ -196,17 +250,30 @@ class Scheduler:
         try:
             schedule = await energy_optimizer.create_schedule(hours, solver=solver)
         except Exception as e:
+            duration_ms = (asyncio.get_event_loop().time() - t0) * 1000
             self._stats.optimization_errors += 1
             self._stats.last_error = str(e)
             self._stats.last_error_at = now_str
+            self._record_history(SchedulerHistoryEntry(
+                timestamp=now_str, duration_ms=round(duration_ms, 1),
+                hours=hours, solver=solver, strategy="",
+                success=False, error=str(e),
+            ))
             logger.error("Optimierung fehlgeschlagen: %s", e)
             raise
 
         # Pruefen ob Ergebnis gueltig ist
         if "error" in schedule:
+            duration_ms = (asyncio.get_event_loop().time() - t0) * 1000
             self._stats.optimization_errors += 1
             self._stats.last_error = schedule["error"]
             self._stats.last_error_at = now_str
+            self._record_history(SchedulerHistoryEntry(
+                timestamp=now_str, duration_ms=round(duration_ms, 1),
+                hours=hours, solver=schedule.get("solver", solver),
+                strategy=schedule.get("strategy", ""),
+                success=False, error=schedule["error"],
+            ))
             logger.warning("Optimierung ergab Fehler: %s", schedule["error"])
             return schedule
 
@@ -223,6 +290,19 @@ class Scheduler:
         self._stats.last_schedule_strategy = schedule.get("strategy", "")
 
         summary = schedule.get("summary", {})
+        self._record_history(SchedulerHistoryEntry(
+            timestamp=now_str, duration_ms=round(duration_ms, 1),
+            hours=schedule.get("hours", 0),
+            solver=schedule.get("solver", "unknown"),
+            strategy=schedule.get("strategy", ""),
+            success=True,
+            net_cost_ct=summary.get("net_cost_ct", 0),
+            total_co2_kg=summary.get("total_co2_kg", 0),
+            avg_self_consumption_pct=summary.get("avg_self_consumption_pct", 0),
+            peak_grid_import_kw=summary.get("peak_grid_import_kw", 0),
+            total_pv_kwh=summary.get("total_pv_kwh", 0),
+            total_grid_import_kwh=summary.get("total_grid_import_kwh", 0),
+        ))
         logger.info(
             "Optimierung abgeschlossen in %.0fms: %dh %s, "
             "Kosten=%.1fct, CO2=%.2fkg, Eigenverbrauch=%.0f%%, Solver=%s",
@@ -237,22 +317,14 @@ class Scheduler:
 
         return schedule
 
-    async def _sync_lambda_bridge(self):
-        """
-        Aktuelle Controller-Stellgroessen an Lambda Bridge senden.
+    def _record_history(self, entry: SchedulerHistoryEntry):
+        """Eintrag zur Historie hinzufuegen, aelteste Eintraege verwerfen."""
+        self._history.append(entry)
+        if len(self._history) > MAX_HISTORY_ENTRIES:
+            self._history = self._history[-MAX_HISTORY_ENTRIES:]
 
-        Wird nur ausgefuehrt wenn:
-        - Controller im auto- oder manual-Modus ist
-        - Lambda Bridge verbunden ist
-        """
-        from app.services.lambda_bridge import lambda_bridge
-
-        # Pruefen ob Lambda verbunden
-        bridge_status = lambda_bridge.status
-        if not bridge_status.get("connected"):
-            return
-
-        # Pruefen ob Controller aktiv
+    async def _sync_devices(self):
+        """Aktuelle Controller-Stellgroessen an alle verbundenen Geraete senden."""
         if controller.mode == "off":
             return
 
@@ -260,18 +332,13 @@ class Scheduler:
         if setpoints.source in ("off", "heuristic"):
             return
 
-        # Stellgroessen an Lambda Bridge senden
-        result = await lambda_bridge.apply_setpoints(setpoints)
-        self._stats.lambda_syncs += 1
+        from app.services.device_manager import device_manager
 
-        if result.get("error"):
-            logger.warning("Lambda-Sync Fehler: %s", result["error"])
-        else:
-            logger.debug(
-                "Lambda-Sync: flow=%.1f°C, surplus=%dW",
-                setpoints.flow_temp_c,
-                int(setpoints.hp_thermal_kw * 1000),
-            )
+        if device_manager.is_running and device_manager.device_count > 0:
+            result = await device_manager.apply_controller_setpoints(setpoints)
+            self._stats.device_syncs += 1
+            if result:
+                logger.debug("Device-Sync: %d Setpoints geschrieben", len(result))
 
     async def _run_ml_retrain(self):
         """ML-Korrekturmodelle neu trainieren."""

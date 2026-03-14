@@ -24,4 +24,6 @@ class MLModelStatus(Base, TimestampMixin):
     r2_score: Mapped[float] = mapped_column(Float, default=0.0)
     model_path: Mapped[str] = mapped_column(String(200), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    activation_mode: Mapped[str] = mapped_column(String(20), default="passive")
+    # "passive" | "active" | "off"
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)

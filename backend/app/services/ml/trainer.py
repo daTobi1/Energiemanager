@@ -121,7 +121,7 @@ class MLTrainer:
         }
 
     async def train_all(self, days_back: int = 90) -> dict:
-        """Trainiert alle Korrektur-Modelle."""
+        """Trainiert alle Korrektur-Modelle + thermisches Lernen."""
         results = {}
         for ft in FORECAST_TYPES:
             try:
@@ -129,6 +129,22 @@ class MLTrainer:
             except Exception as e:
                 logger.exception("Training fehlgeschlagen fuer %s", ft)
                 results[ft] = {"error": str(e), "success": False}
+
+        # Thermisches Lernen (Raum-Parameter)
+        try:
+            from app.services.ml.thermal_learner import thermal_learner
+            thermal_results = await thermal_learner.learn_all(days_back=min(days_back, 28))
+            success_count = sum(1 for r in thermal_results.values() if r.get("success"))
+            results["thermal_learning"] = {
+                "success": True,
+                "rooms_total": len(thermal_results),
+                "rooms_learned": success_count,
+            }
+            logger.info("Thermisches Lernen: %d/%d Raeume erfolgreich", success_count, len(thermal_results))
+        except Exception as e:
+            logger.warning("Thermisches Lernen fehlgeschlagen: %s", e)
+            results["thermal_learning"] = {"success": False, "error": str(e)}
+
         return results
 
     def _evaluate(self, y_true: list[float], y_pred) -> dict:
@@ -183,6 +199,7 @@ class MLTrainer:
                     entry.r2_score = metrics["r2"]
                     entry.model_path = model_path
                     entry.is_active = True
+                    # activation_mode bleibt unveraendert (User-gesteuert)
                     entry.metadata_json = {"feature_importance": importances}
                 else:
                     db.add(MLModelStatus(
@@ -196,6 +213,7 @@ class MLTrainer:
                         r2_score=metrics["r2"],
                         model_path=model_path,
                         is_active=True,
+                        activation_mode="passive",
                         metadata_json={"feature_importance": importances},
                     ))
 

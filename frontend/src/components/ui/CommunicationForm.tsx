@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react'
 import { InputField, SelectField, Section } from './FormField'
-import { Wifi, TrendingUp } from 'lucide-react'
+import { Wifi, TrendingUp, Package } from 'lucide-react'
 import type { CommunicationConfig } from '../../types'
 import { createDefaultModbus, createDefaultMqtt, createDefaultHttp } from '../../types'
+import { api } from '../../api/client'
 
 const protocolOptions = [
   { value: 'modbus_tcp', label: 'Modbus TCP' },
@@ -29,6 +31,16 @@ const defaultPorts: Record<string, number> = {
   ocpp: 9000,
 }
 
+interface PresetOption {
+  id: string
+  manufacturer: string
+  model: string
+  category: string
+  protocol: string
+  description: string
+  defaults: Record<string, unknown>
+}
+
 interface Props {
   config: CommunicationConfig
   onChange: (config: CommunicationConfig) => void
@@ -36,8 +48,44 @@ interface Props {
 }
 
 export function CommunicationForm({ config, onChange, defaultOpen = false }: Props) {
+  const [presets, setPresets] = useState<PresetOption[]>([])
+  const [presetsLoaded, setPresetsLoaded] = useState(false)
+
+  useEffect(() => {
+    if (!presetsLoaded) {
+      api.devices.presets().then(setPresets).catch(() => {}).finally(() => setPresetsLoaded(true))
+    }
+  }, [presetsLoaded])
+
   const update = (partial: Partial<CommunicationConfig>) => {
     onChange({ ...config, ...partial })
+  }
+
+  const handlePresetChange = (presetId: string) => {
+    if (!presetId) {
+      update({ driverPreset: undefined })
+      return
+    }
+    const preset = presets.find(p => p.id === presetId)
+    if (!preset) return
+
+    const defaults = preset.defaults || {}
+    const newConfig: CommunicationConfig = {
+      ...config,
+      driverPreset: presetId,
+      protocol: preset.protocol as CommunicationConfig['protocol'],
+      port: (defaults.port as number) ?? defaultPorts[preset.protocol] ?? 502,
+      pollingIntervalSeconds: (defaults.pollingIntervalSeconds as number) ?? config.pollingIntervalSeconds,
+    }
+
+    if (preset.protocol === 'modbus_tcp' || preset.protocol === 'sunspec') {
+      newConfig.modbus = {
+        ...createDefaultModbus(),
+        ...config.modbus,
+        unitId: (defaults.unitId as number) ?? 1,
+      }
+    }
+    onChange(newConfig)
   }
 
   const handleProtocolChange = (protocol: string) => {
@@ -55,8 +103,37 @@ export function CommunicationForm({ config, onChange, defaultOpen = false }: Pro
     onChange(newConfig)
   }
 
+  const selectedPreset = presets.find(p => p.id === config.driverPreset)
+
   return (
     <Section title="Kommunikation" icon={<Wifi className="w-4 h-4 text-blue-400" />} defaultOpen={defaultOpen}>
+      {/* Geraeteprofil (Preset) */}
+      {presets.length > 0 && (
+        <div className="space-y-2 p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="w-4 h-4 text-emerald-400" />
+            <h4 className="text-sm font-semibold text-emerald-400">Geraeteprofil</h4>
+          </div>
+          <SelectField
+            label="Profil"
+            value={config.driverPreset ?? ''}
+            onChange={handlePresetChange}
+            options={[
+              { value: '', label: 'Kein Profil (manuell konfigurieren)' },
+              ...presets.map(p => ({
+                value: p.id,
+                label: `${p.manufacturer} ${p.model}`,
+              })),
+            ]}
+          />
+          {selectedPreset && (
+            <p className="text-xs text-dark-faded mt-1">
+              {selectedPreset.description}
+            </p>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <SelectField
           label="Protokoll"

@@ -2,7 +2,7 @@
 
 > **STATUS: IN ENTWICKLUNG / WORK IN PROGRESS**
 >
-> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 2e — Scheduler + Controller-Dashboard abgeschlossen).
+> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 3 — Absicherung).
 > APIs, Datenmodelle und Schnittstellen koennen sich jederzeit aendern.
 > Beitraege und Feedback sind willkommen — siehe [Contributing](#contributing).
 
@@ -22,9 +22,7 @@ Ein selbstlernendes, prognosebasiertes Energiemanagementsystem fuer Gebaeude und
 │                                                                         │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
 │  │                    Web-Frontend (React 19)                       │    │
-│  │  Dashboard · Erzeuger · Speicher · Heizkreise · Raeume          │    │
-│  │  Verbraucher · Zaehler · Energiefluss · Sankey · Optimierer     │    │
-│  │  Hydraulikschema · Stromschema · Trends · Wetter · System       │    │
+│  │  19 Seiten · Klappbare Sidebar · Dark Theme · Plotly · R.Flow   │    │
 │  └──────────────────────────┬──────────────────────────────────────┘    │
 │                              │ REST API + WebSocket                     │
 │  ┌──────────────────────────┴──────────────────────────────────────┐    │
@@ -34,23 +32,24 @@ Ein selbstlernendes, prognosebasiertes Energiemanagementsystem fuer Gebaeude und
 │  │  │Prognosen │ │Optimierer│ │Controller│ │   Scheduler      │    │    │
 │  │  │PV · Last │ │MILP/CBC  │ │Auto/Man. │ │   (15min-Zyklus) │    │    │
 │  │  │Thermisch │ │Heuristik │ │Safety    │ │   ML-Retrain 24h │    │    │
-│  │  │ML-Korr.  │ │5-Krit.   │ │Setpoints │ │   Lambda-Sync    │    │    │
+│  │  │ML-Korr.  │ │5-Krit.   │ │Setpoints │ │   Device-Sync    │    │    │
 │  │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘    │    │
 │  │                                                                   │    │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐    │    │
-│  │  │Simulator │ │Wetter-API│ │  DAQ     │ │  Lambda Bridge   │    │    │
-│  │  │PV/WP/Bat │ │Open-Meteo│ │Modbus/   │ │  Modbus TCP →    │    │    │
-│  │  │Last/Netz │ │7-Tage    │ │MQTT/REST │ │  Eureka WP       │    │    │
+│  │  │Simulator │ │Wetter-API│ │Lade-     │ │  Alarm-Manager   │    │    │
+│  │  │PV/WP/Bat │ │Open-Meteo│ │management│ │  Schwellwerte    │    │    │
+│  │  │Last/Netz │ │7-Tage    │ │4 Modi    │ │  Device-Offline  │    │    │
 │  │  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘    │    │
+│  │                                                                   │    │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────────────────────────────┐  │    │
+│  │  │Selbst-   │ │Geraete-  │ │  Hardware-Anbindung              │  │    │
+│  │  │lernung   │ │Manager   │ │  Modbus TCP · SunSpec · MQTT     │  │    │
+│  │  │XGBoost   │ │Presets   │ │  REST · BACnet · KNX · OPC UA   │  │    │
+│  │  │Readiness │ │Polling   │ │  SML · M-Bus · OCPP             │  │    │
+│  │  └──────────┘ └──────────┘ └──────────────────────────────────┘  │    │
 │  │                                                                   │    │
 │  │  SQLite (Dev) · TimescaleDB (Prod) · Redis · Grafana             │    │
 │  └───────────────────────────────────────────────────────────────────┘    │
-│                              │                                           │
-│  ┌──────────────────────────┴──────────────────────────────────────┐    │
-│  │              Hardware-Anbindung (Connectoren)                    │    │
-│  │  Modbus TCP · SunSpec · MQTT · REST · BACnet/IP · KNX/IP       │    │
-│  │  OPC UA · SML/TCP · M-Bus/TCP · OCPP                           │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -68,7 +67,7 @@ Scheduler (alle 15 min)
     → MILP-Optimierer (24h Fahrplan, 5 Kriterien)
       → Controller (Stellgroessen: Batterie, WP, Kessel, Vorlauftemp.)
         → Simulator (Testbetrieb)
-        → Lambda Bridge → Modbus TCP → Waermepumpe (Realbetrieb)
+        → Device-Manager → Modbus TCP → Anlage (Realbetrieb)
 ```
 
 ### Prognosen
@@ -97,58 +96,71 @@ Scheduler (alle 15 min)
 
 Sicherheitslogik immer aktiv: Batterie-Tiefschutz, Ueberladeschutz, Speicher-Uebertemperatur, Untertemperatur-Notbetrieb.
 
-### Hardware-Integration: Lambda Waermepumpe
+### Selbstlernung
 
-Vollstaendige Modbus-TCP-Integration fuer Lambda Eureka EU-L Waermepumpen:
+- **3 ML-Modelle:** PV-Korrektur, Last-Korrektur, Thermische Korrektur
+- **Aktivierungsmodi:** Passiv (Daten sammeln), Aktiv (Prognose korrigieren), Aus
+- **Readiness-Bewertung:** 4 Kriterien (Datenmenge, Genauigkeit, Fehlerrate, Aktualitaet)
+- **Thermische Raumparameter:** Automatische Ermittlung von Zeitkonstanten und Heizkurven
+- **Activation Gate:** ML-Korrektur nur bei ausreichender Readiness aktiv
 
-| Steuerbar | Register | Beschreibung |
-|---|---|---|
-| Vorlauftemperatur | 1016 | 20–65 °C |
-| PV-Ueberschuss | 102 | Leistungsmodulation in Watt |
-| WW-Solltemperatur | 2050 | Warmwasserspeicher |
-| Puffertemperatur | 3004/3050 | Sollwert + Maximum |
-| Raumtemperatur | 5051+100×N | Pro Heizkreis (bis 12 HK) |
-| Heizkurven-Offset | 5050+100×N | Pro Heizkreis |
+### Lademanagement (E-Mobilitaet)
 
-Auto-Erkennung: Bis 3 WP, 5 Boiler, 5 Puffer, 2 Solar, 12 Heizkreise.
+4 intelligente Lademodi mit Solar/Grid-Tracking:
+
+| Modus | Beschreibung |
+|---|---|
+| **Sofort** | Maximale Ladeleistung (AC bis 11 kW) |
+| **PV-Ueberschuss** | Nur Solarstrom — pausiert ohne Ueberschuss |
+| **Min+PV** | Garantierte Mindestleistung + PV-Boost |
+| **Zielladung** | Ziel-km bis Zeitpunkt, PV-optimiert |
+
+- **Fahrzeugdatenbank:** Fahrzeuge mit Batterie, Verbrauch, SoC-Limit
+- **Wallbox-Sync:** Automatische Erkennung aus Verbraucher-Config (type=wallbox)
+- **Session-Tracking:** Energie, Solar/Grid-Split, Kosten, Dauer pro Ladevorgang
+- **Ladeauswertung:** Aggregierte Analyse ueber beliebige Zeitraeume (Tag/Woche/Monat), Leistungsdiagramme, Modus-Verteilung, CSV-Export
+
+### Alarmsystem
+
+- **Schwellwert-Alarme:** Konfigurierbare Bedingungen (>, <, >=, <=, ==)
+- **System-Alarme:** Geraet offline, Systemfehler
+- **3 Schweregrade:** Info, Warnung, Kritisch
+- **Cooldown:** Konfigurierbare Wiederholsperre pro Alarm
+- **Periodische Auswertung:** Automatische Pruefung im konfigurierbaren Intervall
 
 ---
 
 ## Web-Frontend
 
-16 Seiten, Dark Theme, React 19 + TypeScript + Tailwind CSS.
+19 Seiten, Dark Theme, React 19 + TypeScript + Tailwind CSS.
+Klappbare Sidebar mit 6 Gruppen — Gruppen oeffnen sich automatisch bei Navigation.
 
 ### Seiten
 
-| Seite | Beschreibung |
-|---|---|
-| **Dashboard** | Uebersicht: Live-Metriken (8 Karten), WebSocket-Streaming, Wetter, PV-Prognose, KPIs |
-| **Anlage & Standort** | Gebaeudedaten, Koordinaten (Geocoding), Tarife, Hausanschluss, Wetter-API |
-| **Erzeuger** | PV, BHKW, Waermepumpe (COP-Kennlinie), Heizkessel, Kaeltemaschine, Windrad |
-| **Speicher** | Batterie (LFP/NMC), Waerme-/Kaeltespeicher mit Temperatursensoren |
-| **Heizkreise** | Fussbodenheizung, Radiatoren, WW-Ladekreis, Mischer/Pumpen/Ventile |
-| **Raeume** | Wohneinheiten, Technikraeume mit Heizplan, Temperatur-Sollwerten |
-| **Verbraucher** | Haushalte, Wallboxen (OCPP), Beleuchtung, HVAC, Warmwasser |
-| **Zaehler** | Energiezaehler mit 6 Kategorien, Zaehlerhierarchie |
-| **Energiefluss** | Interaktives 11-Spalten SVG-Diagramm, Drag-to-Connect, animierte Fluesse |
-| **Sankey-Diagramm** | Jahres-Energiebilanz (Plotly.js) |
-| **Hydraulikschema** | React-Flow-Editor: 25+ Node-Typen, Kreuzungsboegen, Cross-Schema-Links |
-| **Stromschema** | React-Flow-Editor: 15 Node-Typen, Sammelschiene, UV, LS-Schalter |
-| **Optimierer** | Radar-Diagramm (5 Achsen), Fahrplan-Charts, Controller-Dashboard, Manual-Overrides |
-| **Trends** | Plotly-Zeitreihen: Dual Y-Achse, Prognose-Overlay, CSV-Export, vordefinierte Ansichten |
-| **Wetter & Prognose** | Aktuelles Wetter, 7-Tage-Vorhersage, PV/Last/Thermik-Prognosen, ML-Status |
-| **System** | Backend-Status, DAQ, Scheduler, Lambda WP (Modbus), Zeit, WLAN, Updates |
-
-### Optimierer-Seite (Controller-Dashboard)
-
-- **Radar-Diagramm:** Drag-to-Adjust fuer 5 Optimierungsziele + 5 Vorlagen
-- **Scheduler-Statusbar:** Ein-Klick Start/Stop, letzte Optimierung
-- **Fahrplan-Charts:** Leistungsbilanz (PV/Last/Batterie/Netz), SOC & Kosten, Thermischer Fahrplan
-- **Controller-Modus:** Auto/Manuell/Aus Toggle
-- **Aktive Stellgroessen:** 6 Kacheln (Batterie, WP-Modulation, WP-Thermisch, Kessel, Vorlauf, Quelle)
-- **Manuelle Overrides:** Parameter-Dropdown + Wert setzen (im Manual-Modus)
-- **Soll-Ist-Vergleich:** Plotly-Chart mit Abweichungshistorie
-- **Stundentabelle:** 24h-Fahrplan mit hervorgehobener aktueller Stunde
+| Gruppe | Seite | Beschreibung |
+|---|---|---|
+| — | **Dashboard** | Live-Metriken (8 Karten), WebSocket-Streaming, Wetter, PV-Prognose, KPIs |
+| Visualisierung | **Hydraulikschema** | React-Flow-Editor: 25+ Node-Typen, Kreuzungsboegen, Cross-Schema-Links |
+| | **Stromschema** | React-Flow-Editor: 15 Node-Typen, Sammelschiene, UV, LS-Schalter |
+| | **Energiefluss** | Interaktives 11-Spalten SVG-Diagramm, animierte Fluesse |
+| | **Sankey** | Jahres-Energiebilanz (Plotly.js) |
+| | **Trends** | Plotly-Zeitreihen: Dual Y-Achse, Prognose-Overlay, CSV-Export |
+| | **Wetter & Prognose** | Aktuelles Wetter, 7-Tage-Vorhersage, PV/Last/Thermik-Prognosen |
+| Steuerung | **Optimierer** | Radar-Diagramm (5 Achsen), Fahrplan-Charts, Controller-Dashboard |
+| | **Selbstlernung** | ML-Modell-Status, Readiness-Anzeige, Aktivierungssteuerung, Raumparameter |
+| E-Mobilitaet | **Lademanagement** | Wallbox-Status, Session-Steuerung, Fahrzeuge, SoC-Tracking, 30-Tage-Statistik |
+| | **Ladeauswertung** | Zeitraum-Analyse, Energie-Balken, Leistungs-Liniendiagramm, Modus-Donut, Perioden-Tabelle |
+| Anlage | **Standort & Gebaeude** | Gebaeudedaten, Koordinaten, Tarife, Optimierer-Gewichtung |
+| | **Erzeuger** | PV, BHKW, Waermepumpe, Heizkessel, Kaeltemaschine, Windrad |
+| | **Speicher** | Batterie (LFP/NMC), Waerme-/Kaeltespeicher |
+| | **Heiz-/Kaeltekreise** | Fussbodenheizung, Radiatoren, Mischer/Pumpen/Ventile |
+| | **Raeume** | Wohneinheiten mit Heizplan, Temperatur-Sollwerten |
+| | **Verbraucher** | Haushalte, Wallboxen (OCPP), Beleuchtung, HVAC |
+| | **Zaehler** | Energiezaehler mit 6 Kategorien, Zaehlerhierarchie |
+| | **Quellen** | Solarthermie, Erdsonden, Brunnen |
+| | **Sensoren** | Temperaturfuehler, Drucksensoren, Durchflussmesser |
+| System | **Systemverwaltung** | Backend-Status, DAQ, Scheduler, Geraete-Manager, Zeit, Updates |
+| | **Alarme** | Alarm-Definitionen, Ereignis-Protokoll, Quittierung |
 
 ---
 
@@ -173,7 +185,7 @@ Auto-Erkennung: Bis 3 WP, 5 Boiler, 5 Puffer, 2 Solar, 12 Heizkreise.
 | Framework | React 19, TypeScript 5.7, Vite 6 |
 | Styling | Tailwind CSS (Dark Theme) |
 | State | Zustand 5 + API-Sync (localStorage Fallback) |
-| Diagramme | Plotly.js (Trends, Sankey), SVG (Energiefluss, Radar), React Flow (Schemas) |
+| Diagramme | Plotly.js (Trends, Sankey, Analytics), SVG (Energiefluss, Radar), React Flow (Schemas) |
 | Icons | Lucide React |
 
 ### Zielsystem
@@ -211,13 +223,21 @@ energiemanager/
 │   │   │       ├── controller.py        # Modus/Override/History
 │   │   │       ├── scheduler.py         # Start/Stop/Trigger/Status
 │   │   │       ├── weather.py           # Wetter + PV/Last/Thermik-Prognosen
-│   │   │       ├── lambda_hp.py         # Lambda WP Modbus TCP
+│   │   │       ├── charging.py          # Lademanagement + Analytics
+│   │   │       ├── alarms.py            # Alarm-Definitionen + Ereignisse
+│   │   │       ├── self_learning.py     # Selbstlernung-Steuerung
+│   │   │       ├── devices.py           # Geraete-Manager + Presets
+│   │   │       ├── thermal.py           # Thermische Raumparameter
 │   │   │       ├── data_acquisition.py  # DAQ Start/Stop/Reload
 │   │   │       ├── ml.py               # ML-Status/Train/Delete
 │   │   │       ├── trends.py            # Zeitreihen-Abfrage + Statistik
 │   │   │       └── settings.py          # SystemSettings CRUD
 │   │   ├── models/
 │   │   │   ├── config.py               # JSONB-Konfigurationsmodelle (8 Typen)
+│   │   │   ├── charging.py             # Vehicle, Wallbox, ChargingSession
+│   │   │   ├── alarm.py                # AlarmDefinition, AlarmEvent
+│   │   │   ├── user.py                 # User (Auth vorbereitet)
+│   │   │   ├── thermal_params.py       # Gelernte thermische Parameter
 │   │   │   ├── measurement.py          # Zeitreihen-Messwerte
 │   │   │   ├── weather.py              # Wetter-Cache
 │   │   │   └── ml_status.py            # ML-Modell-Metadaten
@@ -226,22 +246,30 @@ energiemanager/
 │   │   │   ├── optimizer.py            # Multi-Kriterien Heuristik + MILP-Wrapper
 │   │   │   ├── optimizer_milp.py       # PuLP/CBC MILP-Solver
 │   │   │   ├── controller.py           # Fahrplan → Stellgroessen → Anlage
-│   │   │   ├── scheduler.py            # Periodische Optimierung + Lambda-Sync
+│   │   │   ├── scheduler.py            # Periodische Optimierung + Device-Sync
+│   │   │   ├── charging_manager.py     # 4 Lademodi + Solar/Grid-Tracking
+│   │   │   ├── alarm_manager.py        # Alarm-Auswertung + Cooldown
+│   │   │   ├── device_manager.py       # Multi-Protokoll Geraete-Polling
+│   │   │   ├── room_thermal_model.py   # Thermische Raummodellierung
 │   │   │   ├── pv_forecast.py          # PV-Ertragsprognose (Transposition)
 │   │   │   ├── load_forecast.py        # Last-Prognose (VDI 4655)
 │   │   │   ├── thermal_forecast.py     # Thermische Prognose (U-Wert)
 │   │   │   ├── weather.py              # Open-Meteo Wetter-Service
 │   │   │   ├── data_acquisition.py     # Multi-Protokoll DAQ
-│   │   │   ├── lambda_bridge.py        # Lambda WP ↔ Controller Bridge
 │   │   │   └── ml/
 │   │   │       ├── trainer.py           # XGBoost/sklearn Modell-Training
-│   │   │       ├── predictor.py         # ML-Inferenz
-│   │   │       └── features.py          # Feature-Engineering
+│   │   │       ├── predictor.py         # ML-Inferenz + Activation Gate
+│   │   │       ├── features.py          # Feature-Engineering
+│   │   │       ├── readiness.py         # 4-Kriterien Readiness-Bewertung
+│   │   │       └── thermal_learner.py   # Thermische Raumparameter-Lernung
 │   │   ├── drivers/
-│   │   │   └── lambda_hp.py            # Lambda Modbus TCP Treiber (Registerkarte)
+│   │   │   └── presets/                 # Geraete-Profile (YAML)
 │   │   └── core/
 │   │       ├── database.py              # SQLAlchemy async Engine
 │   │       └── redis.py                 # Redis-Client
+│   ├── scripts/
+│   │   ├── seed_charging.py             # Lade-Simulationsdaten (90 Tage)
+│   │   └── seed_self_learning.py        # ML-Beispieldaten
 │   ├── alembic/                         # DB-Migrationen
 │   └── tests/
 │
@@ -255,7 +283,7 @@ energiemanager/
 │       ├── store/useEnergyStore.ts     # Zustand Store + Sync
 │       ├── types/index.ts              # Alle TypeScript-Interfaces
 │       ├── components/
-│       │   ├── Layout.tsx               # Sidebar (18 Menue-Eintraege)
+│       │   ├── Layout.tsx               # Klappbare Sidebar (6 Gruppen, 19 Seiten)
 │       │   ├── LiveDashboard.tsx        # Echtzeit-Metrikkarten
 │       │   ├── DashboardWidgets.tsx     # Wetter, PV, KPIs, Sparklines
 │       │   ├── ui/                      # FormField, CommunicationForm
@@ -272,6 +300,8 @@ energiemanager/
 │       │   ├── RoomsPage.tsx
 │       │   ├── ConsumersPage.tsx
 │       │   ├── MetersPage.tsx
+│       │   ├── SourcesPage.tsx
+│       │   ├── SensorsPage.tsx
 │       │   ├── EnergyFlowPage.tsx
 │       │   ├── SankeyPage.tsx
 │       │   ├── HydraulicSchemaPageWrapper.tsx
@@ -279,7 +309,11 @@ energiemanager/
 │       │   ├── OptimizerPage.tsx        # + Controller-Dashboard
 │       │   ├── TrendsPage.tsx
 │       │   ├── WeatherPage.tsx
-│       │   └── SystemPage.tsx           # + Scheduler + Lambda WP
+│       │   ├── SystemPage.tsx           # + Scheduler + Geraete-Manager
+│       │   ├── AlarmsPage.tsx
+│       │   ├── SelfLearningPage.tsx
+│       │   ├── ChargingPage.tsx         # Lademanagement
+│       │   └── ChargingAnalyticsPage.tsx # Ladeauswertung
 │       └── data/
 │           └── seedBavaria.ts           # Testdaten MFH Bayern
 │
@@ -301,8 +335,11 @@ energiemanager/
 | `/api/v1/meters` | Zaehler (6 Kategorien) |
 | `/api/v1/rooms` | Raeume |
 | `/api/v1/circuits` | Heiz-/Kuehlkreise |
+| `/api/v1/sources` | Quellen (Solarthermie, Erdsonde, Brunnen) |
+| `/api/v1/sensors` | Sensoren |
 | `/api/v1/settings` | Systemeinstellungen (Singleton) |
 | `/api/v1/trend-definitions` | Gespeicherte Trend-Ansichten |
+| `/api/v1/alarm-definitions` | Alarm-Definitionen |
 
 ### Kernfunktionen
 
@@ -332,21 +369,47 @@ energiemanager/
 | `/api/v1/ml/status` | GET | ML-Modell-Status |
 | `/api/v1/ml/train` | POST | ML-Modelle trainieren |
 
-### Hardware
+### Lademanagement
 
 | Endpoint | Methode | Beschreibung |
 |---|---|---|
-| `/api/v1/lambda-hp/connect` | POST | Lambda WP Modbus-Verbindung |
-| `/api/v1/lambda-hp/status` | GET | Lambda WP Status + Module |
-| `/api/v1/lambda-hp/values` | GET | Alle Modbus-Werte lesen |
-| `/api/v1/lambda-hp/write` | POST | Stellwert schreiben (Register) |
-| `/api/v1/lambda-hp/pv-surplus` | POST | PV-Ueberschuss melden |
+| `/api/v1/charging/status` | GET | Wallboxen + aktive Sessions + 30-Tage-Statistik |
+| `/api/v1/charging/sessions` | GET/POST | Sessions auflisten / erstellen |
+| `/api/v1/charging/sessions/{id}/start` | POST | Ladevorgang starten |
+| `/api/v1/charging/sessions/{id}/stop` | POST | Ladevorgang stoppen |
+| `/api/v1/charging/sessions/{id}/mode` | PUT | Lademodus wechseln |
+| `/api/v1/charging/analytics` | GET | Aggregierte Auswertung (Zeitraum, Gruppierung) |
+| `/api/v1/charging/vehicles` | GET/POST | Fahrzeug-Verwaltung |
+| `/api/v1/charging/sync-wallboxes` | POST | Wallboxen aus Verbraucher-Config synchronisieren |
+
+### Selbstlernung & Alarme
+
+| Endpoint | Methode | Beschreibung |
+|---|---|---|
+| `/api/v1/self-learning/status` | GET | ML-Modelle + Readiness + Thermische Raumparameter |
+| `/api/v1/self-learning/models/{type}/mode` | PUT | Aktivierungsmodus setzen (passiv/aktiv/aus) |
+| `/api/v1/self-learning/thermal/learn` | POST | Thermische Raumparameter lernen |
+| `/api/v1/alarms/events` | GET | Alarm-Ereignis-Protokoll |
+| `/api/v1/alarms/events/active` | GET | Aktive (unquittierte) Alarme |
+| `/api/v1/alarms/events/{id}/acknowledge` | POST | Alarm quittieren |
+| `/api/v1/alarms/evaluate` | POST | Manuell Alarm-Auswertung ausloesen |
+
+### Hardware & Geraete
+
+| Endpoint | Methode | Beschreibung |
+|---|---|---|
+| `/api/v1/devices/presets` | GET | Geraete-Profile (YAML-Katalog) |
+| `/api/v1/devices/status` | GET | Geraete-Manager Status + verbundene Geraete |
+| `/api/v1/devices/{id}/values` | GET | Aktuelle Werte eines Geraets |
+| `/api/v1/devices/{id}/write` | POST | Stellwert schreiben |
 | `/api/v1/daq/start` | POST | Datenerfassung starten |
 | `/api/v1/trends/data` | GET | Zeitreihen-Abfrage (Aggregation) |
 
 ---
 
-## Testdaten (MFH Bayern)
+## Testdaten
+
+### MFH Bayern (Seed via Dashboard)
 
 Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhaus-Szenario geladen:
 
@@ -363,6 +426,23 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 | Verbraucher | 6 Haushalte (2600–3500 kWh/a), 2 Wallboxen 11 kW (OCPP), Allgemeinstrom |
 | Zaehler | 11 Zaehler in allen 6 Kategorien |
 
+### Lade-Simulationsdaten (Seed-Script)
+
+```bash
+cd backend && .venv/Scripts/python scripts/seed_charging.py
+```
+
+Erzeugt ~48 realistische Ladesessions ueber 90 Tage:
+- 2 Fahrzeuge (Tesla Model 3 LR, VW ID.4 Pro)
+- 4 Lademodi mit realistischen Energiewerten, Solar/Grid-Split und Kosten
+- Leistung 2.5–11 kW je nach Modus, Dauer 30 min – 8h
+
+### ML-Beispieldaten
+
+```bash
+cd backend && .venv/Scripts/python scripts/seed_self_learning.py
+```
+
 ---
 
 ## Entwicklungsfortschritt
@@ -377,8 +457,8 @@ Ueber den Dashboard-Button "Testdaten laden" wird ein komplettes Mehrfamilienhau
 | Phase 2c | Wetter-API + PV/Last/Thermik-Prognosen + Dashboard-Upgrade | Abgeschlossen |
 | Phase 2d | MILP-Optimierer + ML-Prognosekorrektur + Auto-Retrain | Abgeschlossen |
 | Phase 2e | Controller + Scheduler + Lambda WP + Controller-Dashboard | Abgeschlossen |
-| Phase 3 | Authentifizierung, Tests, weitere Treiber | Ausstehend |
-| Phase 4 | Mobile App (Flutter) | Ausstehend |
+| Phase 3 | Absicherung: Alarme, Lademanagement, Selbstlernung, Geraete-Manager | **In Arbeit** |
+| Phase 4 | Mobile App (Flutter / PWA-Ausbau) | Ausstehend |
 | Phase 5 | Produktion (Edge-Deployment, Monitoring) | Ausstehend |
 
 ---
@@ -417,10 +497,13 @@ uvicorn app.main:app --reload    # -> http://localhost:8000
 # Frontend (in neuem Terminal)
 cd frontend
 npm install
-npm run dev                      # -> http://localhost:3000
+npm run dev                      # -> http://localhost:5173
 
 # Testdaten laden
 npx vite-node scripts/seed-backend.ts
+
+# Lade-Simulationsdaten
+cd ../backend && python scripts/seed_charging.py
 
 # Simulator starten (5s Intervall, 60x Zeitraffer)
 curl -X POST "http://localhost:8000/api/v1/simulator/start?interval=5&speed=60"
@@ -442,7 +525,7 @@ DATABASE_URL=postgresql+asyncpg://energiemanager:secret@localhost:5432/energiema
 
 | Dienst | URL | Beschreibung |
 |---|---|---|
-| Web-Frontend | `http://<ip>:3000` (Dev) / `http://<ip>:8080` (Prod) | Konfigurationsoberflaeche |
+| Web-Frontend | `http://<ip>:5173` (Dev) / `http://<ip>:8080` (Prod) | Konfigurationsoberflaeche |
 | API | `http://<ip>:8000` | FastAPI Backend |
 | API Docs | `http://<ip>:8000/docs` | Swagger UI |
 | Grafana | `http://<ip>:3000` | Monitoring Dashboards |

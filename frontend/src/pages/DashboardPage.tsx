@@ -1,71 +1,110 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { Link } from 'react-router-dom'
 import {
-  Sun, Gauge, Plug, Battery, Home, Waypoints, GitBranch, Settings,
-  CheckCircle2, AlertCircle, ArrowRight, Database, Trash2, TrendingUp, Cloud,
+  CheckCircle2, AlertCircle, ChevronDown, ChevronUp,
+  Play, Square, Activity, Calendar, Shield, Bell, Cloud,
 } from 'lucide-react'
 import LiveDashboard from '../components/LiveDashboard'
 import DashboardWidgets from '../components/DashboardWidgets'
-import type { GeneratorType, GridGenerator } from '../types'
-import { createBavariaSeedData } from '../data/seedBavaria'
+import { api } from '../api/client'
+import type { SchedulerStatus, ControllerStatus } from '../types'
 
-const typeLabels: Record<GeneratorType, string> = {
-  pv: 'PV', chp: 'BHKW', heat_pump: 'WP', boiler: 'Kessel', chiller: 'Kälte', grid: 'Netz',
-}
+/** Compact status bar showing system service states */
+function StatusBar() {
+  const [simRunning, setSimRunning] = useState(false)
+  const [scheduler, setScheduler] = useState<SchedulerStatus | null>(null)
+  const [controller, setController] = useState<ControllerStatus | null>(null)
+  const [alarmCount, setAlarmCount] = useState(0)
+  const [weatherOk, setWeatherOk] = useState<boolean | null>(null)
 
-export default function DashboardPage() {
-  const { generators, meters, consumers, storages, rooms, circuits, settings, loadSeedData, clearAll } = useEnergyStore()
-  const [confirmClear, setConfirmClear] = useState(false)
+  const refresh = useCallback(async () => {
+    const [sim, sched, ctrl, alarms, weather] = await Promise.all([
+      api.simulator.status().catch(() => null),
+      api.scheduler.status().catch(() => null),
+      api.controller.status().catch(() => null),
+      api.alarms.active().catch(() => null),
+      api.weather.current().catch(() => null),
+    ])
+    setSimRunning(!!(sim as any)?.running)
+    setScheduler(sched)
+    setController(ctrl)
+    setAlarmCount(alarms?.length ?? 0)
+    setWeatherOk(weather !== null)
+  }, [])
 
-  const configComplete = generators.length > 0 && meters.length > 0 && consumers.length > 0
-  const hasHausanschlussZaehler = meters.some((m) => m.assignedToType === 'grid')
-  const gridGen = generators.find((g) => g.type === 'grid')
+  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    const iv = setInterval(refresh, 30_000)
+    return () => clearInterval(iv)
+  }, [refresh])
 
-  const sections = [
+  const items = [
     {
-      title: 'Erzeuger', icon: Sun, count: generators.length, to: '/generators',
-      color: 'text-amber-400 bg-amber-500/15',
-      detail: generators.length > 0
-        ? generators.map((g) => `${g.name || typeLabels[g.type]}`).join(', ')
-        : 'Noch keine Erzeuger konfiguriert',
+      label: 'Simulator',
+      icon: Play,
+      active: simRunning,
+      color: simRunning ? 'text-emerald-400' : 'text-dark-faded',
+      to: '/system',
     },
     {
-      title: 'Speicher', icon: Battery, count: storages.length, to: '/storage',
-      color: 'text-purple-400 bg-purple-500/15',
-      detail: storages.length > 0
-        ? storages.map((s) => s.name || s.type).join(', ')
-        : 'Noch keine Speicher konfiguriert',
+      label: 'Scheduler',
+      icon: Calendar,
+      active: scheduler?.running ?? false,
+      color: scheduler?.running ? 'text-emerald-400' : 'text-dark-faded',
+      to: '/system',
     },
     {
-      title: 'Heizkreise', icon: Waypoints, count: circuits.length, to: '/circuits',
-      color: 'text-red-400 bg-red-500/15',
-      detail: circuits.length > 0
-        ? circuits.map((c) => c.name).join(', ')
-        : 'Noch keine Heizkreise konfiguriert',
+      label: 'Controller',
+      icon: Shield,
+      active: controller?.mode !== undefined && controller?.mode !== 'off',
+      color: controller?.mode === 'auto' ? 'text-emerald-400' : controller?.mode === 'manual' ? 'text-amber-400' : 'text-dark-faded',
+      detail: controller?.mode ?? 'off',
+      to: '/optimizer',
     },
     {
-      title: 'Räume', icon: Home, count: rooms.length, to: '/rooms',
-      color: 'text-emerald-400 bg-emerald-500/15',
-      detail: rooms.length > 0
-        ? `${rooms.length} Räume, ${rooms.reduce((s, r) => s + r.areaM2, 0).toLocaleString()} m² gesamt`
-        : 'Noch keine Räume konfiguriert',
+      label: 'Alarme',
+      icon: Bell,
+      active: alarmCount > 0,
+      color: alarmCount > 0 ? 'text-amber-400' : 'text-dark-faded',
+      detail: alarmCount > 0 ? `${alarmCount}` : '0',
+      to: '/alarms',
     },
     {
-      title: 'Verbraucher', icon: Plug, count: consumers.length, to: '/consumers',
-      color: 'text-green-400 bg-green-500/15',
-      detail: consumers.length > 0
-        ? `${consumers.reduce((s, c) => s + c.annualConsumptionKwh, 0).toLocaleString()} kWh/a gesamt`
-        : 'Noch keine Verbraucher konfiguriert',
-    },
-    {
-      title: 'Zähler', icon: Gauge, count: meters.length, to: '/meters',
-      color: 'text-yellow-400 bg-yellow-500/15',
-      detail: meters.length > 0
-        ? meters.map((m) => m.name || m.meterNumber).join(', ')
-        : 'Noch keine Zähler konfiguriert',
+      label: 'Wetter',
+      icon: Cloud,
+      active: weatherOk === true,
+      color: weatherOk ? 'text-sky-400' : 'text-dark-faded',
+      to: '/weather',
     },
   ]
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {items.map(({ label, icon: Icon, active, color, detail, to }) => (
+        <Link
+          key={label}
+          to={to}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-dark-hover border border-dark-border hover:border-dark-faded transition-colors text-xs"
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-dark-faded'}`} />
+          <Icon className={`w-3.5 h-3.5 ${color}`} />
+          <span className="text-dark-muted">{label}</span>
+          {detail && <span className={`font-medium ${color}`}>{detail}</span>}
+        </Link>
+      ))}
+    </div>
+  )
+}
+
+/** Collapsible setup checklist — hidden once complete */
+function SetupBanner() {
+  const { generators, meters, consumers, storages, rooms, circuits, settings } = useEnergyStore()
+  const [open, setOpen] = useState(false)
+  const [dismissed, setDismissed] = useState(false)
+
+  const gridGen = generators.find((g) => g.type === 'grid')
+  const hasHausanschlussZaehler = meters.some((m) => m.assignedToType === 'grid')
 
   const checklistItems = [
     { label: 'Gebäudedaten & Standort eingeben', done: !!settings.buildingName, to: '/settings' },
@@ -82,199 +121,92 @@ export default function DashboardPage() {
   ]
 
   const completedCount = checklistItems.filter((i) => i.done).length
+  const allDone = completedCount === checklistItems.length
+
+  // Fully complete or dismissed → hide
+  if ((allDone && !open) || dismissed) return null
+
+  const pct = (completedCount / checklistItems.length) * 100
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="page-header">Dashboard</h1>
-        <p className="text-sm text-dark-faded mt-1">
-          {settings.buildingName || 'EnergyManager'} — Anlagenkonfiguration
-        </p>
-      </div>
-
-      {/* Wetter, PV-Prognose, KPIs, Sparklines */}
-      <div className="mb-6">
-        <DashboardWidgets />
-      </div>
-
-      {/* Live-Daten */}
-      <div className="mb-6">
-        <LiveDashboard />
-      </div>
-
-      {/* Übersichtskarten */}
-      <div className="grid grid-cols-3 gap-4 mb-8">
-        {sections.map(({ title, icon: Icon, count, to, color, detail }) => (
-          <Link key={to} to={to} className="card hover:border-dark-faded transition-all group">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
-                <Icon className="w-5 h-5" />
-              </div>
-              <span className="text-2xl font-bold text-dark-text">{count}</span>
-            </div>
-            <h3 className="font-semibold text-dark-muted">{title}</h3>
-            <p className="text-xs text-dark-faded mt-1 truncate">{detail}</p>
-            <div className="flex items-center gap-1 mt-3 text-xs text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity">
-              Konfigurieren <ArrowRight className="w-3 h-3" />
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-6">
-        {/* Checkliste */}
-        <div className="card">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="section-title">Einrichtung</h2>
-            <span className="text-sm text-dark-faded">{completedCount}/{checklistItems.length}</span>
-          </div>
-          <div className="w-full bg-dark-hover rounded-full h-2 mb-4">
+    <div className="card border-dashed border-amber-500/30">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-between w-full"
+      >
+        <div className="flex items-center gap-3">
+          <Activity className="w-4 h-4 text-amber-400" />
+          <span className="text-sm font-medium text-dark-muted">
+            Einrichtung — {completedCount}/{checklistItems.length} erledigt
+          </span>
+          <div className="w-24 bg-dark-hover rounded-full h-1.5">
             <div
-              className="bg-emerald-500 h-2 rounded-full transition-all"
-              style={{ width: `${(completedCount / checklistItems.length) * 100}%` }}
+              className="bg-amber-400 h-1.5 rounded-full transition-all"
+              style={{ width: `${pct}%` }}
             />
           </div>
-          <div className="space-y-2">
-            {checklistItems.map((item, i) => (
-              <Link
-                key={i}
-                to={item.to}
-                className="flex items-center gap-3 p-2 rounded-lg hover:bg-dark-hover transition-colors"
-              >
-                {item.done ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-dark-border shrink-0" />
-                )}
-                <span className={`text-sm ${item.done ? 'text-dark-faded line-through' : 'text-dark-muted'}`}>
-                  {item.label}
-                </span>
-              </Link>
-            ))}
-          </div>
         </div>
-
-        {/* Schnellzugriff */}
-        <div className="space-y-4">
-          <div className="card">
-            <h2 className="section-title mb-4">Visualisierungen</h2>
-            <div className="space-y-2">
-              <Link
-                to="/energy-flow"
-                className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors border border-emerald-500/20"
-              >
-                <GitBranch className="w-5 h-5 text-emerald-400" />
-                <div>
-                  <span className="text-sm font-medium text-emerald-400">Energiefluss-Diagramm</span>
-                  <p className="text-xs text-emerald-500/70">Interaktive Darstellung aller Energieflüsse</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-emerald-500/50 ml-auto" />
-              </Link>
-              <Link
-                to="/trends"
-                className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors border border-amber-500/20"
-              >
-                <TrendingUp className="w-5 h-5 text-amber-400" />
-                <div>
-                  <span className="text-sm font-medium text-amber-400">Trends & Aufzeichnung</span>
-                  <p className="text-xs text-amber-500/70">Historische Messdaten, Statistiken und CSV-Export</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-amber-500/50 ml-auto" />
-              </Link>
-              <Link
-                to="/weather"
-                className="flex items-center gap-3 p-3 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 transition-colors border border-sky-500/20"
-              >
-                <Cloud className="w-5 h-5 text-sky-400" />
-                <div>
-                  <span className="text-sm font-medium text-sky-400">Wetter & PV-Prognose</span>
-                  <p className="text-xs text-sky-500/70">Wettervorhersage und PV-Ertragsprognose</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-sky-500/50 ml-auto" />
-              </Link>
-              <Link
-                to="/sankey"
-                className="flex items-center gap-3 p-3 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 transition-colors border border-blue-500/20"
-              >
-                <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 4h4v16H4zM16 4h4v16h-4zM8 6l8 4M8 12l8 0M8 18l8-4" />
-                </svg>
-                <div>
-                  <span className="text-sm font-medium text-blue-400">Sankey-Diagramm</span>
-                  <p className="text-xs text-blue-500/70">Energieflussbilanz als Sankey-Darstellung</p>
-                </div>
-                <ArrowRight className="w-4 h-4 text-blue-500/50 ml-auto" />
-              </Link>
-            </div>
-          </div>
-
-          <div className="card">
-            <h2 className="section-title mb-3">System-Info</h2>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-dark-faded">Standort</span>
-                <span className="text-dark-muted">{settings.latitude.toFixed(4)}° N, {settings.longitude.toFixed(4)}° E</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-faded">Strompreis (Bezug)</span>
-                <span className="text-dark-muted">{settings.gridConsumptionCtPerKwh} ct/kWh</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-faded">Einspeisevergütung</span>
-                <span className="text-dark-muted">{settings.gridFeedInCtPerKwh} ct/kWh</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-faded">Hausanschluss</span>
-                <span className="text-dark-muted">{gridGen ? (gridGen as GridGenerator).gridMaxPowerKw : '–'} kW</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-faded">Konfiguration</span>
-                <span className={configComplete ? 'text-emerald-400' : 'text-amber-400'}>
-                  {configComplete ? 'Vollständig' : 'Unvollständig'}
-                </span>
-              </div>
-            </div>
-            <Link to="/settings" className="flex items-center gap-2 mt-4 text-sm text-emerald-400 hover:text-emerald-300">
-              <Settings className="w-4 h-4" /> Anlage & Standort
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Beispieldaten & Reset */}
-      <div className="mt-8 card border-dashed">
-        <h2 className="section-title mb-3">Testdaten</h2>
-        <p className="text-sm text-dark-faded mb-4">
-          Lade vorkonfigurierte Beispieldaten für ein typisches Mehrfamilienhaus in Bayern
-          (6 WE, PV 30 kWp, Gaskessel, Wärmepumpe, Batterie 20 kWh, 2 Wallboxen).
-        </p>
-        <div className="flex gap-3">
-          <button
-            onClick={() => { loadSeedData(createBavariaSeedData()) }}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Database className="w-4 h-4" />
-            Beispieldaten laden (MFH Bayern)
-          </button>
-          {(generators.length > 0 || consumers.length > 0) && (
-            confirmClear ? (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-red-400">Wirklich alles löschen?</span>
-                <button onClick={() => { clearAll(); setConfirmClear(false) }} className="btn-danger">Ja, löschen</button>
-                <button onClick={() => setConfirmClear(false)} className="btn-secondary text-sm">Abbrechen</button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setConfirmClear(true)}
-                className="btn-secondary flex items-center gap-2 text-red-400 hover:text-red-300"
-              >
-                <Trash2 className="w-4 h-4" />
-                Alle Daten löschen
-              </button>
-            )
+        <div className="flex items-center gap-2">
+          {allDone && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setDismissed(true) }}
+              className="text-xs text-dark-faded hover:text-dark-muted"
+            >
+              Ausblenden
+            </button>
           )}
+          {open ? <ChevronUp className="w-4 h-4 text-dark-faded" /> : <ChevronDown className="w-4 h-4 text-dark-faded" />}
         </div>
+      </button>
+
+      {open && (
+        <div className="mt-3 pt-3 border-t border-dark-border grid grid-cols-2 gap-1.5">
+          {checklistItems.map((item, i) => (
+            <Link
+              key={i}
+              to={item.to}
+              className="flex items-center gap-2 p-1.5 rounded hover:bg-dark-hover transition-colors"
+            >
+              {item.done ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-dark-border shrink-0" />
+              )}
+              <span className={`text-xs ${item.done ? 'text-dark-faded line-through' : 'text-dark-muted'}`}>
+                {item.label}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function DashboardPage() {
+  const settings = useEnergyStore((s) => s.settings)
+
+  return (
+    <div className="p-6 space-y-4">
+      {/* Header + Status Bar */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="page-header">Dashboard</h1>
+          <p className="text-sm text-dark-faded mt-0.5">
+            {settings.buildingName || 'EnergyManager'}
+          </p>
+        </div>
+        <StatusBar />
       </div>
+
+      {/* Setup Banner (collapsible, hides when complete) */}
+      <SetupBanner />
+
+      {/* Wetter, PV-Prognose, KPIs, Sparklines */}
+      <DashboardWidgets />
+
+      {/* Live-Daten */}
+      <LiveDashboard />
     </div>
   )
 }

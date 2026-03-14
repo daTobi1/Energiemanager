@@ -22,8 +22,16 @@ from app.core.database import async_session
 from app.models.config import (
     CircuitConfig,
     GeneratorConfig,
+    RoomConfig,
     StorageConfig,
     SystemSettingsConfig,
+)
+from app.models.thermal_params import ThermalLearnedParams
+from app.services.room_thermal_model import (
+    calculate_circuit_demand,
+    calculate_optimal_flow_temp,
+    get_default_params,
+    get_room_target_at_time,
 )
 from app.services.weather import weather_service
 
@@ -129,11 +137,19 @@ class ThermalForecastService:
             circ_r = await db.execute(select(CircuitConfig))
             circuits = [r.data for r in circ_r.scalars()]
 
+            room_r = await db.execute(select(RoomConfig))
+            rooms = [r.data for r in room_r.scalars()]
+
+            learned_r = await db.execute(select(ThermalLearnedParams))
+            learned_params = {r.id: r.data for r in learned_r.scalars()}
+
         return {
             "settings": settings,
             "generators": generators,
             "storages": storages,
             "circuits": circuits,
+            "rooms": rooms,
+            "learned_params": learned_params,
         }
 
     async def _get_historical_heat_demand(self, hour: int, weekday: int) -> float | None:
@@ -356,6 +372,11 @@ class ThermalForecastService:
             for day, vals in daily_energy.items()
         }
 
+        # Pro-Kreis Forecast
+        circuits_hourly = self._build_circuit_forecasts(
+            config, result_hourly, hours, now,
+        )
+
         return {
             "generated_at": now.isoformat(),
             "building": {
@@ -380,8 +401,103 @@ class ThermalForecastService:
                 "capacity_kwh_per_k": round(storage_capacity_kwh_per_k, 2),
             },
             "hourly": result_hourly,
+            "circuits_hourly": circuits_hourly,
             "daily_summary": daily_summary,
         }
+
+    def _build_circuit_forecasts(
+        self,
+        config: dict,
+        hourly_global: list[dict],
+        hours: int,
+        now: datetime,
+    ) -> dict:
+        """
+        Berechnet pro Heizkreis den stuendlichen Waermebedarf und die optimale Vorlauftemperatur.
+
+        Returns: {circuit_id: [{time, flow_temp_c, thermal_demand_kw, rooms: [...]}]}
+        """
+        rooms = config.get("rooms", [])
+        circuits = config.get("circuits", [])
+        learned_params = config.get("learned_params", {})
+        settings = config.get("settings", {})
+        insulation = settings.get("insulationStandard", "good")
+
+        if not rooms or not circuits:
+            return {}
+
+        circuits_map = {c["id"]: c for c in circuits}
+
+        # Raeume nach Kreisen gruppieren + Parameter erzeugen
+        circuit_room_params: dict[str, list] = {}
+        for room in rooms:
+            cid = room.get("heatingCircuitId", "")
+            if not cid or cid not in circuits_map:
+                continue
+            circuit = circuits_map[cid]
+            params = get_default_params(room, circuit, insulation)
+
+            # Gelernte Parameter uebernehmen
+            learned = learned_params.get(room.get("id", ""), {})
+            if learned:
+                params.tau_response_h = learned.get("tau_response_h", params.tau_response_h)
+                params.tau_loss_h = learned.get("tau_loss_h", params.tau_loss_h)
+
+            circuit_room_params.setdefault(cid, []).append(params)
+
+        result: dict[str, list] = {}
+
+        for cid, room_params_list in circuit_room_params.items():
+            circuit = circuits_map[cid]
+            circuit_hourly = []
+
+            for h in range(hours):
+                dt = datetime(now.year, now.month, now.day, now.hour, 0, 0, tzinfo=timezone.utc)
+                dt = dt + timedelta(hours=h)
+                time_str = dt.strftime("%Y-%m-%dT%H:00")
+                hour_float = dt.hour + dt.minute / 60.0
+                weekday = dt.weekday()
+
+                # Outdoor-Temp aus globalem Forecast
+                global_h = hourly_global[h] if h < len(hourly_global) else {}
+                outdoor_temp = global_h.get("outdoor_temp_c", 5.0)
+
+                # Targets und aktuelle Temps
+                targets = {}
+                temps = {}
+                room_infos = []
+                for p in room_params_list:
+                    target = get_room_target_at_time(p.schedule, hour_float, weekday, p.target_temp_c)
+                    targets[p.room_id] = target
+                    temps[p.room_id] = target  # Forecast: Annahme Ist=Soll
+                    room_infos.append({
+                        "room_id": p.room_id,
+                        "room_name": p.room_name,
+                        "target_temp_c": round(target, 1),
+                    })
+
+                # Bedarf berechnen
+                demand_kw = calculate_circuit_demand(
+                    room_params_list, temps, outdoor_temp, targets,
+                )
+
+                # Optimale Vorlauftemperatur
+                opt_flow = calculate_optimal_flow_temp(
+                    room_params_list, temps, outdoor_temp, targets,
+                    circuit.get("designOutdoorTemperatureC", -12),
+                    circuit.get("flowTemperatureC", 55),
+                )
+
+                circuit_hourly.append({
+                    "time": time_str,
+                    "flow_temp_c": round(opt_flow, 1),
+                    "thermal_demand_kw": round(demand_kw, 2),
+                    "rooms": room_infos,
+                })
+
+            result[cid] = circuit_hourly
+
+        return result
 
 
 # Singleton

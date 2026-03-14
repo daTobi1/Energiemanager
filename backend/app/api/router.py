@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.crud import create_crud_router
-from app.api.endpoints import controller, data_acquisition, lambda_hp, ml, optimizer, scheduler, seed, settings, simulator, trends, weather
+from app.api.endpoints import alarms, auth, charging, controller, data_acquisition, devices, ml, optimizer, scheduler, seed, self_learning, settings, simulator, thermal, trends, weather
 from app.api.websocket import router as ws_router
 from app.config import settings as app_settings
 from app.models.config import (
@@ -78,15 +78,36 @@ api_router.include_router(ml.router, prefix="/ml", tags=["ML"])
 # Scheduler (Periodische Optimierung)
 api_router.include_router(scheduler.router, prefix="/scheduler", tags=["Scheduler"])
 
-# Lambda Wärmepumpe (Modbus TCP)
-api_router.include_router(lambda_hp.router, prefix="/lambda-hp", tags=["Lambda HP"])
+# Selbstlernung (ML Readiness + Passiv/Aktiv-Steuerung)
+api_router.include_router(self_learning.router, prefix="/self-learning", tags=["Self-Learning"])
+
+# Thermische Raum-/Kreis-Optimierung
+api_router.include_router(thermal.router, prefix="/thermal", tags=["Thermal"])
+
+# Authentifizierung
+api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
+
+# Alarme & Benachrichtigungen
+api_router.include_router(alarms.router, prefix="/alarms", tags=["Alarms"])
+
+# Alarm-Definitionen (CRUD)
+from app.models.alarm import AlarmConfig
+api_router.include_router(
+    create_crud_router(AlarmConfig, "Alarm"),
+    prefix="/alarm-definitions", tags=["Alarms"],
+)
+
+# Geraeteverwaltung + Presets
+api_router.include_router(devices.router, prefix="/devices", tags=["Devices"])
+
+# Lademanagement (Wallboxen + Sessions)
+api_router.include_router(charging.router, prefix="/charging", tags=["Charging"])
 
 # WebSocket (Echtzeit-Updates)
 api_router.include_router(ws_router)
 
 # Runtime-Endpoints nur bei PostgreSQL (brauchen alte Modelle mit Enum-Spalten)
 if not app_settings.database_url.startswith("sqlite"):
-    from app.api.endpoints import charging, dashboard
+    from app.api.endpoints import dashboard
 
     api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
-    api_router.include_router(charging.router, prefix="/charging", tags=["Charging"])

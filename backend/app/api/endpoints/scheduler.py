@@ -53,6 +53,16 @@ async def stop_scheduler():
     return {"status": "stopped"}
 
 
+@router.get("/history")
+async def get_scheduler_history(
+    last: int = Query(100, ge=1, le=200, description="Anzahl der letzten Eintraege"),
+):
+    """Optimierungs-Historie: Laufzeiten, KPIs und Fehler pro Lauf."""
+    history = scheduler.history
+    entries = history[-last:] if len(history) > last else history
+    return {"count": len(entries), "entries": entries}
+
+
 @router.post("/trigger")
 async def trigger_optimization(
     hours: int = Query(24, ge=1, le=72),

@@ -1,0 +1,50 @@
+{
+  "id": "sma_sunspec",
+  "manufacturer": "SMA",
+  "model": "Sunny Tripower / Sunny Boy (SunSpec)",
+  "category": "inverter",
+  "protocol": "sunspec",
+  "version": "1.0",
+  "description": "SMA Wechselrichter mit SunSpec-Protokoll (Modbus TCP). Unterstuetzt Sunny Tripower, Sunny Boy und Sunny Highpower.",
+  "defaults": {
+    "port": 502,
+    "unitId": 3,
+    "timeout": 10,
+    "pollingIntervalSeconds": 5
+  },
+  "register_groups": [
+    {
+      "name": "common",
+      "base_address": 40000,
+      "source": "pv_inverter",
+      "registers": [
+        { "offset": 69, "metric": "ac_power_w", "unit": "W", "scale": 1, "data_type": "int16" },
+        { "offset": 71, "metric": "ac_frequency_hz", "unit": "Hz", "scale": 0.01, "data_type": "uint16" },
+        { "offset": 83, "metric": "ac_energy_wh", "unit": "Wh", "scale": 1, "data_type": "uint32" },
+        { "offset": 93, "metric": "dc_power_w", "unit": "W", "scale": 1, "data_type": "int16" }
+      ]
+    },
+    {
+      "name": "mppt",
+      "base_address": 40263,
+      "source": "pv_string",
+      "source_template": "string_{instance}",
+      "repeatable": true,
+      "max_instances": 3,
+      "instance_offset": 20,
+      "probe_offset": 1,
+      "registers": [
+        { "offset": 0, "metric": "dc_current_a", "unit": "A", "scale": 0.01, "data_type": "uint16" },
+        { "offset": 1, "metric": "dc_voltage_v", "unit": "V", "scale": 0.1, "data_type": "uint16" },
+        { "offset": 2, "metric": "dc_power_w", "unit": "W", "scale": 1, "data_type": "uint16" }
+      ]
+    }
+  ],
+  "write_map": {},
+  "setpoint_routing": {},
+  "computed_values": [
+    { "metric": "power_kw", "source_metric": "ac_power_w", "transform": "value / 1000" },
+    { "metric": "energy_kwh", "source_metric": "ac_energy_wh", "transform": "value / 1000" }
+  ],
+  "state_maps": {}
+}

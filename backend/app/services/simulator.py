@@ -27,10 +27,16 @@ from app.models.config import (
     ConsumerConfig,
     GeneratorConfig,
     MeterConfig,
+    RoomConfig,
     StorageConfig,
     SystemSettingsConfig,
 )
 from app.models.measurement import Measurement
+from app.services.room_thermal_model import (
+    get_default_params,
+    get_room_target_at_time,
+    step_room_temperature,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +52,7 @@ class SimulatorState:
         self.total_energy_import_kwh: float = 0.0
         self.total_energy_export_kwh: float = 0.0
         self.total_pv_kwh: float = 0.0
+        self.room_temperatures: dict[str, float] = {}  # room_id -> T_raum
 
 
 class Simulator:
@@ -171,9 +178,25 @@ class Simulator:
             circuit_result = await db.execute(select(CircuitConfig))
             self._config["circuits"] = [r.data for r in circuit_result.scalars()]
 
+            room_result = await db.execute(select(RoomConfig))
+            self._config["rooms"] = [r.data for r in room_result.scalars()]
+
             settings_result = await db.execute(select(SystemSettingsConfig))
             row = settings_result.scalar_one_or_none()
             self._config["settings"] = row.data if row else {}
+
+        # Raum-Thermik-Parameter initialisieren
+        self._room_params = {}
+        circuits_map = {c["id"]: c for c in self._config.get("circuits", [])}
+        insulation = self._config.get("settings", {}).get("insulationStandard", "good")
+        for room in self._config.get("rooms", []):
+            circuit_id = room.get("heatingCircuitId", "")
+            circuit = circuits_map.get(circuit_id)
+            if circuit_id:
+                params = get_default_params(room, circuit, insulation)
+                self._room_params[room["id"]] = params
+                # Initiale Raumtemperatur auf Sollwert setzen
+                self._state.room_temperatures[room["id"]] = params.target_temp_c
 
         # Batterie-Kapazität initialisieren
         for s in self._config.get("storages", []):
@@ -277,6 +300,9 @@ class Simulator:
             if total_consumption_kw > 0 else 0
         )
 
+        # === Raum-Temperaturen simulieren ===
+        room_measurements = self._simulate_rooms(now, ctrl_setpoints)
+
         # === Messwerte sammeln ===
         measurements = [
             ("pv", "power_kw", round(pv_power_kw, 2), "kW"),
@@ -294,6 +320,7 @@ class Simulator:
             ("system", "self_sufficiency_pct", round(self_sufficiency, 1), "%"),
             ("system", "self_consumption_kw", round(self_consumption_kw, 2), "kW"),
         ]
+        measurements.extend(room_measurements)
 
         # In DB schreiben
         async with async_session() as db:
@@ -321,6 +348,10 @@ class Simulator:
                 "self_sufficiency_pct": round(self_sufficiency, 1),
                 "import_kwh": round(self._state.total_energy_import_kwh, 1),
                 "export_kwh": round(self._state.total_energy_export_kwh, 1),
+                "room_temperatures": {
+                    rid: round(t, 1)
+                    for rid, t in self._state.room_temperatures.items()
+                },
             },
         }
         await broadcast(ws_data)
@@ -328,6 +359,97 @@ class Simulator:
     # ------------------------------------------------------------------
     # Simulationsmodelle
     # ------------------------------------------------------------------
+
+    def _simulate_rooms(self, sim_time: datetime, ctrl_setpoints=None) -> list[tuple[str, str, float, str]]:
+        """
+        Simuliert Raumtemperaturen fuer alle konfigurierten Raeume mit RC-Modell.
+
+        Returns: Liste von (source, metric, value, unit) Messwerten.
+        """
+        if not hasattr(self, "_room_params") or not self._room_params:
+            return []
+
+        dt_h = self._interval_seconds * self._speed_factor / 3600.0
+        hour = sim_time.hour + sim_time.minute / 60.0
+        weekday = sim_time.weekday()
+        outdoor_temp = self._state.outdoor_temp_c
+        measurements = []
+
+        # Heizkreise sammeln: circuit_id -> flow_temp
+        circuits_map = {c["id"]: c for c in self._config.get("circuits", [])}
+        circuit_flow_temps: dict[str, float] = {}
+
+        # Vorlauftemp pro Kreis: aus Controller-Setpoints oder Heizkurve
+        for cid, circuit in circuits_map.items():
+            if ctrl_setpoints and hasattr(ctrl_setpoints, "circuit_setpoints"):
+                # Pro-Kreis Setpoints vom Controller
+                for cs in ctrl_setpoints.circuit_setpoints:
+                    if cs.circuit_id == cid:
+                        circuit_flow_temps[cid] = cs.flow_temp_c
+                        break
+                else:
+                    circuit_flow_temps[cid] = self._calc_circuit_flow_temp(circuit, outdoor_temp)
+            elif ctrl_setpoints and hasattr(ctrl_setpoints, "flow_temp_c"):
+                # Globaler Flow-Temp-Setpoint
+                circuit_flow_temps[cid] = ctrl_setpoints.flow_temp_c
+            else:
+                circuit_flow_temps[cid] = self._calc_circuit_flow_temp(circuit, outdoor_temp)
+
+        # Jeder Raum: RC-Modell anwenden
+        for room_id, params in self._room_params.items():
+            t_current = self._state.room_temperatures.get(room_id, params.target_temp_c)
+            t_flow = circuit_flow_temps.get(params.circuit_id, 35.0)
+
+            # Soll-Temperatur aus Schedule
+            target = get_room_target_at_time(params.schedule, hour, weekday, params.target_temp_c)
+
+            # Heizung nur wenn Bedarf (Raum unter Soll oder Frostschutz)
+            if t_current >= target + 0.5 and t_current > params.min_temp_c + 2:
+                t_flow_eff = t_current  # Keine Heizung
+            else:
+                t_flow_eff = t_flow
+
+            # RC-Modell Schritt
+            t_new = step_room_temperature(params, t_current, outdoor_temp, t_flow_eff, dt_h)
+            self._state.room_temperatures[room_id] = t_new
+
+            # Messwerte
+            measurements.append((f"room_{room_id}", "temperature_c", round(t_new, 2), "\u00b0C"))
+            measurements.append((f"room_{room_id}", "target_temp_c", round(target, 1), "\u00b0C"))
+
+        # Kreis-Messwerte (Vorlauf/Ruecklauf)
+        for cid, flow_temp in circuit_flow_temps.items():
+            measurements.append((f"circuit_{cid}", "flow_temp_c", round(flow_temp, 1), "\u00b0C"))
+            # Ruecklauftemp: Mischtemperatur der Raeume (vereinfacht)
+            room_temps_on_circuit = [
+                self._state.room_temperatures.get(rid, 20)
+                for rid, p in self._room_params.items()
+                if p.circuit_id == cid
+            ]
+            if room_temps_on_circuit:
+                return_temp = sum(room_temps_on_circuit) / len(room_temps_on_circuit) + 3.0
+            else:
+                return_temp = flow_temp - 10.0
+            measurements.append((f"circuit_{cid}", "return_temp_c", round(return_temp, 1), "\u00b0C"))
+
+        return measurements
+
+    def _calc_circuit_flow_temp(self, circuit: dict, outdoor_temp: float) -> float:
+        """Berechnet Vorlauftemperatur aus Heizkurve des Kreises."""
+        design_outdoor = circuit.get("designOutdoorTemperatureC", -12)
+        design_flow = circuit.get("flowTemperatureC", 55)
+        hc = circuit.get("heatingCurve", {})
+        steepness = hc.get("steepness", 1.2)
+        parallel_shift = hc.get("parallelShift", 0)
+        indoor_target = 21.0
+
+        if outdoor_temp >= indoor_target:
+            return indoor_target
+
+        ratio = (indoor_target - outdoor_temp) / max(1, indoor_target - design_outdoor)
+        ratio = max(0, min(1.5, ratio))
+        flow_temp = indoor_target + steepness * (design_flow - indoor_target) * ratio + parallel_shift
+        return max(indoor_target, min(75.0, flow_temp))
 
     def _simulate_outdoor_temp(self, hour: float, month: int) -> float:
         """Tagesgang der Außentemperatur, monatlich variierend."""

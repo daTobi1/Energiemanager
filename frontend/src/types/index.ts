@@ -48,6 +48,8 @@ export interface CommunicationConfig {
   port: number
   pollingIntervalSeconds: number
   enabled: boolean
+  // Geraeteprofil (Preset) — z.B. "lambda_eu_l", "sma_sunspec", "fronius_http"
+  driverPreset?: string
   // Trend-Aufzeichnung
   trendEnabled: boolean
   trendMode: 'interval' | 'on_change' | 'both'
@@ -866,14 +868,14 @@ export interface SchedulerStatus {
   running: boolean
   intervals: {
     optimization_s: number
-    lambda_sync_s: number
+    device_sync_s: number
     ml_retrain_s: number
   }
   controller_mode: ControllerMode
   stats: {
     optimization_runs: number
     optimization_errors: number
-    lambda_syncs: number
+    device_syncs: number
     ml_retrains: number
     last_optimization_at: string | null
     last_optimization_duration_ms: number
@@ -885,28 +887,20 @@ export interface SchedulerStatus {
   }
 }
 
-// ============================================================
-// Lambda Wärmepumpe (Modbus TCP)
-// ============================================================
-
-export interface LambdaHPModules {
-  heat_pumps: number
-  boilers: number
-  buffers: number
-  solar_modules: number
-  heating_circuits: number
-}
-
-export interface LambdaHPStatus {
-  connected: boolean
-  running: boolean
-  host?: string
-  port?: number
-  modules?: LambdaHPModules
-  operating_state?: string
-  error?: number | null
-  auto_pv_surplus?: boolean
-  current_pv_surplus_w?: number
+export interface SchedulerHistoryEntry {
+  timestamp: string
+  duration_ms: number
+  hours: number
+  solver: string
+  strategy: string
+  success: boolean
+  error: string | null
+  net_cost_ct: number
+  total_co2_kg: number
+  avg_self_consumption_pct: number
+  peak_grid_import_kw: number
+  total_pv_kwh: number
+  total_grid_import_kwh: number
 }
 
 // ============================================================
@@ -1115,5 +1109,282 @@ export function createDefaultOptimizerWeights(): OptimizerWeights {
     comfort: 70,
     selfConsumption: 60,
     gridFriendly: 30,
+  }
+}
+
+// ============================================================
+// Alarme & Benachrichtigungen
+// ============================================================
+
+export type AlarmSeverity = 'info' | 'warning' | 'critical'
+export type AlarmTriggerType = 'threshold' | 'device_offline' | 'system_error'
+
+export interface AlarmDefinition {
+  id: string
+  name: string
+  enabled: boolean
+  severity: AlarmSeverity
+  triggerType: AlarmTriggerType
+  source: string
+  metric: string
+  condition: '<' | '>' | '<=' | '>=' | '=='
+  threshold: number
+  description: string
+  cooldownMinutes: number
+  system?: boolean
+}
+
+export interface AlarmEvent {
+  id: number
+  alarm_id: string
+  severity: AlarmSeverity
+  message: string
+  source: string
+  metric: string
+  threshold: number
+  actual: number
+  is_active: boolean
+  timestamp: string
+  acknowledged_at: string | null
+  cleared_at: string | null
+}
+
+// ============================================================
+// Self-Learning (Selbstlernung)
+// ============================================================
+
+export type ActivationMode = 'passive' | 'active' | 'off'
+export type ReadinessLevel = 'not_ready' | 'learning' | 'ready' | 'excellent'
+
+export interface ReadinessInfo {
+  score: number
+  level: ReadinessLevel
+  criteria: {
+    data: number
+    accuracy: number
+    error: number
+    freshness: number
+  }
+  can_activate: boolean
+  recommendation: string
+}
+
+export interface SelfLearningModel {
+  forecast_type: string
+  display_name: string
+  activation_mode: ActivationMode
+  training_samples: number
+  r2_score: number
+  mae: number
+  trained_at: string | null
+  is_loaded: boolean
+  readiness: ReadinessInfo
+  passive_correction_kw: number
+}
+
+export interface ThermalRoomLearning {
+  room_id: string
+  room_name: string
+  status: 'learned' | 'learning' | 'waiting'
+  data_points: number
+  learned_at: string | null
+  tau_response_h: number | null
+  tau_loss_h: number | null
+  heating_curve_steepness: number | null
+  heating_curve_parallel_shift: number | null
+}
+
+export interface SelfLearningStatus {
+  ml_models: SelfLearningModel[]
+  thermal_rooms: ThermalRoomLearning[]
+  overall_readiness: number
+  last_retrain_at: string | null
+  next_retrain_in_h: number | null
+}
+
+// ============================================================
+// Lademanagement (Charging)
+// ============================================================
+
+export type ChargingMode = 'max_speed' | 'pv_surplus' | 'min_pv' | 'target_charge'
+export type SessionStatus = 'pending' | 'charging' | 'paused' | 'completed' | 'cancelled'
+
+export interface Vehicle {
+  id: number
+  name: string
+  brand: string
+  model: string
+  license_plate: string
+  battery_kwh: number
+  consumption_per_100km: number
+  default_soc_limit_pct: number
+  max_ac_power_kw: number
+  connector_type: string
+  color: string
+  year: number | null
+  is_active: boolean
+}
+
+export interface WallboxInfo {
+  id: number
+  name: string
+  max_power_kw: number
+  min_power_kw: number
+  phases: number
+  is_active: boolean
+  consumer_config_id: string | null
+  assigned_vehicle_id: number | null
+}
+
+export interface VehicleInfo {
+  vehicle_battery_kwh: number | null
+  vehicle_consumption_per_100km: number | null
+  vehicle_name: string | null
+  wallbox_max_power_kw: number | null
+  wallbox_phases: number | null
+  ocpp_enabled: boolean
+}
+
+export interface ChargingSessionInfo {
+  id: number
+  wallbox_id: number
+  vehicle_id: number | null
+  mode: ChargingMode
+  status: SessionStatus
+  current_power_kw: number
+  energy_charged_kwh: number
+  solar_energy_kwh: number
+  grid_energy_kwh: number
+  cost_ct: number
+  solar_pct: number
+  duration_min: number | null
+  vehicle_battery_capacity_kwh: number | null
+  vehicle_soc_pct: number | null
+  vehicle_name: string | null
+  soc_limit_pct: number | null
+  target_km: number | null
+  target_time: string | null
+  target_energy_kwh: number | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface ChargingStatistics {
+  total_sessions: number
+  total_energy_kwh: number
+  total_solar_kwh: number
+  total_grid_kwh: number
+  total_cost_ct: number
+  avg_solar_pct: number
+  avg_cost_ct_per_kwh: number
+}
+
+export interface WallboxWithSession {
+  wallbox: WallboxInfo
+  active_session: ChargingSessionInfo | null
+  vehicle_info: VehicleInfo | null
+  assigned_vehicle: Vehicle | null
+}
+
+export interface ChargingStatus {
+  wallboxes: WallboxWithSession[]
+  total_charging_power_kw: number
+  active_sessions_count: number
+  total_energy_today_kwh: number
+  total_solar_today_kwh: number
+  statistics_30d: ChargingStatistics | null
+}
+
+// ============================================================
+// Ladeauswertung (Charging Analytics)
+// ============================================================
+
+export type ChargingGrouping = 'day' | 'week' | 'month'
+
+export interface ChargingPeriodVehicleMode {
+  mode: string
+  sessions: number
+  energy_kwh: number
+  solar_kwh: number
+  grid_kwh: number
+  cost_ct: number
+  avg_power_kw: number
+  total_duration_min: number
+}
+
+export interface ChargingPeriodVehicle {
+  vehicle_id: number | null
+  vehicle_name: string
+  sessions: number
+  energy_kwh: number
+  solar_kwh: number
+  grid_kwh: number
+  cost_ct: number
+  avg_power_kw: number
+  avg_solar_pct: number
+  modes: ChargingPeriodVehicleMode[]
+}
+
+export interface ChargingPeriodBucket {
+  period_start: string
+  period_label: string
+  sessions: number
+  energy_kwh: number
+  solar_kwh: number
+  grid_kwh: number
+  cost_ct: number
+  avg_power_kw: number
+  avg_solar_pct: number
+  vehicles: ChargingPeriodVehicle[]
+}
+
+export interface ChargingAnalyticsSummary {
+  sessions: number
+  energy_kwh: number
+  solar_kwh: number
+  grid_kwh: number
+  cost_ct: number
+  avg_power_kw: number
+  avg_solar_pct: number
+  avg_cost_ct_per_kwh: number
+  mode_distribution: Record<string, number>
+  vehicle_count: number
+}
+
+export interface ChargingSessionPoint {
+  id: number
+  started_at: string
+  completed_at: string | null
+  vehicle_id: number | null
+  vehicle_name: string | null
+  mode: string
+  energy_kwh: number
+  duration_min: number
+  avg_power_kw: number
+}
+
+export interface ChargingAnalyticsResponse {
+  from_date: string
+  to_date: string
+  grouping: string
+  summary: ChargingAnalyticsSummary
+  buckets: ChargingPeriodBucket[]
+  vehicles: { id: number; name: string }[]
+  session_points: ChargingSessionPoint[]
+}
+
+export function createDefaultAlarmDefinition(): AlarmDefinition {
+  return {
+    id: '',
+    name: '',
+    enabled: true,
+    severity: 'warning',
+    triggerType: 'threshold',
+    source: '',
+    metric: '',
+    condition: '>',
+    threshold: 0,
+    description: '',
+    cooldownMinutes: 15,
   }
 }

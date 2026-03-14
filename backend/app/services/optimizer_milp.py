@@ -24,6 +24,20 @@ M_COMFORT = 50.0
 
 
 @dataclass
+class CircuitMilpParams:
+    """Pro-Kreis Parameter fuer den MILP-Solver."""
+    circuit_id: str = ""
+    circuit_name: str = ""
+    distribution_type: str = "radiator"
+    design_flow_temp_c: float = 55.0
+    min_flow_temp_c: float = 20.0
+    max_flow_temp_c: float = 65.0
+    demand_kw: list[float] = field(default_factory=list)  # Pro Stunde
+    optimal_flow_temp_c: list[float] = field(default_factory=list)  # Pro Stunde
+    tau_response_h: float = 0.5
+
+
+@dataclass
 class MilpParams:
     """Alle Eingabedaten fuer den MILP-Solver."""
     hours: int = 24
@@ -56,12 +70,22 @@ class MilpParams:
     storage_temp_initial: float = 55.0
     storage_temp_target: float = 55.0
     storage_loss_w_per_k: float = 2.0
+    # Pro-Kreis Daten (optional — ohne Kreise laeuft bestehende Formulierung)
+    circuits: list[CircuitMilpParams] = field(default_factory=list)
     # Optimierer-Gewichte (0-100)
     w_economy: float = 80.0
     w_co2: float = 50.0
     w_comfort: float = 70.0
     w_self_consumption: float = 60.0
     w_grid_friendly: float = 30.0
+
+
+@dataclass
+class CircuitMilpResult:
+    """Pro-Kreis Ergebnis des MILP-Solvers."""
+    circuit_id: str = ""
+    flow_temp_c: list[float] = field(default_factory=list)  # Pro Stunde
+    demand_kw: list[float] = field(default_factory=list)
 
 
 @dataclass
@@ -78,6 +102,8 @@ class MilpResult:
     hp_thermal_kw: list[float] = field(default_factory=list)
     boiler_kw: list[float] = field(default_factory=list)
     storage_temp_c: list[float] = field(default_factory=list)
+    # Pro-Kreis Ergebnisse
+    circuit_results: list[CircuitMilpResult] = field(default_factory=list)
 
 
 def solve_milp(params: MilpParams) -> MilpResult | None:
@@ -171,6 +197,53 @@ def solve_milp(params: MilpParams) -> MilpResult | None:
         # Peak-Tracking
         prob += peak_grid >= grid_imp[t], f"peak_{t}"
 
+    # === Pro-Kreis Variablen und Constraints ===
+    circuit_flow_vars: dict[str, list] = {}
+    circuit_demand_vars: dict[str, list[float]] = {}
+
+    if params.circuits:
+        for ci, cparams in enumerate(params.circuits):
+            cid = cparams.circuit_id
+            # Vorlauftemperatur als Entscheidungsvariable pro Stunde
+            flow_vars = [
+                pulp.LpVariable(
+                    f"ft_{ci}_{t}",
+                    cparams.min_flow_temp_c,
+                    cparams.max_flow_temp_c,
+                )
+                for t in range(T)
+            ]
+            circuit_flow_vars[cid] = flow_vars
+
+            # Demand pro Stunde aus Forecast
+            c_demand = cparams.demand_kw if len(cparams.demand_kw) >= T else (
+                cparams.demand_kw + [0.0] * (T - len(cparams.demand_kw))
+            )
+            circuit_demand_vars[cid] = c_demand
+
+            for t in range(T):
+                # Vorlauftemp mindestens so hoch wie optimal (Soft-Constraint)
+                opt_ft = (cparams.optimal_flow_temp_c[t]
+                          if t < len(cparams.optimal_flow_temp_c) else cparams.design_flow_temp_c)
+                # Weiche Untergrenze: Vorlauftemp soll nahe optimal sein
+                prob += flow_vars[t] >= opt_ft - 3.0, f"ft_min_{ci}_{t}"
+
+        # Aggregierte Thermal-Demand muss von WP+Kessel gedeckt werden
+        for t in range(T):
+            total_circuit_demand = sum(
+                circuit_demand_vars[cp.circuit_id][t]
+                for cp in params.circuits
+                if cp.circuit_id in circuit_demand_vars
+            )
+            if total_circuit_demand > 0.01:
+                prob += (
+                    hp[t] + boiler[t] + therm_deficit[t] >= total_circuit_demand
+                ), f"circuit_therm_{t}"
+
+        # COP-Kopplung: Niedrigere Vorlauftemp verbessert COP
+        # Linearisierter Bonus: fuer jeden Grad unter 55°C, 1.5% besser
+        # Implementiert als Kostenbonus in der Zielfunktion (s.u.)
+
     # === Zielfunktion ===
 
     # Normalisierungsfaktoren (basierend auf typischen Groessenordnungen)
@@ -212,6 +285,17 @@ def solve_milp(params: MilpParams) -> MilpResult | None:
     # Netzdienlichkeits-Term (Spitzenlast minimieren)
     grid_friendly_term = peak_grid * T
 
+    # COP-Bonus fuer niedrige Vorlauftemperaturen (je niedriger, desto effizienter)
+    cop_bonus_term = 0
+    if params.circuits and circuit_flow_vars:
+        # Bonus: Niedrige Vorlauftemp reduziert Stromverbrauch
+        # Linearisiert: 0.001 pro Grad unter 55°C pro Stunde
+        cop_bonus_term = pulp.lpSum(
+            flow_vars[t] * 0.001
+            for flow_vars in circuit_flow_vars.values()
+            for t in range(T)
+        )
+
     # Gewichtete Zielfunktion
     prob += (
         w_eco * cost_term / scale_eco
@@ -219,6 +303,7 @@ def solve_milp(params: MilpParams) -> MilpResult | None:
         + w_comf * comfort_term
         + w_sc * self_cons_term / scale_sc
         + w_gf * grid_friendly_term / scale_gf
+        + w_eco * cop_bonus_term
     ), "objective"
 
     # === Loesen ===
@@ -252,6 +337,23 @@ def solve_milp(params: MilpParams) -> MilpResult | None:
         result.soc_pct.append(round(soc_pct, 1))
 
         result.storage_temp_c.append(round(pulp.value(t_stor[t]) or params.storage_temp_initial, 1))
+
+    # Pro-Kreis Ergebnisse extrahieren
+    if params.circuits and circuit_flow_vars:
+        for cparams in params.circuits:
+            cid = cparams.circuit_id
+            flow_vars = circuit_flow_vars.get(cid, [])
+            c_demand = circuit_demand_vars.get(cid, [])
+
+            cr = CircuitMilpResult(circuit_id=cid)
+            for t in range(T):
+                if t < len(flow_vars):
+                    cr.flow_temp_c.append(round(pulp.value(flow_vars[t]) or cparams.design_flow_temp_c, 1))
+                else:
+                    cr.flow_temp_c.append(cparams.design_flow_temp_c)
+                cr.demand_kw.append(round(c_demand[t] if t < len(c_demand) else 0, 2))
+
+            result.circuit_results.append(cr)
 
     logger.info(
         "MILP geloest: %s in %.0fms, Obj=%.2f",

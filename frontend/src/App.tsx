@@ -20,6 +20,10 @@ import SettingsPage from './pages/SettingsPage'
 import SourcesPage from './pages/SourcesPage'
 import SensorsPage from './pages/SensorsPage'
 import SystemPage from './pages/SystemPage'
+import AlarmsPage from './pages/AlarmsPage'
+import SelfLearningPage from './pages/SelfLearningPage'
+import ChargingPage from './pages/ChargingPage'
+import ChargingAnalyticsPage from './pages/ChargingAnalyticsPage'
 
 export default function App() {
   const syncFromApi = useEnergyStore((s) => s.syncFromApi)
@@ -49,6 +53,10 @@ export default function App() {
         <Route path="/optimizer" element={<OptimizerPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/system" element={<SystemPage />} />
+        <Route path="/alarms" element={<AlarmsPage />} />
+        <Route path="/charging" element={<ChargingPage />} />
+        <Route path="/charging/analytics" element={<ChargingAnalyticsPage />} />
+        <Route path="/self-learning" element={<SelfLearningPage />} />
       </Route>
     </Routes>
   )

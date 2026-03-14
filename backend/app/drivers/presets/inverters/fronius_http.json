@@ -1,0 +1,52 @@
+{
+  "id": "fronius_http",
+  "manufacturer": "Fronius",
+  "model": "Symo / Primo / GEN24 (Solar API)",
+  "category": "inverter",
+  "protocol": "http_rest",
+  "version": "1.0",
+  "description": "Fronius Wechselrichter ueber Solar API v1. Unterstuetzt Symo, Primo und GEN24 Plus.",
+  "defaults": {
+    "port": 80,
+    "timeout": 10,
+    "pollingIntervalSeconds": 5
+  },
+  "endpoints": [
+    {
+      "name": "powerflow",
+      "path": "/solar_api/v1/GetPowerFlowRealtimeData.fcgi",
+      "method": "GET",
+      "source": "pv_inverter",
+      "value_mappings": [
+        { "metric": "ac_power_w", "json_path": "$.Body.Data.Site.P_PV", "unit": "W", "scale": 1 },
+        { "metric": "grid_power_w", "json_path": "$.Body.Data.Site.P_Grid", "unit": "W", "scale": 1 },
+        { "metric": "load_power_w", "json_path": "$.Body.Data.Site.P_Load", "unit": "W", "scale": -1 },
+        { "metric": "self_consumption_pct", "json_path": "$.Body.Data.Site.rel_SelfConsumption", "unit": "%", "scale": 1 },
+        { "metric": "autonomy_pct", "json_path": "$.Body.Data.Site.rel_Autonomy", "unit": "%", "scale": 1 },
+        { "metric": "energy_day_wh", "json_path": "$.Body.Data.Site.E_Day", "unit": "Wh", "scale": 1 },
+        { "metric": "energy_year_wh", "json_path": "$.Body.Data.Site.E_Year", "unit": "Wh", "scale": 1 },
+        { "metric": "energy_total_wh", "json_path": "$.Body.Data.Site.E_Total", "unit": "Wh", "scale": 1 }
+      ]
+    },
+    {
+      "name": "inverter_info",
+      "path": "/solar_api/v1/GetInverterRealtimeData.cgi?Scope=Device&DeviceId=1&DataCollection=CommonInverterData",
+      "method": "GET",
+      "source": "pv_inverter",
+      "value_mappings": [
+        { "metric": "ac_voltage_v", "json_path": "$.Body.Data.UAC.Value", "unit": "V", "scale": 1 },
+        { "metric": "ac_current_a", "json_path": "$.Body.Data.IAC.Value", "unit": "A", "scale": 1 },
+        { "metric": "ac_frequency_hz", "json_path": "$.Body.Data.FAC.Value", "unit": "Hz", "scale": 1 },
+        { "metric": "dc_voltage_v", "json_path": "$.Body.Data.UDC.Value", "unit": "V", "scale": 1 },
+        { "metric": "dc_current_a", "json_path": "$.Body.Data.IDC.Value", "unit": "A", "scale": 1 }
+      ]
+    }
+  ],
+  "write_map": {},
+  "setpoint_routing": {},
+  "computed_values": [
+    { "metric": "power_kw", "source_metric": "ac_power_w", "transform": "value / 1000" },
+    { "metric": "energy_kwh", "source_metric": "energy_total_wh", "transform": "value / 1000" }
+  ],
+  "state_maps": {}
+}

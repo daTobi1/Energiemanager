@@ -1,15 +1,58 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { InputField, Section } from '../components/ui/FormField'
 import {
   Clock, Wifi, Bluetooth, Download, Power, RotateCcw,
   RefreshCw, AlertTriangle, WifiOff, Info, Monitor,
   Database, Server, CheckCircle2, XCircle, Radio,
-  Play, Square, RotateCw, Thermometer, Unplug, Plug,
-  CalendarClock, Zap,
+  Play, Square, RotateCw,
+  CalendarClock, Zap, BarChart3, Trash2,
 } from 'lucide-react'
 import { useEnergyStore } from '../store/useEnergyStore'
 import { api } from '../api/client'
-import type { LambdaHPStatus, SchedulerStatus } from '../types'
+import { createBavariaSeedData } from '../data/seedBavaria'
+import type { SchedulerStatus, SchedulerHistoryEntry, AlarmEvent } from '../types'
+
+let Plotly: typeof import('plotly.js-dist-min') | null = null
+
+function TestDataSection() {
+  const { generators, consumers, loadSeedData, clearAll } = useEnergyStore()
+  const [confirmClear, setConfirmClear] = useState(false)
+
+  return (
+    <Section title="Testdaten" icon={<Database className="w-4 h-4 text-blue-400" />} defaultOpen={false}>
+      <p className="text-sm text-dark-faded mb-4">
+        Lade vorkonfigurierte Beispieldaten für ein typisches Mehrfamilienhaus in Bayern
+        (6 WE, PV 30 kWp, Gaskessel, Wärmepumpe, Batterie 20 kWh, 2 Wallboxen).
+      </p>
+      <div className="flex gap-3 flex-wrap">
+        <button
+          onClick={() => { loadSeedData(createBavariaSeedData()) }}
+          className="btn-primary flex items-center gap-2"
+        >
+          <Database className="w-4 h-4" />
+          Beispieldaten laden (MFH Bayern)
+        </button>
+        {(generators.length > 0 || consumers.length > 0) && (
+          confirmClear ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-red-400">Wirklich alles löschen?</span>
+              <button onClick={() => { clearAll(); setConfirmClear(false) }} className="btn-danger">Ja, löschen</button>
+              <button onClick={() => setConfirmClear(false)} className="btn-secondary text-sm">Abbrechen</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmClear(true)}
+              className="btn-secondary flex items-center gap-2 text-red-400 hover:text-red-300"
+            >
+              <Trash2 className="w-4 h-4" />
+              Alle Daten löschen
+            </button>
+          )
+        )}
+      </div>
+    </Section>
+  )
+}
 
 export default function SystemPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
@@ -77,6 +120,10 @@ export default function SystemPage() {
   const [schedulerStatus, setSchedulerStatus] = useState<SchedulerStatus | null>(null)
   const [schedulerLoading, setSchedulerLoading] = useState(false)
   const [schedulerInterval, setSchedulerInterval] = useState(900)
+  const [schedulerHistory, setSchedulerHistory] = useState<SchedulerHistoryEntry[]>([])
+  const durationChartRef = useRef<HTMLDivElement>(null)
+  const kpiChartRef = useRef<HTMLDivElement>(null)
+  const successChartRef = useRef<HTMLDivElement>(null)
 
   const fetchSchedulerStatus = async () => {
     try {
@@ -87,15 +134,34 @@ export default function SystemPage() {
     }
   }
 
+  const fetchSchedulerHistory = async () => {
+    try {
+      const result = await api.scheduler.history(100)
+      setSchedulerHistory(result.entries)
+    } catch {
+      setSchedulerHistory([])
+    }
+  }
+
   useEffect(() => {
-    if (apiConnected) fetchSchedulerStatus()
+    if (apiConnected) {
+      fetchSchedulerStatus()
+      fetchSchedulerHistory()
+    }
   }, [apiConnected])
+
+  // Auto-refresh history when scheduler is running
+  useEffect(() => {
+    if (!schedulerStatus?.running) return
+    const iv = setInterval(fetchSchedulerHistory, 30_000)
+    return () => clearInterval(iv)
+  }, [schedulerStatus?.running])
 
   const handleSchedulerStart = async () => {
     setSchedulerLoading(true)
     try {
       await api.scheduler.start(schedulerInterval, true)
-      await fetchSchedulerStatus()
+      await Promise.all([fetchSchedulerStatus(), fetchSchedulerHistory()])
     } catch (e) { console.warn(e) }
     setSchedulerLoading(false)
   }
@@ -113,59 +179,199 @@ export default function SystemPage() {
     setSchedulerLoading(true)
     try {
       await api.scheduler.trigger()
-      await fetchSchedulerStatus()
+      await Promise.all([fetchSchedulerStatus(), fetchSchedulerHistory()])
     } catch (e) { console.warn(e) }
     setSchedulerLoading(false)
   }
 
-  // Lambda HP Status
-  const [lambdaStatus, setLambdaStatus] = useState<LambdaHPStatus | null>(null)
-  const [lambdaHost, setLambdaHost] = useState('')
-  const [lambdaPort, setLambdaPort] = useState(502)
-  const [lambdaLoading, setLambdaLoading] = useState(false)
-  const [lambdaValues, setLambdaValues] = useState<Record<string, number> | null>(null)
+  // DeviceManager Status
+  const [deviceStatus, setDeviceStatus] = useState<{
+    running: boolean; device_count: number; connected_count: number;
+    devices: { entity_id: string; name: string; preset_id: string | null; protocol: string; connected: boolean; modules: Record<string, number>; values: number; errors: number }[]
+  } | null>(null)
+  const [deviceLoading, setDeviceLoading] = useState(false)
 
-  const fetchLambdaStatus = async () => {
+  const fetchDeviceStatus = async () => {
     try {
-      const status = await api.lambdaHp.status()
-      setLambdaStatus(status)
-    } catch {
-      setLambdaStatus(null)
-    }
+      const status = await api.devices.status()
+      setDeviceStatus(status)
+    } catch { setDeviceStatus(null) }
   }
 
   useEffect(() => {
-    if (apiConnected) fetchLambdaStatus()
+    if (apiConnected) fetchDeviceStatus()
   }, [apiConnected])
 
-  const handleLambdaConnect = async () => {
-    if (!lambdaHost) return
-    setLambdaLoading(true)
-    try {
-      const result = await api.lambdaHp.connect(lambdaHost, lambdaPort)
-      if (result.success) {
-        await fetchLambdaStatus()
-      }
-    } catch (e) { console.warn(e) }
-    setLambdaLoading(false)
+  const handleDeviceStart = async () => {
+    setDeviceLoading(true)
+    try { await api.devices.start(); await fetchDeviceStatus() } catch (e) { console.warn(e) }
+    setDeviceLoading(false)
+  }
+  const handleDeviceStop = async () => {
+    setDeviceLoading(true)
+    try { await api.devices.stop(); await fetchDeviceStatus() } catch (e) { console.warn(e) }
+    setDeviceLoading(false)
+  }
+  const handleDeviceReload = async () => {
+    setDeviceLoading(true)
+    try { await api.devices.reload(); await fetchDeviceStatus() } catch (e) { console.warn(e) }
+    setDeviceLoading(false)
   }
 
-  const handleLambdaDisconnect = async () => {
-    setLambdaLoading(true)
-    try {
-      await api.lambdaHp.disconnect()
-      setLambdaStatus(null)
-      setLambdaValues(null)
-    } catch (e) { console.warn(e) }
-    setLambdaLoading(false)
-  }
+  // Active Alarms (mini-Anzeige)
+  const [activeAlarms, setActiveAlarms] = useState<AlarmEvent[]>([])
+  useEffect(() => {
+    if (!apiConnected) return
+    const fetch = async () => { try { setActiveAlarms(await api.alarms.active()) } catch {} }
+    fetch()
+    const iv = setInterval(fetch, 15_000)
+    return () => clearInterval(iv)
+  }, [apiConnected])
 
-  const handleLambdaReadValues = async () => {
-    try {
-      const result = await api.lambdaHp.values()
-      setLambdaValues(result.values)
-    } catch (e) { console.warn(e) }
+  // ── Scheduler Charts ───────────────────────────────────────
+  const darkLayout = {
+    font: { size: 12, family: 'system-ui, sans-serif', color: '#b1bac4' },
+    paper_bgcolor: '#0d1117',
+    plot_bgcolor: '#161b22',
+    hoverlabel: { bgcolor: '#1c2128', bordercolor: '#30363d', font: { size: 12, color: '#e6edf3' } },
+    legend: { orientation: 'h' as const, y: -0.2, x: 0.5, xanchor: 'center' as const, font: { size: 11, color: '#b1bac4' } },
   }
+  const axisStyle = { gridcolor: '#21262d', linecolor: '#30363d', zeroline: false }
+
+  // Chart 1: Optimierungs-Laufzeiten
+  useEffect(() => {
+    if (!durationChartRef.current || schedulerHistory.length === 0) return
+    let cancelled = false
+    const render = async () => {
+      if (!Plotly) Plotly = await import('plotly.js-dist-min')
+      if (cancelled) return
+
+      const ts = schedulerHistory.map(e => e.timestamp)
+      const durations = schedulerHistory.map(e => e.duration_ms)
+      const colors = schedulerHistory.map(e => e.success ? '#8b5cf6' : '#ef4444')
+      const hoverTexts = schedulerHistory.map(e =>
+        e.success
+          ? `${e.duration_ms.toFixed(0)}ms · ${e.strategy} (${e.solver})`
+          : `FEHLER: ${e.error}`
+      )
+
+      const traces: any[] = [{
+        type: 'bar',
+        x: ts,
+        y: durations,
+        marker: { color: colors, line: { width: 0 } },
+        text: hoverTexts,
+        hoverinfo: 'text+x',
+        name: 'Laufzeit',
+        showlegend: false,
+      }]
+
+      Plotly!.newPlot(durationChartRef.current!, traces, {
+        ...darkLayout,
+        margin: { t: 8, l: 50, r: 12, b: 40 },
+        height: 180,
+        xaxis: { ...axisStyle, type: 'date', tickfont: { size: 10 } },
+        yaxis: { ...axisStyle, title: { text: 'ms', font: { size: 11 } }, tickfont: { size: 10 } },
+        bargap: 0.15,
+      }, { responsive: true, displayModeBar: false })
+    }
+    render()
+    return () => { cancelled = true; if (durationChartRef.current && Plotly) try { Plotly.purge(durationChartRef.current) } catch {} }
+  }, [schedulerHistory])
+
+  // Chart 2: KPIs pro Lauf (Kosten, CO2, Eigenverbrauch)
+  useEffect(() => {
+    if (!kpiChartRef.current || schedulerHistory.length === 0) return
+    let cancelled = false
+    const render = async () => {
+      if (!Plotly) Plotly = await import('plotly.js-dist-min')
+      if (cancelled) return
+
+      const successful = schedulerHistory.filter(e => e.success)
+      if (successful.length === 0) return
+      const ts = successful.map(e => e.timestamp)
+
+      const traces: any[] = [
+        {
+          type: 'scatter', mode: 'lines+markers', x: ts,
+          y: successful.map(e => e.net_cost_ct / 100),
+          name: 'Kosten (€)', line: { color: '#f97316', width: 2 },
+          marker: { size: 4 }, yaxis: 'y',
+        },
+        {
+          type: 'scatter', mode: 'lines+markers', x: ts,
+          y: successful.map(e => e.total_co2_kg),
+          name: 'CO₂ (kg)', line: { color: '#3b82f6', width: 2 },
+          marker: { size: 4 }, yaxis: 'y',
+        },
+        {
+          type: 'scatter', mode: 'lines+markers', x: ts,
+          y: successful.map(e => e.avg_self_consumption_pct),
+          name: 'Eigenverbrauch (%)', line: { color: '#22c55e', width: 2 },
+          marker: { size: 4 }, yaxis: 'y2',
+        },
+      ]
+
+      Plotly!.newPlot(kpiChartRef.current!, traces, {
+        ...darkLayout,
+        margin: { t: 8, l: 50, r: 50, b: 40 },
+        height: 200,
+        xaxis: { ...axisStyle, type: 'date', tickfont: { size: 10 } },
+        yaxis: { ...axisStyle, title: { text: '€ / kg', font: { size: 11 } }, tickfont: { size: 10 } },
+        yaxis2: { ...axisStyle, title: { text: '%', font: { size: 11 } }, overlaying: 'y', side: 'right', tickfont: { size: 10 }, range: [0, 100] },
+        hovermode: 'x unified',
+      }, { responsive: true, displayModeBar: false })
+    }
+    render()
+    return () => { cancelled = true; if (kpiChartRef.current && Plotly) try { Plotly.purge(kpiChartRef.current) } catch {} }
+  }, [schedulerHistory])
+
+  // Chart 3: Erfolgsrate + kumulative Fehler
+  useEffect(() => {
+    if (!successChartRef.current || schedulerHistory.length === 0) return
+    let cancelled = false
+    const render = async () => {
+      if (!Plotly) Plotly = await import('plotly.js-dist-min')
+      if (cancelled) return
+
+      const ts = schedulerHistory.map(e => e.timestamp)
+      // Rolling success rate (last 10 runs)
+      const windowSize = Math.min(10, schedulerHistory.length)
+      const successRate = schedulerHistory.map((_, i) => {
+        const start = Math.max(0, i - windowSize + 1)
+        const window = schedulerHistory.slice(start, i + 1)
+        return (window.filter(e => e.success).length / window.length) * 100
+      })
+      // Cumulative errors
+      let cumErrors = 0
+      const cumulativeErrors = schedulerHistory.map(e => { if (!e.success) cumErrors++; return cumErrors })
+
+      const traces: any[] = [
+        {
+          type: 'scatter', mode: 'lines', x: ts, y: successRate,
+          name: `Erfolgsrate (${windowSize}-Lauf)`, line: { color: '#22c55e', width: 2 },
+          fill: 'tozeroy', fillcolor: 'rgba(34, 197, 94, 0.1)',
+        },
+        {
+          type: 'scatter', mode: 'lines', x: ts, y: cumulativeErrors,
+          name: 'Fehler (kumulativ)', line: { color: '#ef4444', width: 2, dash: 'dot' },
+          yaxis: 'y2',
+        },
+      ]
+
+      Plotly!.newPlot(successChartRef.current!, traces, {
+        ...darkLayout,
+        margin: { t: 8, l: 50, r: 50, b: 40 },
+        height: 180,
+        xaxis: { ...axisStyle, type: 'date', tickfont: { size: 10 } },
+        yaxis: { ...axisStyle, title: { text: '%', font: { size: 11 } }, tickfont: { size: 10 }, range: [0, 105] },
+        yaxis2: { ...axisStyle, title: { text: 'Fehler', font: { size: 11 } }, overlaying: 'y', side: 'right', tickfont: { size: 10 } },
+        hovermode: 'x unified',
+      }, { responsive: true, displayModeBar: false })
+    }
+    render()
+    return () => { cancelled = true; if (successChartRef.current && Plotly) try { Plotly.purge(successChartRef.current) } catch {} }
+  }, [schedulerHistory])
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -337,7 +543,7 @@ export default function SystemPage() {
               </span>
             </div>
             <p className="text-xs text-dark-faded mb-3">
-              Erstellt periodisch neue Fahrpläne (Optimierer → Controller → Lambda Bridge)
+              Erstellt periodisch neue Fahrpläne (Optimierer → Controller → DeviceManager)
               und trainiert ML-Modelle automatisch nach.
             </p>
 
@@ -378,8 +584,8 @@ export default function SystemPage() {
                     {schedulerStatus.stats.optimization_errors > 0 && (
                       <span className="text-red-400 ml-1">({schedulerStatus.stats.optimization_errors} Fehler)</span>
                     )}
-                    {schedulerStatus.stats.lambda_syncs > 0 && (
-                      <span className="text-dark-faded ml-1">· {schedulerStatus.stats.lambda_syncs} Lambda-Syncs</span>
+                    {schedulerStatus.stats.device_syncs > 0 && (
+                      <span className="text-dark-faded ml-1">· {schedulerStatus.stats.device_syncs} Device-Syncs</span>
                     )}
                   </span>
                 </div>
@@ -432,131 +638,46 @@ export default function SystemPage() {
                 <p className="text-xs text-violet-300">
                   Der Scheduler startet den Controller im Auto-Modus: Prognosen werden erstellt,
                   der MILP-Optimierer berechnet den optimalen Fahrplan und die Stellgrößen werden
-                  automatisch an Simulator bzw. Lambda-Wärmepumpe gesendet.
+                  automatisch an Simulator bzw. verbundene Geräte gesendet.
                 </p>
               </div>
             </div>
           )}
-        </Section>
 
-        <Section title="Lambda Wärmepumpe" icon={<Thermometer className="w-4 h-4 text-orange-400" />} defaultOpen={true}>
-          <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs text-dark-faded uppercase tracking-wider">Modbus TCP Verbindung</p>
-              <span className="flex items-center gap-2 text-sm">
-                {lambdaStatus?.connected ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50" />
-                    <span className="text-emerald-400">Verbunden</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-dark-faded" />
-                    <span className="text-dark-faded">Getrennt</span>
-                  </>
-                )}
-              </span>
-            </div>
-
-            {lambdaStatus?.connected ? (
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-dark-faded">Adresse</span>
-                  <span className="text-dark-text font-mono text-xs">{lambdaStatus.host}:{lambdaStatus.port}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-dark-faded">Betriebszustand</span>
-                  <span className="text-dark-text">{lambdaStatus.operating_state || '—'}</span>
-                </div>
-                {lambdaStatus.error !== null && lambdaStatus.error !== undefined && lambdaStatus.error !== 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-dark-faded">Fehler</span>
-                    <span className="text-red-400">#{lambdaStatus.error}</span>
-                  </div>
-                )}
-                {lambdaStatus.modules && (
-                  <div className="flex justify-between">
-                    <span className="text-dark-faded">Module</span>
-                    <span className="text-dark-text text-xs">
-                      {lambdaStatus.modules.heat_pumps} WP, {lambdaStatus.modules.boilers} Boiler, {lambdaStatus.modules.buffers} Puffer, {lambdaStatus.modules.heating_circuits} HK
-                      {lambdaStatus.modules.solar_modules > 0 && `, ${lambdaStatus.modules.solar_modules} Solar`}
-                    </span>
-                  </div>
-                )}
-                {lambdaStatus.auto_pv_surplus && (
-                  <div className="flex justify-between">
-                    <span className="text-dark-faded">PV-Überschuss</span>
-                    <span className="text-emerald-400">{lambdaStatus.current_pv_surplus_w} W (Auto)</span>
-                  </div>
-                )}
+          {/* Scheduler Charts */}
+          {schedulerHistory.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 mt-2">
+                <BarChart3 className="w-4 h-4 text-violet-400" />
+                <span className="text-xs text-dark-faded uppercase tracking-wider">Optimierungs-Historie ({schedulerHistory.length} Läufe)</span>
               </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-dark-faded">
-                  Lambda Eureka EU-L Wärmepumpen (EU08L–EU20L) über Modbus TCP.
-                  IP-Adresse des WP-Displays eingeben.
-                </p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={lambdaHost}
-                    onChange={(e) => setLambdaHost(e.target.value)}
-                    placeholder="192.168.1.50"
-                    className="flex-1 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-text text-sm font-mono placeholder:text-dark-border focus:border-orange-500/50 focus:outline-none"
-                  />
-                  <input
-                    type="number"
-                    value={lambdaPort}
-                    onChange={(e) => setLambdaPort(Number(e.target.value))}
-                    className="w-20 px-3 py-1.5 rounded-lg bg-dark-card border border-dark-border text-dark-text text-sm font-mono focus:border-orange-500/50 focus:outline-none"
-                  />
+
+              {/* Chart 1: Laufzeiten */}
+              <div className="bg-dark-hover rounded-lg border border-dark-border overflow-hidden">
+                <div className="px-3 py-2 border-b border-dark-border">
+                  <span className="text-xs text-dark-muted">Optimierungs-Laufzeiten</span>
+                  <span className="text-xs text-dark-faded ml-2">— Violett = Erfolg, Rot = Fehler</span>
                 </div>
+                <div ref={durationChartRef} />
               </div>
-            )}
-          </div>
 
-          <div className="flex items-center gap-2">
-            {lambdaStatus?.connected ? (
-              <>
-                <button onClick={handleLambdaDisconnect} disabled={lambdaLoading || !apiConnected} className="btn-secondary flex items-center gap-2 text-sm text-red-400 hover:text-red-300">
-                  <Unplug className="w-4 h-4" /> Trennen
-                </button>
-                <button onClick={handleLambdaReadValues} disabled={!apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
-                  <RefreshCw className="w-4 h-4" /> Werte lesen
-                </button>
-                <button onClick={fetchLambdaStatus} disabled={!apiConnected} className="btn-secondary flex items-center gap-2 text-sm">
-                  <RefreshCw className="w-4 h-4" /> Status
-                </button>
-              </>
-            ) : (
-              <button onClick={handleLambdaConnect} disabled={lambdaLoading || !apiConnected || !lambdaHost} className="btn-primary flex items-center gap-2 text-sm">
-                <Plug className="w-4 h-4" /> {lambdaLoading ? 'Verbinde...' : 'Verbinden'}
-              </button>
-            )}
-          </div>
+              {/* Chart 2: KPIs */}
+              <div className="bg-dark-hover rounded-lg border border-dark-border overflow-hidden">
+                <div className="px-3 py-2 border-b border-dark-border">
+                  <span className="text-xs text-dark-muted">Fahrplan-KPIs pro Optimierung</span>
+                  <span className="text-xs text-dark-faded ml-2">— Kosten, CO₂, Eigenverbrauch</span>
+                </div>
+                <div ref={kpiChartRef} />
+              </div>
 
-          {/* Aktuelle Werte */}
-          {lambdaValues && Object.keys(lambdaValues).length > 0 && (
-            <div className="border border-dark-border rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-dark-hover text-dark-faded text-xs uppercase tracking-wider">
-                    <th className="px-3 py-2 text-left">Datenpunkt</th>
-                    <th className="px-3 py-2 text-right">Wert</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(lambdaValues)
-                    .filter(([, v]) => typeof v === 'number')
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([key, value]) => (
-                      <tr key={key} className="border-t border-dark-border">
-                        <td className="px-3 py-1.5 font-mono text-xs text-dark-muted">{key}</td>
-                        <td className="px-3 py-1.5 text-right font-mono text-xs">{typeof value === 'number' ? value.toFixed(2) : String(value)}</td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
+              {/* Chart 3: Erfolgsrate */}
+              <div className="bg-dark-hover rounded-lg border border-dark-border overflow-hidden">
+                <div className="px-3 py-2 border-b border-dark-border">
+                  <span className="text-xs text-dark-muted">Scheduler-Performance</span>
+                  <span className="text-xs text-dark-faded ml-2">— Erfolgsrate + kumulative Fehler</span>
+                </div>
+                <div ref={successChartRef} />
+              </div>
             </div>
           )}
         </Section>
@@ -695,6 +816,94 @@ export default function SystemPage() {
             </div>
           </div>
         </Section>
+
+        {/* DeviceManager */}
+        <Section title="Geraeteverwaltung (DeviceManager)" icon={<Radio className="w-4 h-4 text-cyan-400" />} defaultOpen={true}>
+          <div className="p-4 bg-dark-hover rounded-lg border border-dark-border">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${deviceStatus?.running ? 'bg-emerald-400 animate-pulse' : 'bg-dark-faded'}`} />
+                <span className="text-sm text-dark-text">
+                  {deviceStatus?.running ? `Aktiv — ${deviceStatus.connected_count}/${deviceStatus.device_count} verbunden` : 'Gestoppt'}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                {deviceStatus?.running ? (
+                  <>
+                    <button onClick={handleDeviceReload} disabled={deviceLoading} className="btn-secondary flex items-center gap-1 text-xs"><RefreshCw className="w-3 h-3" /> Reload</button>
+                    <button onClick={handleDeviceStop} disabled={deviceLoading} className="btn-secondary flex items-center gap-1 text-xs text-red-400"><Square className="w-3 h-3" /> Stop</button>
+                  </>
+                ) : (
+                  <button onClick={handleDeviceStart} disabled={deviceLoading || !apiConnected} className="btn-primary flex items-center gap-1 text-xs"><Play className="w-3 h-3" /> Start</button>
+                )}
+                <button onClick={fetchDeviceStatus} disabled={!apiConnected} className="btn-secondary flex items-center gap-1 text-xs"><RotateCw className="w-3 h-3" /></button>
+              </div>
+            </div>
+
+            {deviceStatus && deviceStatus.devices.length > 0 ? (
+              <div className="space-y-2">
+                {deviceStatus.devices.map(d => (
+                  <div key={d.entity_id} className="flex items-center justify-between p-3 bg-dark-bg rounded-lg border border-dark-border">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2 h-2 rounded-full ${d.connected ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                      <div>
+                        <span className="text-sm text-dark-text font-medium">{d.name}</span>
+                        {d.preset_id && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded text-[10px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">{d.preset_id}</span>
+                        )}
+                        <div className="text-xs text-dark-faded mt-0.5">
+                          {d.protocol} · {d.values} Werte
+                          {Object.keys(d.modules).length > 0 && (
+                            <span> · Module: {Object.entries(d.modules).filter(([,v]) => v > 0).map(([k,v]) => `${k}:${v}`).join(', ')}</span>
+                          )}
+                          {d.errors > 0 && <span className="text-red-400"> · {d.errors} Fehler</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`text-xs ${d.connected ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {d.connected ? 'Verbunden' : 'Offline'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-dark-faded">
+                {deviceStatus?.running ? 'Keine Geraete mit aktivierter Kommunikation gefunden.' : 'DeviceManager starten um Geraete zu verbinden.'}
+              </p>
+            )}
+          </div>
+
+          <div className="p-3 bg-dark-hover rounded-lg border border-dark-border">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 text-dark-faded mt-0.5 shrink-0" />
+              <p className="text-xs text-dark-faded">
+                Der DeviceManager verbindet sich automatisch mit allen Geraeten die ein Geraeteprofil (Preset) und eine aktivierte Kommunikation haben. Presets definieren Register-Maps, Schreibzugriffe und Setpoint-Routing.
+              </p>
+            </div>
+          </div>
+        </Section>
+
+        {/* Aktive Alarme (Mini-Uebersicht) */}
+        {activeAlarms.length > 0 && (
+          <Section title={`Aktive Alarme (${activeAlarms.length})`} icon={<AlertTriangle className="w-4 h-4 text-amber-400" />} defaultOpen={true}>
+            <div className="space-y-2">
+              {activeAlarms.slice(0, 5).map(a => (
+                <div key={a.id} className={`p-3 rounded-lg border ${
+                  a.severity === 'critical' ? 'bg-red-500/10 border-red-500/30' : a.severity === 'warning' ? 'bg-amber-500/10 border-amber-500/30' : 'bg-blue-500/10 border-blue-500/30'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className={`w-4 h-4 ${a.severity === 'critical' ? 'text-red-400' : a.severity === 'warning' ? 'text-amber-400' : 'text-blue-400'}`} />
+                    <span className="text-sm text-dark-text">{a.message}</span>
+                  </div>
+                  <p className="text-xs text-dark-faded mt-1">{new Date(a.timestamp).toLocaleString('de-DE')}</p>
+                </div>
+              ))}
+              {activeAlarms.length > 5 && <p className="text-xs text-dark-faded text-center">+{activeAlarms.length - 5} weitere Alarme</p>}
+            </div>
+          </Section>
+        )}
+
+        <TestDataSection />
 
         <Section title="System-Steuerung" icon={<Power className="w-4 h-4 text-red-400" />} defaultOpen={false}>
           <p className="text-sm text-dark-faded mb-4">Raspberry Pi Systemfunktionen. Diese Aktionen erfordern eine aktive Backend-Verbindung.</p>

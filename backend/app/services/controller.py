@@ -18,14 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class CircuitSetpoint:
+    """Stellgroessen fuer einen einzelnen Heizkreis."""
+    circuit_id: str = ""
+    flow_temp_c: float = 35.0
+    pump_on: bool = True
+    mixer_position_pct: float = 50.0  # 0=zu, 100=offen
+
+
+@dataclass
 class Setpoints:
     """Aktive Stellgroessen fuer die Anlage."""
     battery_kw: float = 0.0       # +laden, -entladen
     hp_modulation_pct: float = 0.0  # 0-100% WP-Modulation
     hp_thermal_kw: float = 0.0     # Thermische Soll-Leistung WP
     boiler_kw: float = 0.0         # Kessel-Leistung
-    flow_temp_c: float = 35.0      # Vorlauftemperatur-Sollwert
+    flow_temp_c: float = 35.0      # Vorlauftemperatur-Sollwert (global)
     wallbox_kw: float = 0.0        # Wallbox-Ladeleistung
+    circuit_setpoints: list = field(default_factory=list)  # list[CircuitSetpoint]
     source: str = "off"            # Woher: "schedule", "manual", "safety", "heuristic"
     strategy: str = ""             # Aktuelle Strategie-Beschreibung
 
@@ -126,7 +136,7 @@ class EnergyController:
 
         # auto-Modus: Fahrplan auslesen
         if self._mode == "auto" and self._schedule:
-            sp = self._get_schedule_setpoint(sim_time)
+            sp = self._get_schedule_setpoint(sim_time, state)
             if sp:
                 self._active_setpoints = sp
                 return sp
@@ -134,7 +144,7 @@ class EnergyController:
         # Fallback
         return Setpoints(source="heuristic", strategy="Kein Fahrplan verfuegbar")
 
-    def _get_schedule_setpoint(self, sim_time: datetime) -> Setpoints | None:
+    def _get_schedule_setpoint(self, sim_time: datetime, state: Any = None) -> Setpoints | None:
         """Liest den passenden Stunden-Setpoint aus dem Fahrplan."""
         if not self._schedule or "hourly" not in self._schedule:
             return None
@@ -145,22 +155,87 @@ class EnergyController:
         for h in hourly:
             if h.get("time") == time_str:
                 hp_total_kw = h.get("hp_thermal_kw", 0)
-                # HP-Modulation: geschaetzte Modulation basierend auf thermischer Leistung
-                # Braucht Maximalleistung aus Config — hier vereinfacht
                 hp_mod = min(100, max(0, hp_total_kw / max(1, 13) * 100))
+
+                # Pro-Kreis Setpoints extrahieren
+                circuit_sps = []
+                for cs in h.get("circuit_setpoints", []):
+                    circuit_sps.append(CircuitSetpoint(
+                        circuit_id=cs.get("circuit_id", ""),
+                        flow_temp_c=cs.get("flow_temp_c", 35),
+                        pump_on=cs.get("demand_kw", 0) > 0.1,
+                    ))
+
+                # Vorheiz-Logik: Naechste Stunde pruefen
+                circuit_sps = self._apply_preheat_logic(
+                    sim_time, hourly, circuit_sps, state,
+                )
+
+                # Globale flow_temp = max aller Kreise
+                flow_temp = h.get("flow_temp_c", 35)
+                if circuit_sps:
+                    flow_temp = max(cs.flow_temp_c for cs in circuit_sps)
 
                 return Setpoints(
                     battery_kw=h.get("battery_setpoint_kw", 0),
                     hp_modulation_pct=round(hp_mod, 1),
                     hp_thermal_kw=hp_total_kw,
                     boiler_kw=h.get("boiler_kw", 0),
-                    flow_temp_c=h.get("flow_temp_c", 35),
+                    flow_temp_c=flow_temp,
+                    circuit_setpoints=circuit_sps,
                     source="schedule",
                     strategy=h.get("strategy", "Fahrplan"),
                 )
 
-        # Kein passender Eintrag fuer diese Stunde
         return None
+
+    def _apply_preheat_logic(
+        self,
+        sim_time: datetime,
+        hourly: list[dict],
+        circuit_sps: list,
+        state: Any,
+    ) -> list:
+        """
+        Vorheiz-Logik: Wenn ein Soll-Wechsel bevorsteht (z.B. Nacht→Tag),
+        fruehzeitig mit Heizen beginnen basierend auf tau des Kreises.
+        """
+        if not circuit_sps or state is None:
+            return circuit_sps
+
+        room_temps = getattr(state, "room_temperatures", {})
+        if not room_temps:
+            return circuit_sps
+
+        # Schaue 4h voraus
+        for future_h in range(1, 5):
+            future_time = sim_time + timedelta(hours=future_h)
+            future_str = future_time.strftime("%Y-%m-%dT%H:00")
+
+            for fh in hourly:
+                if fh.get("time") != future_str:
+                    continue
+
+                for future_cs in fh.get("circuit_setpoints", []):
+                    future_ft = future_cs.get("flow_temp_c", 35)
+                    future_demand = future_cs.get("demand_kw", 0)
+                    cid = future_cs.get("circuit_id", "")
+
+                    # Finde aktuelle Kreis-Setpoints
+                    current_cs = None
+                    for cs in circuit_sps:
+                        if cs.circuit_id == cid:
+                            current_cs = cs
+                            break
+
+                    # Wenn zukuenftig hoehere Vorlauftemp noetig → jetzt schon vorheizen
+                    if current_cs and future_ft > current_cs.flow_temp_c + 3:
+                        # Vorheizen: Erhoehe aktuelle Vorlauftemp anteilig
+                        boost = min(5.0, (future_ft - current_cs.flow_temp_c) * 0.5)
+                        current_cs.flow_temp_c = round(current_cs.flow_temp_c + boost, 1)
+                        current_cs.pump_on = True
+
+        return circuit_sps
 
     def _check_safety(self, state: Any) -> Setpoints | None:
         """
@@ -207,6 +282,18 @@ class EnergyController:
                 source="safety",
                 strategy="SICHERHEIT: Speicher-Untertemperatur (< 35°C)",
             )
+
+        # Raum-Temperatur-Safety: Frostschutz
+        room_temps = getattr(state, "room_temperatures", {})
+        for rid, t_room in room_temps.items():
+            if t_room < 8.0:
+                return Setpoints(
+                    hp_thermal_kw=13.0,
+                    boiler_kw=15.0,
+                    flow_temp_c=55.0,
+                    source="safety",
+                    strategy=f"SICHERHEIT: Frostschutz Raum {rid} ({t_room:.1f}°C)",
+                )
 
         return None
 
@@ -265,6 +352,10 @@ class EnergyController:
                 "boiler_kw": sp.boiler_kw,
                 "flow_temp_c": sp.flow_temp_c,
                 "wallbox_kw": sp.wallbox_kw,
+                "circuit_setpoints": [
+                    {"circuit_id": cs.circuit_id, "flow_temp_c": cs.flow_temp_c, "pump_on": cs.pump_on}
+                    for cs in sp.circuit_setpoints
+                ] if sp.circuit_setpoints else [],
                 "source": sp.source,
                 "strategy": sp.strategy,
             },
