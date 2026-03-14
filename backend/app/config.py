@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     # Redis
     redis_url: str = "redis://localhost:6379/0"
 
-    # Weather
+    # Weather (Open-Meteo, kein API-Key nötig)
     weather_api_key: str = ""
-    weather_api_provider: str = "openweathermap"
+    weather_api_provider: str = "open-meteo"
     latitude: float = 51.1657
     longitude: float = 10.4515
 

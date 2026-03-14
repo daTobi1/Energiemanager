@@ -1,3 +1,11 @@
+# =============================================================================
+# EnergyManager – systemd Service-Template
+# =============================================================================
+# HINWEIS: Diese Datei ist ein Referenz-Template.
+# Der Installer (install.sh) generiert die Services automatisch
+# mit den korrekten Pfaden und Einstellungen.
+# =============================================================================
+
 [Unit]
 Description=EnergyManager – Backend (API + Energiemanagement)
 Documentation=https://github.com/daTobi1/Energiemanager
@@ -11,7 +19,7 @@ User=energiemanager
 Group=energiemanager
 WorkingDirectory=/home/energiemanager/energiemanager/backend
 EnvironmentFile=/home/energiemanager/energiemanager/.env
-ExecStartPre=docker compose -f /home/energiemanager/energiemanager/docker-compose.yml up -d db redis grafana
+ExecStartPre=/usr/bin/docker compose -f /home/energiemanager/energiemanager/docker-compose.yml up -d db redis grafana
 ExecStart=/home/energiemanager/energiemanager/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
 Restart=on-failure
 RestartSec=10

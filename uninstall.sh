@@ -36,7 +36,12 @@ echo "  - Docker-Container (TimescaleDB, Redis, Grafana)"
 echo "  - Installationsverzeichnis: ${INSTALL_DIR}"
 echo "  - sudoers-Regel: /etc/sudoers.d/energiemanager"
 echo ""
-read -rp "Fortfahren? [j/N] " confirm
+
+# Terminal-Eingabe vorbereiten (funktioniert auch bei curl | bash)
+exec 3</dev/tty 2>/dev/null || exec 3</dev/null
+
+printf "Fortfahren? [j/N] "
+read -r confirm <&3 2>/dev/null || confirm=""
 [[ "$confirm" =~ ^[jJyY]$ ]] || { echo "Abgebrochen."; exit 0; }
 
 # ── Services stoppen und entfernen ──────────────────────────
@@ -67,7 +72,8 @@ if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
   echo "  Dies umfasst die Datenbank (TimescaleDB), Redis und Grafana."
   echo "  Alle gespeicherten Messdaten gehen dabei verloren!"
   echo ""
-  read -rp "Docker-Container und Volumes löschen? [j/N] " confirm_docker
+  printf "Docker-Container und Volumes löschen? [j/N] "
+  read -r confirm_docker <&3 2>/dev/null || confirm_docker=""
   if [[ "$confirm_docker" =~ ^[jJyY]$ ]]; then
     cd "$INSTALL_DIR"
     # Compose-Befehl bestimmen
@@ -104,7 +110,8 @@ if [ -d "$INSTALL_DIR" ]; then
   echo -e "  Verzeichnis: ${BOLD}${INSTALL_DIR}${NC}"
   echo "  Enthält: Quellcode, Python-venv, Frontend-Build, .env"
   echo ""
-  read -rp "Verzeichnis vollständig löschen? [j/N] " confirm_dir
+  printf "Verzeichnis vollständig löschen? [j/N] "
+  read -r confirm_dir <&3 2>/dev/null || confirm_dir=""
   if [[ "$confirm_dir" =~ ^[jJyY]$ ]]; then
     sudo rm -rf "$INSTALL_DIR"
     ok "Verzeichnis entfernt"
@@ -117,7 +124,8 @@ fi
 SERVICE_USER="${EM_USER:-energiemanager}"
 if id "$SERVICE_USER" &>/dev/null && [ "$SERVICE_USER" != "pi" ] && [ "$SERVICE_USER" != "root" ]; then
   echo ""
-  read -rp "System-Benutzer '${SERVICE_USER}' entfernen? [j/N] " confirm_user
+  printf "System-Benutzer '${SERVICE_USER}' entfernen? [j/N] "
+  read -r confirm_user <&3 2>/dev/null || confirm_user=""
   if [[ "$confirm_user" =~ ^[jJyY]$ ]]; then
     sudo userdel -r "$SERVICE_USER" 2>/dev/null || sudo userdel "$SERVICE_USER" 2>/dev/null || true
     ok "Benutzer '$SERVICE_USER' entfernt"
@@ -131,6 +139,6 @@ echo "============================================================"
 echo -e "  ${GREEN}${BOLD}Deinstallation abgeschlossen.${NC}"
 echo ""
 echo "  Docker, Node.js und Python wurden NICHT entfernt."
-echo "  Falls gewünscht: sudo apt remove docker.io nodejs python3"
+echo "  Falls gewünscht: sudo apt remove docker-ce nodejs python3"
 echo "============================================================"
 echo ""

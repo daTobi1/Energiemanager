@@ -255,8 +255,10 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
   sed -i "s|POSTGRES_PASSWORD: secret|POSTGRES_PASSWORD: $DB_PASSWORD|" "$INSTALL_DIR/docker-compose.yml"
   sed -i "s|energiemanager:secret@|energiemanager:$DB_PASSWORD@|" "$INSTALL_DIR/.env"
 
-  # Grafana-Port anpassen (3001 statt 3000, weil Frontend auf 3000 laufen könnte)
-  sed -i "s|\"3000:3000\"|\"${GRAFANA_PORT}:3000\"|" "$INSTALL_DIR/docker-compose.yml"
+  # Grafana-Port in .env setzen (docker-compose.yml liest ihn aus .env)
+  if ! grep -q "^GRAFANA_PORT=" "$INSTALL_DIR/.env"; then
+    echo "GRAFANA_PORT=${GRAFANA_PORT}" >> "$INSTALL_DIR/.env"
+  fi
 
   ok ".env erstellt mit sicheren Secrets"
 else
@@ -338,7 +340,8 @@ info "Installiere Frontend-Abhängigkeiten..."
 sudo -u "$SERVICE_USER" npm install --quiet 2>/dev/null || npm install --quiet
 
 info "Baue Frontend für Produktion..."
-sudo -u "$SERVICE_USER" npm run build 2>/dev/null || npm run build
+# VITE_API_URL leer = Frontend nutzt window.location.hostname automatisch
+sudo -u "$SERVICE_USER" VITE_API_URL="" npm run build 2>/dev/null || VITE_API_URL="" npm run build
 
 if [ -d "$INSTALL_DIR/frontend/dist" ]; then
   ok "Frontend gebaut ($(du -sh "$INSTALL_DIR/frontend/dist" | cut -f1))"
@@ -385,6 +388,17 @@ else
     *)         AUTOSTART=true  ;;
   esac
 
+  # Absolute Pfade für systemd ermitteln
+  DOCKER_BIN=$(command -v docker)
+  NPX_BIN=$(command -v npx)
+
+  # Compose-Befehl für systemd (braucht absoluten Pfad)
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_EXEC="${DOCKER_BIN} compose"
+  else
+    COMPOSE_EXEC="$(command -v docker-compose)"
+  fi
+
   # --- Backend-Service ---
   sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOF
 [Unit]
@@ -400,7 +414,7 @@ User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}/backend
 EnvironmentFile=${INSTALL_DIR}/.env
-ExecStartPre=${COMPOSE_CMD} -f ${INSTALL_DIR}/docker-compose.yml up -d db redis grafana
+ExecStartPre=${COMPOSE_EXEC} -f ${INSTALL_DIR}/docker-compose.yml up -d db redis grafana
 ExecStart=${INSTALL_DIR}/backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT}
 Restart=on-failure
 RestartSec=10
@@ -432,7 +446,7 @@ Type=simple
 User=${SERVICE_USER}
 Group=${SERVICE_USER}
 WorkingDirectory=${INSTALL_DIR}/frontend
-ExecStart=$(command -v npx) serve dist -l ${FRONTEND_PORT} -s
+ExecStart=${NPX_BIN} serve dist -l ${FRONTEND_PORT} -s
 Restart=on-failure
 RestartSec=5
 
@@ -522,7 +536,8 @@ echo "    Logs:       cd ${INSTALL_DIR} && ${COMPOSE_CMD} logs -f"
 echo ""
 echo "  Konfiguration:  ${INSTALL_DIR}/.env"
 echo ""
-echo -e "  ${YELLOW}Hinweis:${NC} Wetter-API-Key in .env eintragen:"
+echo -e "  ${YELLOW}Hinweis:${NC} Standort-Koordinaten in .env prüfen:"
 echo "    sudo nano ${INSTALL_DIR}/.env"
+echo "    (Wetter-API: Open-Meteo, kein API-Key nötig)"
 echo "============================================================"
 echo ""
