@@ -192,7 +192,7 @@ Klappbare Sidebar mit 6 Gruppen — Gruppen oeffnen sich automatisch bei Navigat
 | Komponente | Technologie |
 |---|---|
 | Hardware | Raspberry Pi 5 (4/8 GB RAM) |
-| OS | Raspberry Pi OS Bookworm (64-bit, ARM64) |
+| OS | Raspberry Pi OS Bookworm/Trixie (64-bit, ARM64) |
 | Deployment | Docker (DB/Redis/Grafana) + nativ (Backend venv + Frontend serve) |
 | Services | 2 systemd Services: `energiemanager` (Backend) + `energiemanager-web` (Frontend) |
 
