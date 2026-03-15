@@ -289,26 +289,41 @@ else
 fi
 
 # Docker-Infrastruktur starten (nur DB, Redis, Grafana – NICHT backend)
+# Fehler hier sollen nicht die gesamte Installation abbrechen
 info "Starte Docker-Infrastruktur (TimescaleDB, Redis, Grafana)..."
-sudo -u "$SERVICE_USER" $COMPOSE_CMD -f "$INSTALL_DIR/docker-compose.yml" up -d db redis grafana 2>/dev/null || \
-  $COMPOSE_CMD -f "$INSTALL_DIR/docker-compose.yml" up -d db redis grafana
-
-# Warten bis DB bereit ist
-info "Warte auf Datenbank..."
-for i in $(seq 1 30); do
-  if $COMPOSE_CMD -f "$INSTALL_DIR/docker-compose.yml" exec -T db pg_isready -U energiemanager >/dev/null 2>&1; then
-    break
+info "  Image-Download kann beim ersten Mal einige Minuten dauern..."
+DOCKER_OK=true
+if ! $COMPOSE_CMD -f "$INSTALL_DIR/docker-compose.yml" up -d db redis grafana 2>&1; then
+  warn "Docker Compose als '$SERVICE_USER' fehlgeschlagen – versuche als root..."
+  if ! $COMPOSE_CMD -f "$INSTALL_DIR/docker-compose.yml" up -d db redis grafana 2>&1; then
+    warn "Docker-Infrastruktur konnte nicht gestartet werden."
+    warn "  Manuell starten: cd $INSTALL_DIR && $COMPOSE_CMD up -d"
+    DOCKER_OK=false
   fi
-  sleep 1
-done
-
-if $COMPOSE_CMD -f "$INSTALL_DIR/docker-compose.yml" exec -T db pg_isready -U energiemanager >/dev/null 2>&1; then
-  ok "TimescaleDB bereit"
-else
-  warn "Datenbank antwortet noch nicht – wird beim nächsten Start verfügbar sein"
 fi
 
-ok "Docker-Infrastruktur gestartet"
+if [ "$DOCKER_OK" = true ]; then
+  # Warten bis DB bereit ist
+  info "Warte auf Datenbank (max. 60s)..."
+  DB_READY=false
+  for i in $(seq 1 60); do
+    if $COMPOSE_CMD -f "$INSTALL_DIR/docker-compose.yml" exec -T db pg_isready -U energiemanager >/dev/null 2>&1; then
+      DB_READY=true
+      break
+    fi
+    sleep 1
+  done
+
+  if [ "$DB_READY" = true ]; then
+    ok "TimescaleDB bereit"
+  else
+    warn "Datenbank antwortet noch nicht – wird beim nächsten Start verfügbar sein"
+    warn "  Logs prüfen: $COMPOSE_CMD -f $INSTALL_DIR/docker-compose.yml logs db"
+  fi
+  ok "Docker-Infrastruktur gestartet"
+else
+  warn "Docker-Infrastruktur übersprungen – Installation wird fortgesetzt"
+fi
 
 # ── 7/9 Python-Backend ──────────────────────────────────────
 step "7/9  Python-Backend einrichten"
@@ -318,6 +333,11 @@ VENV_PIP="$VENV_DIR/bin/pip"
 VENV_PYTHON="$VENV_DIR/bin/python3"
 
 info "Erstelle Virtual Environment..."
+# python3-venv sicherstellen (fehlt manchmal auf Minimal-Installationen)
+if ! python3 -m venv --help >/dev/null 2>&1; then
+  info "python3-venv nachinstallieren..."
+  sudo apt-get install -y python3-venv -qq
+fi
 sudo -u "$SERVICE_USER" python3 -m venv "$VENV_DIR"
 
 info "Aktualisiere pip..."
@@ -325,7 +345,10 @@ sudo -u "$SERVICE_USER" "$VENV_PIP" install --upgrade pip setuptools wheel
 
 info "Installiere Python-Abhängigkeiten..."
 info "  Dies kann auf dem Pi 10–15 Minuten dauern (numpy, scikit-learn, xgboost)..."
-sudo -u "$SERVICE_USER" "$VENV_PIP" install -e "$INSTALL_DIR/backend"
+if ! sudo -u "$SERVICE_USER" "$VENV_PIP" install -e "$INSTALL_DIR/backend" 2>&1; then
+  warn "pip install fehlgeschlagen – versuche erneut ohne Cache..."
+  sudo -u "$SERVICE_USER" "$VENV_PIP" install --no-cache-dir -e "$INSTALL_DIR/backend"
+fi
 
 # Importe verifizieren
 info "Überprüfe Python-Importe..."
