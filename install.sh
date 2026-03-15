@@ -133,21 +133,18 @@ done
 # ── 1/9 Basiswerkzeuge ──────────────────────────────────────
 step "1/9  Basiswerkzeuge prüfen und installieren"
 
-sudo apt-get update -qq
-
-# Kaputte Dependencies reparieren (z.B. nach abgebrochener Installation)
-if ! sudo apt-get check -qq 2>/dev/null; then
-  info "Kaputte apt-Dependencies gefunden – repariere..."
-  sudo apt --fix-broken install -y -qq
-fi
-
 # NodeSource-Repo entfernen falls vorhanden (kollidiert mit System-Node.js)
 if [ -f /etc/apt/sources.list.d/nodesource.list ]; then
   info "NodeSource-Repository entfernen (kollidiert mit System-Paketen)..."
   sudo rm -f /etc/apt/sources.list.d/nodesource.list
   sudo rm -f /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
-  sudo apt-get update -qq
 fi
+
+sudo apt-get update -qq
+
+# Kaputte Dependencies reparieren (z.B. nach abgebrochener Installation)
+info "Prüfe apt-Dependencies..."
+sudo apt --fix-broken install -y -qq 2>&1 || true
 
 for pkg in curl git ca-certificates gnupg lsb-release openssl; do
   if ! dpkg -s "$pkg" &>/dev/null; then
