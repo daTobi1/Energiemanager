@@ -10,6 +10,12 @@
 # ============================================================
 set -euo pipefail
 
+# Gesamtes Script in main() wrappen, damit bash alles einliest
+# BEVOR es ausgeführt wird. Verhindert, dass Befehle wie
+# "docker compose" bei "curl | bash" den Rest des Scripts über
+# stdin auffressen.
+main() {
+
 REPO_URL="https://github.com/daTobi1/Energiemanager.git"
 SERVICE_NAME="energiemanager"
 BACKEND_PORT="${EM_BACKEND_PORT:-8000}"
@@ -587,3 +593,7 @@ echo "    sudo nano ${INSTALL_DIR}/.env"
 echo "    (Wetter-API: Open-Meteo, kein API-Key nötig)"
 echo "============================================================"
 echo ""
+
+} # Ende main()
+
+main "$@"
