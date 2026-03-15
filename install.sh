@@ -8,7 +8,10 @@
 #
 # Voraussetzung: Debian 12 Bookworm / Raspberry Pi OS Bookworm (64-bit)
 # ============================================================
-set -euo pipefail
+set -uo pipefail
+# Kein "set -e" — bei komplexen Installationen verursacht es
+# mysteriöse Abbrüche. Kritische Fehler werden explizit durch
+# die error()-Funktion behandelt.
 
 # Gesamtes Script in main() wrappen, damit bash alles einliest
 # BEVOR es ausgeführt wird. Verhindert, dass Befehle wie
@@ -344,10 +347,10 @@ if ! python3 -m venv --help >/dev/null 2>&1; then
   info "python3-venv nachinstallieren..."
   sudo apt-get install -y python3-venv -qq
 fi
-sudo -u "$SERVICE_USER" python3 -m venv "$VENV_DIR"
+sudo -u "$SERVICE_USER" python3 -m venv "$VENV_DIR" || error "Virtual Environment konnte nicht erstellt werden."
 
 info "Aktualisiere pip..."
-sudo -u "$SERVICE_USER" "$VENV_PIP" install --upgrade pip setuptools wheel
+sudo -u "$SERVICE_USER" "$VENV_PIP" install --upgrade pip setuptools wheel || warn "pip-Upgrade fehlgeschlagen"
 
 info "Installiere Python-Abhängigkeiten..."
 info "  Dies kann auf dem Pi 10–15 Minuten dauern (numpy, scikit-learn, xgboost)..."
