@@ -1,10 +1,9 @@
 # EnergyManager — Intelligentes Energiemanagementsystem
 
-> **STATUS: IN ENTWICKLUNG / WORK IN PROGRESS**
+> **STATUS: Phase 3 — Absicherung (aktiv)**
 >
-> Dieses Projekt befindet sich in aktiver Entwicklung (Phase 3 — Absicherung).
-> APIs, Datenmodelle und Schnittstellen koennen sich jederzeit aendern.
-> Beitraege und Feedback sind willkommen — siehe [Contributing](#contributing).
+> Kernfunktionen (Optimierer, Regelung, Prognosen, ML, Lademanagement) sind abgeschlossen.
+> Phase 3 haertet das System fuer den Produktivbetrieb auf dem Raspberry Pi.
 
 ---
 
@@ -457,7 +456,7 @@ cd backend && .venv/Scripts/python scripts/seed_self_learning.py
 | Phase 2c | Wetter-API + PV/Last/Thermik-Prognosen + Dashboard-Upgrade | Abgeschlossen |
 | Phase 2d | MILP-Optimierer + ML-Prognosekorrektur + Auto-Retrain | Abgeschlossen |
 | Phase 2e | Controller + Scheduler + Lambda WP + Controller-Dashboard | Abgeschlossen |
-| Phase 3 | Absicherung: Alarme, Lademanagement, Selbstlernung, Geraete-Manager | **In Arbeit** |
+| Phase 3 | Absicherung: Alarme, Lademanagement, Selbstlernung, Geraete-Manager, Auth | **In Arbeit** |
 | Phase 4 | Mobile App (Flutter / PWA-Ausbau) | Ausstehend |
 | Phase 5 | Produktion (Edge-Deployment, Monitoring) | Ausstehend |
 
@@ -467,10 +466,17 @@ cd backend && .venv/Scripts/python scripts/seed_self_learning.py
 
 ### Automatische Installation (Raspberry Pi)
 
+Ein-Befehl-Installation — kein `git` oder `curl` noetig:
+
 ```bash
-git clone https://github.com/daTobi1/Energiemanager.git
-cd Energiemanager
-sudo bash install.sh
+sudo apt-get update -qq && sudo apt-get install -y curl -qq
+curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/install.sh | sudo bash
+```
+
+Non-interaktiv (z.B. fuer Automatisierung):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/install.sh | sudo bash -s -- --yes
 ```
 
 Das Script fuehrt 9 Schritte aus: Basistools, Docker, Node.js, Python, Repository, .env + Docker-Infrastruktur, Backend-venv, Frontend-Build, systemd-Services.
@@ -478,7 +484,13 @@ Das Script fuehrt 9 Schritte aus: Basistools, Docker, Node.js, Python, Repositor
 ### Deinstallation
 
 ```bash
-sudo bash uninstall.sh
+curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/uninstall.sh | sudo bash
+```
+
+Non-interaktiv (alles entfernen):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/uninstall.sh | sudo bash -s -- --yes
 ```
 
 ### Lokale Entwicklung (PC/Laptop, ohne Docker)
@@ -528,7 +540,7 @@ DATABASE_URL=postgresql+asyncpg://energiemanager:secret@localhost:5432/energiema
 | Web-Frontend | `http://<ip>:5173` (Dev) / `http://<ip>:8080` (Prod) | Konfigurationsoberflaeche |
 | API | `http://<ip>:8000` | FastAPI Backend |
 | API Docs | `http://<ip>:8000/docs` | Swagger UI |
-| Grafana | `http://<ip>:3000` | Monitoring Dashboards |
+| Grafana | `http://<ip>:3001` (Prod) | Monitoring Dashboards (admin/admin) |
 
 ---
 
