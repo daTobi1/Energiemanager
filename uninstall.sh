@@ -2,20 +2,31 @@
 # ============================================================
 # EnergyManager – Deinstallation
 # Verwendung:
-#   curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/uninstall.sh | bash
-# oder lokal:
-#   bash uninstall.sh
+#   sudo bash uninstall.sh          # interaktiv mit Rückfragen
+#   sudo bash uninstall.sh --yes    # alles entfernen ohne Rückfragen
+# oder remote:
+#   curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/uninstall.sh | sudo bash -s -- --yes
 # ============================================================
-set -euo pipefail
+set -uo pipefail
+
+main() {
 
 SERVICE_NAME="energiemanager"
 DEFAULT_DIR="/home/${EM_USER:-energiemanager}/energiemanager"
 INSTALL_DIR="${EM_DIR:-$DEFAULT_DIR}"
 
+# --yes Flag prüfen
+AUTO_YES=false
+for arg in "$@"; do
+  case "$arg" in
+    --yes|-y) AUTO_YES=true ;;
+  esac
+done
+
 # Versuche Installationsverzeichnis aus Service-Datei zu lesen
 if [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
   DETECTED_DIR=$(grep -oP 'WorkingDirectory=\K[^ ]+' /etc/systemd/system/${SERVICE_NAME}.service 2>/dev/null | head -1 | sed 's|/backend$||')
-  if [ -n "$DETECTED_DIR" ] && [ -d "$DETECTED_DIR" ]; then
+  if [ -n "${DETECTED_DIR:-}" ] && [ -d "$DETECTED_DIR" ]; then
     INSTALL_DIR="$DETECTED_DIR"
   fi
 fi
@@ -24,6 +35,18 @@ RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; NC='\
 ok()   { echo -e "${GREEN}[ OK ]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 info() { echo -e "\033[0;34m[INFO]${NC}  $*"; }
+
+# Bestätigungsfunktion (respektiert --yes)
+confirm() {
+  if [ "$AUTO_YES" = true ]; then
+    return 0
+  fi
+  local prompt="$1"
+  printf "%s [j/N] " "$prompt"
+  local answer=""
+  read -r answer <&3 2>/dev/null || answer=""
+  [[ "$answer" =~ ^[jJyY]$ ]]
+}
 
 echo ""
 echo "============================================================"
@@ -40,9 +63,10 @@ echo ""
 # Terminal-Eingabe vorbereiten (funktioniert auch bei curl | bash)
 exec 3</dev/tty 2>/dev/null || exec 3</dev/null
 
-printf "Fortfahren? [j/N] "
-read -r confirm <&3 2>/dev/null || confirm=""
-[[ "$confirm" =~ ^[jJyY]$ ]] || { echo "Abgebrochen."; exit 0; }
+if ! confirm "Fortfahren?"; then
+  echo "Abgebrochen."
+  exit 0
+fi
 
 # ── Services stoppen und entfernen ──────────────────────────
 for svc in "${SERVICE_NAME}" "${SERVICE_NAME}-web"; do
@@ -67,33 +91,25 @@ sudo systemctl daemon-reload
 
 # ── Docker-Container ────────────────────────────────────────
 if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-  echo ""
-  echo -e "${YELLOW}Docker-Container und Volumes:${NC}"
-  echo "  Dies umfasst die Datenbank (TimescaleDB), Redis und Grafana."
-  echo "  Alle gespeicherten Messdaten gehen dabei verloren!"
-  echo ""
-  printf "Docker-Container und Volumes löschen? [j/N] "
-  read -r confirm_docker <&3 2>/dev/null || confirm_docker=""
-  if [[ "$confirm_docker" =~ ^[jJyY]$ ]]; then
-    cd "$INSTALL_DIR"
-    # Compose-Befehl bestimmen
-    if docker compose version >/dev/null 2>&1; then
-      docker compose down -v 2>/dev/null || true
-    elif command -v docker-compose >/dev/null 2>&1; then
-      docker-compose down -v 2>/dev/null || true
-    fi
-    ok "Docker-Container und Volumes entfernt"
+  # Compose-Befehl bestimmen
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
   else
-    # Nur Container stoppen, Volumes behalten
-    if [ -d "$INSTALL_DIR" ]; then
+    COMPOSE_CMD=""
+  fi
+
+  if [ -n "$COMPOSE_CMD" ]; then
+    if confirm "Docker-Container und Volumes löschen? (Messdaten gehen verloren!)"; then
       cd "$INSTALL_DIR"
-      if docker compose version >/dev/null 2>&1; then
-        docker compose down 2>/dev/null || true
-      elif command -v docker-compose >/dev/null 2>&1; then
-        docker-compose down 2>/dev/null || true
-      fi
+      $COMPOSE_CMD down -v 2>/dev/null || true
+      ok "Docker-Container und Volumes entfernt"
+    else
+      cd "$INSTALL_DIR"
+      $COMPOSE_CMD down 2>/dev/null || true
+      warn "Container gestoppt, Volumes beibehalten (Daten erhalten)"
     fi
-    warn "Container gestoppt, Volumes beibehalten (Daten erhalten)"
   fi
 fi
 
@@ -106,13 +122,7 @@ fi
 
 # ── Installationsverzeichnis ────────────────────────────────
 if [ -d "$INSTALL_DIR" ]; then
-  echo ""
-  echo -e "  Verzeichnis: ${BOLD}${INSTALL_DIR}${NC}"
-  echo "  Enthält: Quellcode, Python-venv, Frontend-Build, .env"
-  echo ""
-  printf "Verzeichnis vollständig löschen? [j/N] "
-  read -r confirm_dir <&3 2>/dev/null || confirm_dir=""
-  if [[ "$confirm_dir" =~ ^[jJyY]$ ]]; then
+  if confirm "Verzeichnis ${INSTALL_DIR} vollständig löschen?"; then
     sudo rm -rf "$INSTALL_DIR"
     ok "Verzeichnis entfernt"
   else
@@ -123,10 +133,7 @@ fi
 # ── Benutzer ────────────────────────────────────────────────
 SERVICE_USER="${EM_USER:-energiemanager}"
 if id "$SERVICE_USER" &>/dev/null && [ "$SERVICE_USER" != "pi" ] && [ "$SERVICE_USER" != "root" ]; then
-  echo ""
-  printf "System-Benutzer '${SERVICE_USER}' entfernen? [j/N] "
-  read -r confirm_user <&3 2>/dev/null || confirm_user=""
-  if [[ "$confirm_user" =~ ^[jJyY]$ ]]; then
+  if confirm "System-Benutzer '${SERVICE_USER}' entfernen?"; then
     sudo userdel -r "$SERVICE_USER" 2>/dev/null || sudo userdel "$SERVICE_USER" 2>/dev/null || true
     ok "Benutzer '$SERVICE_USER' entfernt"
   else
@@ -142,3 +149,7 @@ echo "  Docker, Node.js und Python wurden NICHT entfernt."
 echo "  Falls gewünscht: sudo apt remove docker-ce nodejs python3"
 echo "============================================================"
 echo ""
+
+} # Ende main()
+
+main "$@"
