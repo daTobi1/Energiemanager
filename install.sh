@@ -3,8 +3,10 @@
 # EnergyManager – Installer
 # Verwendung (frischer Pi – kein git/curl nötig):
 #   sudo apt-get update -qq && sudo apt-get install -y curl -qq && curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/install.sh | sudo bash
+# Non-interaktiv (keine Rückfragen):
+#   curl -fsSL ... | sudo bash -s -- --yes
 # oder lokal:
-#   sudo bash install.sh
+#   sudo bash install.sh [--yes]
 #
 # Voraussetzung: Debian 12 Bookworm / Raspberry Pi OS Bookworm (64-bit)
 # ============================================================
@@ -40,8 +42,20 @@ echo -e "  Intelligentes Energiemanagementsystem"
 echo "============================================================"
 echo ""
 
+# --yes Flag prüfen (überspringt alle interaktiven Abfragen)
+AUTO_YES=false
+for arg in "$@"; do
+  case "$arg" in
+    --yes|-y) AUTO_YES=true ;;
+  esac
+done
+
 # ── Terminal-Eingabe vorbereiten (funktioniert auch bei curl | bash) ──
-exec 3</dev/tty 2>/dev/null || exec 3</dev/null
+if [ -e /dev/tty ]; then
+  exec 3</dev/tty
+else
+  exec 3</dev/null
+fi
 
 # ── Root-Rechte prüfen ──────────────────────────────────────
 if ! sudo -n true 2>/dev/null; then
@@ -51,6 +65,8 @@ fi
 # ── Benutzer abfragen ────────────────────────────────────────
 if [ -n "${EM_USER:-}" ]; then
   SERVICE_USER="$EM_USER"
+elif [ "$AUTO_YES" = true ]; then
+  SERVICE_USER="$DEFAULT_USER"
 else
   echo -e "  Unter welchem Benutzer soll der Service laufen?"
   echo -e "  Standard: ${GREEN}${DEFAULT_USER}${NC}"
@@ -379,7 +395,7 @@ if [ -f "$INSTALL_DIR/backend/alembic.ini" ]; then
   info "Führe Datenbank-Migration aus..."
   # Alembic braucht die DB-URL aus der .env
   export $(grep -v '^#' "$INSTALL_DIR/.env" | xargs 2>/dev/null) 2>/dev/null || true
-  sudo -u "$SERVICE_USER" "$VENV_PYTHON" -m alembic -c "$INSTALL_DIR/backend/alembic.ini" upgrade head 2>/dev/null \
+  sudo -u "$SERVICE_USER" bash -c "cd '$INSTALL_DIR/backend' && '$VENV_PYTHON' -m alembic upgrade head" 2>/dev/null \
     && ok "Migration erfolgreich" \
     || warn "Migration übersprungen (wird beim ersten Start ausgeführt)"
 fi
@@ -417,31 +433,33 @@ if ! command -v systemctl >/dev/null 2>&1; then
 else
   # Autostart-Abfrage
   AUTOSTART=true
-  echo ""
-  echo -e "  Soll EnergyManager bei jedem Systemstart"
-  echo -e "  automatisch gestartet werden?"
-  echo ""
-  echo -e "  ${GREEN}[j]${NC} Ja, automatisch starten  ${YELLOW}(empfohlen)${NC}"
-  echo -e "  ${YELLOW}[n]${NC} Nein, nur manuell starten"
-  echo ""
-  AUTOSTART_CHOICE=""
-  for i in $(seq 30 -1 1); do
-    printf "\r  Auswahl [J/n] (automatisch Ja in %2ds): " "$i"
-    if read -rn1 -t1 AUTOSTART_CHOICE <&3 2>/dev/null; then
-      echo ""
-      break
-    fi
-  done
-  if [ -z "$AUTOSTART_CHOICE" ]; then
+  if [ "$AUTO_YES" != true ]; then
     echo ""
-    echo "  → Zeitüberschreitung – Autostart wird aktiviert"
-    AUTOSTART_CHOICE="j"
-  fi
+    echo -e "  Soll EnergyManager bei jedem Systemstart"
+    echo -e "  automatisch gestartet werden?"
+    echo ""
+    echo -e "  ${GREEN}[j]${NC} Ja, automatisch starten  ${YELLOW}(empfohlen)${NC}"
+    echo -e "  ${YELLOW}[n]${NC} Nein, nur manuell starten"
+    echo ""
+    AUTOSTART_CHOICE=""
+    for i in $(seq 30 -1 1); do
+      printf "\r  Auswahl [J/n] (automatisch Ja in %2ds): " "$i"
+      if read -rn1 -t1 AUTOSTART_CHOICE <&3 2>/dev/null; then
+        echo ""
+        break
+      fi
+    done
+    if [ -z "$AUTOSTART_CHOICE" ]; then
+      echo ""
+      echo "  → Zeitüberschreitung – Autostart wird aktiviert"
+      AUTOSTART_CHOICE="j"
+    fi
 
-  case "${AUTOSTART_CHOICE,,}" in
-    n|nein|no) AUTOSTART=false ;;
-    *)         AUTOSTART=true  ;;
-  esac
+    case "${AUTOSTART_CHOICE,,}" in
+      n|nein|no) AUTOSTART=false ;;
+      *)         AUTOSTART=true  ;;
+    esac
+  fi
 
   # Absolute Pfade für systemd ermitteln
   DOCKER_BIN=$(command -v docker)
