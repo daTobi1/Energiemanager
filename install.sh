@@ -221,8 +221,8 @@ step "5/9  Repository klonen / aktualisieren"
 
 if [ -d "$INSTALL_DIR/.git" ]; then
   info "Vorhandene Installation gefunden – aktualisiere..."
-  git -C "$INSTALL_DIR" fetch origin
-  git -C "$INSTALL_DIR" reset --hard origin/master
+  sudo -u "$SERVICE_USER" git -C "$INSTALL_DIR" fetch origin
+  sudo -u "$SERVICE_USER" git -C "$INSTALL_DIR" reset --hard origin/master
   ok "Repository aktualisiert"
 else
   # Zielverzeichnis darf nicht existieren oder muss leer sein
@@ -232,7 +232,7 @@ else
   fi
   info "Klone Repository nach $INSTALL_DIR (Shallow Clone)..."
   info "  Dies kann auf dem Pi einige Minuten dauern..."
-  if ! git clone --depth 1 --progress "$REPO_URL" "$INSTALL_DIR" 2>&1; then
+  if ! sudo -u "$SERVICE_USER" git clone --depth 1 --progress "$REPO_URL" "$INSTALL_DIR" 2>&1; then
     error "Git Clone fehlgeschlagen!
   Mögliche Ursachen:
     - Keine Internetverbindung: ping -c1 github.com
@@ -302,23 +302,25 @@ ok "Docker-Infrastruktur gestartet"
 # ── 7/9 Python-Backend ──────────────────────────────────────
 step "7/9  Python-Backend einrichten"
 
-cd "$INSTALL_DIR/backend"
+VENV_DIR="$INSTALL_DIR/backend/venv"
+VENV_PIP="$VENV_DIR/bin/pip"
+VENV_PYTHON="$VENV_DIR/bin/python3"
 
 info "Erstelle Virtual Environment..."
-python3 -m venv "$INSTALL_DIR/backend/venv"
-source "$INSTALL_DIR/backend/venv/bin/activate"
+sudo -u "$SERVICE_USER" python3 -m venv "$VENV_DIR"
 
-pip install --upgrade pip setuptools wheel
+info "Aktualisiere pip..."
+sudo -u "$SERVICE_USER" "$VENV_PIP" install --upgrade pip setuptools wheel
 
 info "Installiere Python-Abhängigkeiten..."
 info "  Dies kann auf dem Pi 10–15 Minuten dauern (numpy, scikit-learn, xgboost)..."
-pip install -e "$INSTALL_DIR/backend"
+sudo -u "$SERVICE_USER" "$VENV_PIP" install -e "$INSTALL_DIR/backend"
 
 # Importe verifizieren
 info "Überprüfe Python-Importe..."
 IMPORT_ERRORS=0
 for mod in fastapi uvicorn sqlalchemy asyncpg pydantic redis; do
-  if python3 -c "import $mod" 2>/dev/null; then
+  if sudo -u "$SERVICE_USER" "$VENV_PYTHON" -c "import $mod" 2>/dev/null; then
     ok "  $mod"
   else
     warn "  $mod FEHLT"
@@ -332,15 +334,12 @@ fi
 # Datenbank-Migration (Alembic)
 if [ -f "$INSTALL_DIR/backend/alembic.ini" ]; then
   info "Führe Datenbank-Migration aus..."
-  cd "$INSTALL_DIR/backend"
   # Alembic braucht die DB-URL aus der .env
   export $(grep -v '^#' "$INSTALL_DIR/.env" | xargs 2>/dev/null) 2>/dev/null || true
-  python3 -m alembic upgrade head 2>/dev/null && ok "Migration erfolgreich" || \
-    warn "Migration übersprungen (wird beim ersten Start ausgeführt)"
+  sudo -u "$SERVICE_USER" "$VENV_PYTHON" -m alembic -c "$INSTALL_DIR/backend/alembic.ini" upgrade head 2>/dev/null \
+    && ok "Migration erfolgreich" \
+    || warn "Migration übersprungen (wird beim ersten Start ausgeführt)"
 fi
-
-deactivate
-cd "$INSTALL_DIR"
 
 ok "Python-Backend eingerichtet"
 
