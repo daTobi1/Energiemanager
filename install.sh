@@ -221,12 +221,24 @@ step "5/9  Repository klonen / aktualisieren"
 
 if [ -d "$INSTALL_DIR/.git" ]; then
   info "Vorhandene Installation gefunden – aktualisiere..."
-  git -C "$INSTALL_DIR" fetch --quiet origin
-  git -C "$INSTALL_DIR" reset --hard origin/master --quiet
+  git -C "$INSTALL_DIR" fetch origin
+  git -C "$INSTALL_DIR" reset --hard origin/master
   ok "Repository aktualisiert"
 else
-  info "Klone Repository nach $INSTALL_DIR..."
-  git clone --quiet "$REPO_URL" "$INSTALL_DIR"
+  # Zielverzeichnis darf nicht existieren oder muss leer sein
+  if [ -d "$INSTALL_DIR" ] && [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+    error "Verzeichnis $INSTALL_DIR existiert bereits und ist nicht leer.
+  Bitte zuerst löschen: sudo rm -rf $INSTALL_DIR"
+  fi
+  info "Klone Repository nach $INSTALL_DIR (Shallow Clone)..."
+  info "  Dies kann auf dem Pi einige Minuten dauern..."
+  if ! git clone --depth 1 --progress "$REPO_URL" "$INSTALL_DIR" 2>&1; then
+    error "Git Clone fehlgeschlagen!
+  Mögliche Ursachen:
+    - Keine Internetverbindung: ping -c1 github.com
+    - Nicht genug Speicher: df -h
+    - DNS-Problem: nslookup github.com"
+  fi
   ok "Repository geklont"
 fi
 
@@ -296,10 +308,11 @@ info "Erstelle Virtual Environment..."
 python3 -m venv "$INSTALL_DIR/backend/venv"
 source "$INSTALL_DIR/backend/venv/bin/activate"
 
-pip install --quiet --upgrade pip setuptools wheel
+pip install --upgrade pip setuptools wheel
 
-info "Installiere Python-Abhängigkeiten (kann auf dem Pi einige Minuten dauern)..."
-pip install --quiet -e "$INSTALL_DIR/backend"
+info "Installiere Python-Abhängigkeiten..."
+info "  Dies kann auf dem Pi 10–15 Minuten dauern (numpy, scikit-learn, xgboost)..."
+pip install -e "$INSTALL_DIR/backend"
 
 # Importe verifizieren
 info "Überprüfe Python-Importe..."
@@ -337,7 +350,7 @@ step "8/9  Frontend bauen"
 cd "$INSTALL_DIR/frontend"
 
 info "Installiere Frontend-Abhängigkeiten..."
-sudo -u "$SERVICE_USER" npm install --quiet 2>/dev/null || npm install --quiet
+sudo -u "$SERVICE_USER" npm install 2>/dev/null || npm install
 
 info "Baue Frontend für Produktion..."
 # VITE_API_URL leer = Frontend nutzt window.location.hostname automatisch
