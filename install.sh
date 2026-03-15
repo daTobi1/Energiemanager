@@ -8,7 +8,7 @@
 # oder lokal:
 #   sudo bash install.sh [--yes]
 #
-# Voraussetzung: Debian 12 Bookworm / Raspberry Pi OS Bookworm (64-bit)
+# Voraussetzung: Debian 12+ (Bookworm/Trixie) / Raspberry Pi OS (64-bit)
 # ============================================================
 set -uo pipefail
 # Kein "set -e" — bei komplexen Installationen verursacht es
@@ -157,9 +157,18 @@ ok "Basiswerkzeuge vorhanden"
 # ── 2/9 Docker ──────────────────────────────────────────────
 step "2/9  Docker prüfen und installieren"
 
-if command -v docker >/dev/null 2>&1; then
+# docker-ce muss tatsächlich installiert sein (Status "ii"), nicht nur
+# als "rc" (removed, config remaining) in dpkg bekannt.
+# command -v docker findet auch docker-ce-cli ohne docker-ce!
+docker_ce_installed() {
+  dpkg -l docker-ce 2>/dev/null | grep -q '^ii'
+}
+
+if command -v docker >/dev/null 2>&1 && docker_ce_installed; then
   DOCKER_VERSION=$(docker --version | grep -oP '\d+\.\d+\.\d+' | head -1)
   ok "Docker $DOCKER_VERSION bereits installiert"
+elif docker_ce_installed; then
+  ok "Docker bereits installiert"
 else
   info "Docker wird installiert (kann etwas dauern)..."
   curl -fsSL https://get.docker.com | sudo bash
@@ -200,10 +209,11 @@ sudo systemctl start docker.service 2>/dev/null || true
 if sudo systemctl is-active --quiet docker 2>/dev/null; then
   ok "Docker-Dienst aktiv, Benutzer '$SERVICE_USER' in Gruppe 'docker'"
 else
-  # docker-ce Paket könnte fehlen (z.B. durch apt-Dependency-Konflikte entfernt)
-  if ! dpkg -s docker-ce &>/dev/null; then
+  # docker-ce Paket könnte fehlen (z.B. durch apt --fix-broken entfernt)
+  if ! docker_ce_installed; then
     info "docker-ce Paket fehlt – installiere neu..."
-    sudo apt-get install -y docker-ce -qq
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io -qq 2>&1 || \
+      curl -fsSL https://get.docker.com | sudo bash
     sudo systemctl enable docker.service --quiet 2>/dev/null || true
     sudo systemctl start docker.service 2>/dev/null || true
   fi
