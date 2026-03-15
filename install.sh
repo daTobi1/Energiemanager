@@ -186,41 +186,38 @@ fi
 
 sudo systemctl enable docker.service --quiet 2>/dev/null || true
 sudo systemctl start docker.service 2>/dev/null || true
-ok "Docker-Dienst aktiv, Benutzer '$SERVICE_USER' in Gruppe 'docker'"
+if sudo systemctl is-active --quiet docker 2>/dev/null; then
+  ok "Docker-Dienst aktiv, Benutzer '$SERVICE_USER' in Gruppe 'docker'"
+else
+  warn "Docker-Dienst konnte nicht gestartet werden"
+  warn "  Prüfen: sudo systemctl status docker"
+fi
 
 # ── 3/9 Node.js ─────────────────────────────────────────────
 step "3/9  Node.js prüfen und installieren"
 
 NODE_MIN_VERSION=18
+install_node_from_system() {
+  # System-Repos bevorzugen (Bookworm: Node 18, Trixie: Node 20)
+  # NodeSource vermeiden — kollidiert mit Trixie/Testing und kann
+  # apt-Dependencies zerstören (u.a. docker-ce entfernen!)
+  sudo apt-get install -y nodejs npm -qq 2>/dev/null
+}
+
 if command -v node >/dev/null 2>&1; then
   NODE_VERSION=$(node -v | grep -oP '\d+' | head -1)
   if [ "$NODE_VERSION" -ge "$NODE_MIN_VERSION" ]; then
     ok "Node.js v$(node -v | tr -d 'v') – OK"
   else
     warn "Node.js $(node -v) ist zu alt (mind. v${NODE_MIN_VERSION} nötig)"
-    info "Aktualisiere Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs -qq
+    install_node_from_system || error "Node.js konnte nicht aktualisiert werden."
     ok "Node.js v$(node -v | tr -d 'v') installiert"
   fi
 else
   info "Node.js nicht gefunden – installiere..."
-  # Versuche zuerst aus Bookworm-Repos (Node 18)
-  if sudo apt-get install -y nodejs npm -qq 2>/dev/null; then
-    NODE_VERSION=$(node -v | grep -oP '\d+' | head -1)
-    if [ "$NODE_VERSION" -ge "$NODE_MIN_VERSION" ]; then
-      ok "Node.js v$(node -v | tr -d 'v') aus System-Repos installiert"
-    else
-      info "System-Node.js zu alt, installiere via NodeSource..."
-      curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-      sudo apt-get install -y nodejs -qq
-      ok "Node.js v$(node -v | tr -d 'v') installiert"
-    fi
-  else
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt-get install -y nodejs -qq
-    ok "Node.js v$(node -v | tr -d 'v') installiert"
-  fi
+  install_node_from_system || error "Node.js konnte nicht installiert werden.
+  Manuell installieren: sudo apt-get install -y nodejs npm"
+  ok "Node.js v$(node -v | tr -d 'v') installiert"
 fi
 
 # npm prüfen
