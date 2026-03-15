@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ============================================================
 # EnergyManager – Installer
-# Verwendung:
-#   curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/install.sh | bash
+# Verwendung (frischer Pi – kein git/curl nötig):
+#   sudo apt-get update -qq && sudo apt-get install -y curl -qq && curl -fsSL https://raw.githubusercontent.com/daTobi1/Energiemanager/master/install.sh | sudo bash
 # oder lokal:
-#   bash install.sh
+#   sudo bash install.sh
 #
 # Voraussetzung: Debian 12 Bookworm / Raspberry Pi OS Bookworm (64-bit)
 # ============================================================
@@ -88,12 +88,23 @@ if [ "$ARCH" != "aarch64" ] && [ "$ARCH" != "x86_64" ]; then
   warn "Getestet auf aarch64 (Raspberry Pi 5) und x86_64."
 fi
 
-# ── 1/9 Basiswerkzeuge ──────────────────────────────────────
-step "1/9  Basiswerkzeuge prüfen und installieren"
-
+# ── 0/9 Bootstrap (git & curl sicherstellen) ─────────────────
+# Wird VOR allen anderen Schritten ausgeführt, damit das Script
+# auch per "wget ... | bash" auf einem frischen Pi funktioniert.
 if ! command -v apt-get >/dev/null 2>&1; then
   error "apt-get nicht gefunden – dieses Script benötigt Debian/Raspberry Pi OS."
 fi
+
+for boot_pkg in git curl; do
+  if ! command -v "$boot_pkg" >/dev/null 2>&1; then
+    echo -e "${BLUE}[INFO]${NC}  $boot_pkg nicht gefunden – installiere..."
+    sudo apt-get update -qq
+    sudo apt-get install -y "$boot_pkg" -qq
+  fi
+done
+
+# ── 1/9 Basiswerkzeuge ──────────────────────────────────────
+step "1/9  Basiswerkzeuge prüfen und installieren"
 
 sudo apt-get update -qq
 
