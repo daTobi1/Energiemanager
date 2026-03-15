@@ -61,7 +61,7 @@ echo "  - sudoers-Regel: /etc/sudoers.d/energiemanager"
 echo ""
 
 # Terminal-Eingabe vorbereiten (funktioniert auch bei curl | bash)
-if [ -e /dev/tty ]; then
+if (exec 3</dev/tty) 2>/dev/null; then
   exec 3</dev/tty
 else
   exec 3</dev/null

@@ -51,7 +51,9 @@ for arg in "$@"; do
 done
 
 # ── Terminal-Eingabe vorbereiten (funktioniert auch bei curl | bash) ──
-if [ -e /dev/tty ]; then
+# /dev/tty existiert auf manchen Systemen, kann aber ohne Terminal
+# nicht geöffnet werden → Subshell-Test statt Existenzprüfung
+if (exec 3</dev/tty) 2>/dev/null; then
   exec 3</dev/tty
 else
   exec 3</dev/null
