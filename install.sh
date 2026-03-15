@@ -135,6 +135,20 @@ step "1/9  Basiswerkzeuge prüfen und installieren"
 
 sudo apt-get update -qq
 
+# Kaputte Dependencies reparieren (z.B. nach abgebrochener Installation)
+if ! sudo apt-get check -qq 2>/dev/null; then
+  info "Kaputte apt-Dependencies gefunden – repariere..."
+  sudo apt --fix-broken install -y -qq
+fi
+
+# NodeSource-Repo entfernen falls vorhanden (kollidiert mit System-Node.js)
+if [ -f /etc/apt/sources.list.d/nodesource.list ]; then
+  info "NodeSource-Repository entfernen (kollidiert mit System-Paketen)..."
+  sudo rm -f /etc/apt/sources.list.d/nodesource.list
+  sudo rm -f /etc/apt/keyrings/nodesource.gpg 2>/dev/null || true
+  sudo apt-get update -qq
+fi
+
 for pkg in curl git ca-certificates gnupg lsb-release openssl; do
   if ! dpkg -s "$pkg" &>/dev/null; then
     info "Installiere $pkg..."
@@ -189,8 +203,19 @@ sudo systemctl start docker.service 2>/dev/null || true
 if sudo systemctl is-active --quiet docker 2>/dev/null; then
   ok "Docker-Dienst aktiv, Benutzer '$SERVICE_USER' in Gruppe 'docker'"
 else
-  warn "Docker-Dienst konnte nicht gestartet werden"
-  warn "  Prüfen: sudo systemctl status docker"
+  # docker-ce Paket könnte fehlen (z.B. durch apt-Dependency-Konflikte entfernt)
+  if ! dpkg -s docker-ce &>/dev/null; then
+    info "docker-ce Paket fehlt – installiere neu..."
+    sudo apt-get install -y docker-ce -qq
+    sudo systemctl enable docker.service --quiet 2>/dev/null || true
+    sudo systemctl start docker.service 2>/dev/null || true
+  fi
+  if sudo systemctl is-active --quiet docker 2>/dev/null; then
+    ok "Docker-Dienst aktiv, Benutzer '$SERVICE_USER' in Gruppe 'docker'"
+  else
+    warn "Docker-Dienst konnte nicht gestartet werden"
+    warn "  Prüfen: sudo systemctl status docker"
+  fi
 fi
 
 # ── 3/9 Node.js ─────────────────────────────────────────────
@@ -201,7 +226,7 @@ install_node_from_system() {
   # System-Repos bevorzugen (Bookworm: Node 18, Trixie: Node 20)
   # NodeSource vermeiden — kollidiert mit Trixie/Testing und kann
   # apt-Dependencies zerstören (u.a. docker-ce entfernen!)
-  sudo apt-get install -y nodejs npm -qq 2>/dev/null
+  sudo apt-get install -y nodejs npm -qq
 }
 
 if command -v node >/dev/null 2>&1; then
